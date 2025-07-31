@@ -1,0 +1,33 @@
+@use './components/spacing';
+@use './variables/color' as color;
+
+:root {
+  --primary-color: #{color.$primary-color};
+  --secondary-color: #{color.$secondary-color};
+  --success-color: #{color.$success-color};
+  --info-color: #{color.$info-color};
+  --warning-color: #{color.$warning-color};
+  --danger-color: #{color.$danger-color};
+  --light-color: #{color.$light-color};
+  --dark-color: #{color.$dark-color};
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  min-height: 100vh;
+  font-family: var(--el-font-family);
+  box-sizing: border-box;
+  background-color: var(--dark-color);
+  color: var(--light-color);
+}
+
+#app {
+  min-height: 100vh;
+  background-color: var(--dark-color);
+}
+
+.text-center {
+  text-align: center;
+}
