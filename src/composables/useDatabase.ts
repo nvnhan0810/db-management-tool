@@ -51,6 +51,15 @@ export function useDatabase() {
     }
   };
 
+  const hasActiveConnections = async (): Promise<boolean> => {
+    try {
+      return await window.electron.invoke('database:hasActiveConnections', null);
+    } catch (err) {
+      console.error('Error checking active connections:', err);
+      return false;
+    }
+  };
+
   const executeQuery = async (query: string): Promise<void> => {
     if (!currentConnection.value) {
       error.value = 'No active database connection';
@@ -70,19 +79,22 @@ export function useDatabase() {
     }
   };
 
-  const getTables = async (): Promise<Array<{ name: string; type?: string }>> => {
-    if (!currentConnection.value) {
-      console.warn('No active database connection for getTables');
+  const getTables = async (connectionId?: string): Promise<Array<{ name: string; type?: string }>> => {
+    // Use provided connectionId or fall back to currentConnection
+    const targetConnectionId = connectionId || currentConnection.value?.id;
+    
+    if (!targetConnectionId) {
+      console.warn('No connection ID provided for getTables');
       return []; // Return empty array instead of throwing error
     }
 
     try {
       const tables = await window.electron.invoke('database:getTables', { 
-        connectionId: currentConnection.value.id 
+        connectionId: targetConnectionId 
       });
       return tables || []; // Ensure we always return an array
     } catch (err) {
-      console.error('Error getting tables:', err);
+      console.error('Error getting tables for connection:', targetConnectionId, err);
       return []; // Return empty array on error instead of throwing
     }
   };
@@ -95,6 +107,7 @@ export function useDatabase() {
     connect,
     disconnect,
     disconnectAll,
+    hasActiveConnections,
     executeQuery,
     getTables,
   };

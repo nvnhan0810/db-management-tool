@@ -165,7 +165,19 @@ watch(hasConnections, (has) => {
 const loadSavedConnection = async (savedConnection: any) => {
   try {
     const connection = await getDecryptedConnection(savedConnection);
-    Object.assign(form, connection);
+    
+    // Create a clean connection object
+    const cleanConnection = {
+      id: connection.id,
+      type: connection.type,
+      host: connection.host,
+      port: connection.port,
+      username: connection.username,
+      password: connection.password,
+      database: connection.database
+    };
+    
+    Object.assign(form, cleanConnection);
     form.name = savedConnection.name;
   } catch (err) {
     console.error('Failed to load saved connection:', err);
@@ -183,30 +195,33 @@ const handleConnect = async () => {
   connectionError.value = null;
   isConnecting.value = true;
   try {
-    const success = await connect(form);
-    if (success) {
-      const connectionName = form.name || `${form.type} - ${form.host}`;
-      emit('connection-created', form, connectionName);
-      ElMessage.success('Connection successful!');
-      visible.value = false;
-      
-      // Reset form
-      Object.assign(form, {
-        id: crypto.randomUUID(),
-        type: 'mysql',
-        host: 'localhost',
-        port: 3306,
-        username: '',
-        password: '',
-        database: '',
-        name: '',
-      });
-    } else {
-      // Show detailed error from useDatabase
-      const errorMessage = dbError.value || 'Connection failed';
-      console.error('Connection failed:', errorMessage);
-      connectionError.value = errorMessage;
-    }
+    // Create a clean DatabaseConnection object without extra properties
+    const cleanConnection: DatabaseConnection = {
+      id: form.id,
+      type: form.type,
+      host: form.host,
+      port: form.port,
+      username: form.username,
+      password: form.password,
+      database: form.database
+    };
+    
+    const connectionName = form.name || `${form.type} - ${form.host}`;
+    emit('connection-created', cleanConnection, connectionName);
+    ElMessage.success('Connection successful!');
+    visible.value = false;
+    
+    // Reset form
+    Object.assign(form, {
+      id: crypto.randomUUID(),
+      type: 'mysql',
+      host: 'localhost',
+      port: 3306,
+      username: '',
+      password: '',
+      database: '',
+      name: '',
+    });
   } catch (err) {
     const errorMessage = err instanceof Error ? err.message : 'Connection failed';
     console.error('Connection error:', errorMessage);

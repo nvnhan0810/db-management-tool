@@ -14,6 +14,23 @@ export function useConnections() {
   const currentTabId = ref<string | null>(null);
   const nextTabId = ref(1);
 
+  // Check if this is a fresh app start
+  const isFreshStart = () => {
+    const lastQuitTime = localStorage.getItem('lastQuitTime');
+    const currentTime = Date.now();
+    
+    // If no lastQuitTime or it's been more than 5 seconds, consider it a fresh start
+    if (!lastQuitTime || (currentTime - parseInt(lastQuitTime)) > 5000) {
+      return true;
+    }
+    return false;
+  };
+
+  // Mark app quit time
+  const markAppQuit = () => {
+    localStorage.setItem('lastQuitTime', Date.now().toString());
+  };
+
   // State persistence functions
   const saveState = () => {
     const state = {
@@ -27,6 +44,13 @@ export function useConnections() {
 
   const loadState = () => {
     try {
+      // If this is a fresh start, clear any old state
+      if (isFreshStart()) {
+        console.log('Fresh app start detected - clearing old state');
+        clearState();
+        return false;
+      }
+
       const savedState = localStorage.getItem('connectionsState');
       if (savedState) {
         const state = JSON.parse(savedState);
@@ -34,21 +58,40 @@ export function useConnections() {
         // Check if state is not too old (24 hours)
         const isStateValid = Date.now() - state.timestamp < 24 * 60 * 60 * 1000;
         
-        if (isStateValid && state.activeConnections) {
+        if (isStateValid && state.activeConnections && state.activeConnections.length > 0) {
+          // Check if we have a recent quit time - if so, clear the state
+          const lastQuitTime = localStorage.getItem('lastQuitTime');
+          if (lastQuitTime) {
+            const quitTime = parseInt(lastQuitTime);
+            const stateTime = state.timestamp;
+            
+            // If the state was saved before the last quit, clear it
+            if (stateTime < quitTime) {
+              console.log('State was saved before last quit - clearing old state');
+              clearState();
+              return false;
+            }
+          }
+          
+          // Load the state only if it's recent and valid
           activeConnections.value = state.activeConnections;
           currentTabId.value = state.currentTabId;
           nextTabId.value = state.nextTabId || 1;
+          console.log('Loaded saved connection state');
           return true;
         }
       }
     } catch (error) {
       console.error('Failed to load connections state:', error);
+      // Clear corrupted state
+      clearState();
     }
     return false;
   };
 
   const clearState = () => {
     localStorage.removeItem('connectionsState');
+    localStorage.removeItem('lastQuitTime');
     activeConnections.value = [];
     currentTabId.value = null;
     nextTabId.value = 1;
@@ -71,18 +114,56 @@ export function useConnections() {
   });
 
   // Add new connection tab
-  const addConnection = (connection: DatabaseConnection, name: string): string => {
+  const addConnection = async (connection: DatabaseConnection, name: string): Promise<string> => {
     const tabId = `tab-${nextTabId.value++}`;
+    
+    console.log('Adding new connection:', {
+      connectionId: connection.id,
+      name: name,
+      database: connection.database,
+      host: connection.host
+    });
+    
+    // First, try to connect to the database
+    let isConnected = false;
+    try {
+      if (window.electron) {
+        // Create a plain object with only the necessary database connection properties
+        const plainConnection = {
+          id: connection.id,
+          type: connection.type,
+          host: connection.host,
+          port: connection.port,
+          username: connection.username,
+          password: connection.password,
+          database: connection.database
+        };
+        
+        isConnected = await window.electron.invoke('database:connect', plainConnection);
+        console.log(`Database connection ${connection.id} established:`, isConnected);
+      }
+    } catch (error) {
+      console.error('Error connecting to database:', error);
+      isConnected = false;
+    }
+    
     const activeConnection: ActiveConnection = {
       ...connection,
       name,
-      isConnected: true, // Set as connected when added
+      isConnected: isConnected, // Set based on actual connection result
       lastActivity: new Date(),
       tabId,
     };
     
     activeConnections.value.push(activeConnection);
     currentTabId.value = tabId;
+    
+    console.log('Active connections after adding:', activeConnections.value.map(c => ({
+      id: c.id,
+      name: c.name,
+      isConnected: c.isConnected,
+      tabId: c.tabId
+    })));
     
     // Save state to localStorage
     saveState();
@@ -126,6 +207,13 @@ export function useConnections() {
     if (connection) {
       currentTabId.value = tabId;
       connection.lastActivity = new Date();
+      
+      // Ensure connection is marked as connected when switching to it
+      // This is important for multi-connection scenarios
+      if (!connection.isConnected) {
+        console.log(`Marking connection ${connection.id} as connected when switching to tab ${tabId}`);
+        connection.isConnected = true;
+      }
     }
   };
 
@@ -135,6 +223,24 @@ export function useConnections() {
     if (connection) {
       connection.isConnected = isConnected;
       connection.lastActivity = new Date();
+    }
+  };
+
+  // Refresh connection status for all connections
+  const refreshConnectionStatus = async () => {
+    try {
+      if (window.electron) {
+        const hasConnections = await window.electron.invoke('database:hasActiveConnections', null);
+        console.log('Refreshing connection status, database has connections:', hasConnections);
+        
+        // If database has connections, mark all UI connections as connected
+        // If database has no connections, mark all UI connections as disconnected
+        activeConnections.value.forEach(connection => {
+          connection.isConnected = hasConnections;
+        });
+      }
+    } catch (error) {
+      console.error('Error refreshing connection status:', error);
     }
   };
 
@@ -165,11 +271,29 @@ export function useConnections() {
       console.error('Error disconnecting all database connections:', error);
     }
     
-    // Clear UI state
+    // Clear UI state and localStorage
     activeConnections.value = [];
     currentTabId.value = null;
     nextTabId.value = 1;
-    clearState();
+    
+    // Mark app quit time
+    markAppQuit();
+    
+    // Explicitly clear localStorage
+    try {
+      localStorage.removeItem('connectionsState');
+      console.log('Cleared connections state from localStorage');
+    } catch (error) {
+      console.error('Error clearing localStorage:', error);
+    }
+  };
+
+  // Test method to simulate app restart
+  const testRestartDetection = () => {
+    console.log('Testing restart detection...');
+    console.log('isFreshStart():', isFreshStart());
+    console.log('lastQuitTime:', localStorage.getItem('lastQuitTime'));
+    console.log('connectionsState:', localStorage.getItem('connectionsState'));
   };
 
   return {
@@ -192,7 +316,11 @@ export function useConnections() {
     removeConnection,
     switchToConnection,
     updateConnectionStatus,
+    refreshConnectionStatus,
     getConnectionByTabId,
     clearAllConnections,
+    markAppQuit,
+    isFreshStart,
+    testRestartDetection,
   };
 }

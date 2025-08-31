@@ -24,6 +24,24 @@ const createWindow = () => {
     backgroundColor: '#1a202c',
   });
 
+  // Prevent reload when there are active database connections
+  mainWindow.webContents.on('will-navigate', async (event, navigationUrl) => {
+    // Check if this is a reload attempt (same URL)
+    if (navigationUrl === mainWindow.webContents.getURL()) {
+      try {
+        const hasConnections = await databaseService.hasActiveConnections();
+        if (hasConnections) {
+          event.preventDefault();
+          console.log('Reload prevented at main process level - active connections detected');
+          // Send message to renderer to show warning
+          mainWindow.webContents.send('reload-prevented', 'Cannot reload app while database connections are active');
+        }
+      } catch (error) {
+        console.error('Error checking active connections:', error);
+      }
+    }
+  });
+
   // and load the index.html of the app.
   if (MAIN_WINDOW_VITE_DEV_SERVER_URL) {
     mainWindow.loadURL(MAIN_WINDOW_VITE_DEV_SERVER_URL);
@@ -93,6 +111,18 @@ ipcMain.handle('database:disconnect', (event, connectionId) => {
 
 ipcMain.handle('database:disconnectAll', () => {
   return databaseService.disconnectAll();
+});
+
+ipcMain.handle('database:hasActiveConnections', () => {
+  return databaseService.hasActiveConnections();
+});
+
+// Handle reload prevention message
+ipcMain.handle('reload:prevent', (event, message) => {
+  const window = BrowserWindow.getFocusedWindow();
+  if (window) {
+    window.webContents.send('reload-prevented', message);
+  }
 });
 
 ipcMain.handle('database:query', (event, { connectionId, query }) => {

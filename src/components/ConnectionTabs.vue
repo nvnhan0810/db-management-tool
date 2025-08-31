@@ -1,71 +1,110 @@
 <template>
   <div class="connection-tabs">
-    <div class="tabs-header">
-      <el-button 
-        size="small" 
-        type="primary" 
-        @click="$emit('new-connection')"
-      >
-        <el-icon><Plus /></el-icon>
-      </el-button>
-    </div>
-    
     <div v-if="!hasConnections" class="no-connections">
       <el-empty description="No active connections" />
     </div>
     
-    <div v-else class="tabs-list">
+    <div v-else class="connections-grid">
       <div 
-        v-for="(connection, index) in sortedConnections" 
+        v-for="(connection, index) in connections" 
         :key="connection.tabId"
-        class="tab-item"
+        class="connection-card"
         :class="{ 
           'active': connection.tabId === currentTabId,
           'connected': connection.isConnected 
         }"
         @click="$emit('switch-tab', connection.tabId)"
+        @contextmenu.prevent="showContextMenu($event, connection)"
       >
-        <div class="tab-content">
-          <div class="tab-name">
-            {{ connection.name || `Connection ${index + 1}` }}
-          </div>
-          <div class="tab-status">
-            <span 
-              class="status-indicator"
-              :class="{ 'connected': connection.isConnected }"
-            ></span>
-          </div>
+        <div class="connection-icon">
+          <el-icon :size="24">
+            <Connection />
+          </el-icon>
+          <div 
+            class="status-dot"
+            :class="{ 'connected': connection.isConnected }"
+          ></div>
         </div>
-        <div class="tab-actions">
-          <el-button 
-            size="small" 
-            type="danger" 
-            @click.stop="$emit('close-tab', connection.tabId)"
-          >
-            <el-icon><Close /></el-icon>
-          </el-button>
+        <div class="connection-name">
+          {{ connection.name || `Connection ${index + 1}` }}
+        </div>
+        <div class="connection-details">
+          {{ connection.database }}
         </div>
       </div>
     </div>
+
+    <!-- Context Menu -->
+    <el-dropdown 
+      ref="contextMenuRef"
+      trigger="contextmenu"
+      :visible="contextMenuVisible"
+      @visible-change="handleContextMenuVisibleChange"
+      placement="bottom-start"
+    >
+      <span class="context-menu-trigger"></span>
+      <template #dropdown>
+        <el-dropdown-menu>
+          <el-dropdown-item @click="closeConnection" divided>
+            <el-icon><Close /></el-icon>
+            <span>Close Connection</span>
+          </el-dropdown-item>
+        </el-dropdown-menu>
+      </template>
+    </el-dropdown>
   </div>
 </template>
 
 <script setup lang="ts">
-import { Close, Plus } from '@element-plus/icons-vue';
+import { Close, Connection } from '@element-plus/icons-vue';
+import { ref } from 'vue';
 import type { ActiveConnection } from '../composables/useConnections';
 
-defineProps<{
+const props = defineProps<{
   connections: ActiveConnection[];
   currentTabId: string | null;
   hasConnections: boolean;
-  sortedConnections: ActiveConnection[];
 }>();
 
-defineEmits<{
-  'new-connection': [];
+const emit = defineEmits<{
   'switch-tab': [tabId: string];
   'close-tab': [tabId: string];
 }>();
+
+// Context menu state
+const contextMenuVisible = ref(false);
+const contextMenuRef = ref();
+const selectedConnection = ref<ActiveConnection | null>(null);
+
+const showContextMenu = (event: MouseEvent, connection: ActiveConnection) => {
+  event.preventDefault();
+  selectedConnection.value = connection;
+  contextMenuVisible.value = true;
+  
+  // Position the context menu at the mouse position
+  if (contextMenuRef.value) {
+    const dropdown = contextMenuRef.value.$el;
+    dropdown.style.position = 'fixed';
+    dropdown.style.left = `${event.clientX}px`;
+    dropdown.style.top = `${event.clientY}px`;
+    dropdown.style.zIndex = '9999';
+  }
+};
+
+const handleContextMenuVisibleChange = (visible: boolean) => {
+  contextMenuVisible.value = visible;
+  if (!visible) {
+    selectedConnection.value = null;
+  }
+};
+
+const closeConnection = () => {
+  if (selectedConnection.value) {
+    emit('close-tab', selectedConnection.value.tabId);
+    contextMenuVisible.value = false;
+    selectedConnection.value = null;
+  }
+};
 </script>
 
 <style scoped>
@@ -74,14 +113,23 @@ defineEmits<{
   height: 100%;
   display: flex;
   flex-direction: column;
+  background-color: var(--el-bg-color-page);
 }
 
 .tabs-header {
   display: flex;
   justify-content: center;
   align-items: center;
-  padding: 0.5rem;
-  border-bottom: 1px solid var(--el-border-color);
+  padding: 1rem;
+  border-bottom: 1px solid var(--el-border-color-light);
+}
+
+.add-connection-btn {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
 }
 
 .no-connections {
@@ -92,93 +140,163 @@ defineEmits<{
   padding: 2rem;
 }
 
-.tabs-list {
-  flex: 1;
+.connections-grid {
+  padding: 0.75rem;
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0.5rem;
   overflow-y: auto;
-  padding: 0.5rem;
 }
 
-.tab-item {
+.connection-card {
   display: flex;
-  justify-content: space-between;
+  flex-direction: column;
   align-items: center;
-  /* padding: 0.5rem;
-  margin-bottom: 0.25rem; */
+  justify-content: center;
+  padding: 0.75rem 0.5rem;
   border: 1px solid var(--el-border-color);
-  border-radius: 4px;
+  border-radius: 8px;
   cursor: pointer;
   transition: all 0.2s ease;
   background-color: var(--el-bg-color);
+  position: relative;
+  aspect-ratio: 1;
+  width: 100%;
+  height: auto;
+  max-width: 80px;
+  margin: 0 auto;
 }
 
-.tab-item:hover {
+.connection-card:hover {
   border-color: var(--el-color-primary);
   background-color: var(--el-color-primary-light-9);
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
 }
 
-.tab-item.active {
+.connection-card.active {
   border-color: var(--el-color-primary);
   background-color: var(--el-color-primary-light-8);
+  box-shadow: 0 2px 8px rgba(64, 158, 255, 0.2);
+  transform: none;
+  z-index: 1;
 }
 
-.tab-item.connected {
-  border-left: 3px solid var(--el-color-success);
+.connection-card.connected {
+  border-left: 2px solid var(--el-color-success);
 }
 
-.tab-content {
-  flex: 1;
-  min-width: 0;
-}
-
-.tab-name {
-  font-weight: 600;
-  color: var(--el-text-color-primary);
-  margin-bottom: 0.25rem;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.tab-details {
-  font-size: 0.75rem;
+.connection-icon {
+  position: relative;
+  margin-bottom: 0.5rem;
   color: var(--el-text-color-regular);
-  margin-bottom: 0.25rem;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  flex-shrink: 0;
 }
 
-.tab-status {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  font-size: 0.75rem;
-  color: var(--el-text-color-secondary);
-}
 
-.status-indicator {
-  width: 8px;
-  height: 8px;
+
+.status-dot {
+  position: absolute;
+  top: -2px;
+  right: -2px;
+  width: 6px;
+  height: 6px;
   border-radius: 50%;
   background-color: var(--el-color-danger);
+  border: 1px solid var(--el-bg-color);
   transition: background-color 0.2s ease;
 }
 
-.status-indicator.connected {
+.status-dot.connected {
   background-color: var(--el-color-success);
 }
 
-.tab-actions {
-  margin-left: 0.5rem;
+.connection-name {
+  font-weight: 600;
+  color: var(--el-text-color-primary);
+  text-align: center;
+  margin-bottom: 0.25rem;
+  font-size: 0.75rem;
+  line-height: 1.1;
+  word-break: break-word;
+  max-width: 100%;
+  flex-shrink: 0;
+}
+
+.connection-details {
+  font-size: 0.65rem;
+  color: var(--el-text-color-secondary);
+  text-align: center;
+  flex-shrink: 0;
+}
+
+.context-menu-trigger {
+  position: fixed;
+  top: -1000px;
+  left: -1000px;
+  width: 1px;
+  height: 1px;
   opacity: 0;
-  transition: opacity 0.2s ease;
+  pointer-events: none;
 }
 
-.tab-item:hover .tab-actions {
-  opacity: 1;
+/* Dark mode adjustments */
+.dark .connection-card {
+  background-color: #2d3748 !important;
+  border-color: #4a5568 !important;
+  color: #f7fafc !important;
 }
 
-.tab-item.active .tab-actions {
-  opacity: 1;
+.dark .connection-card:hover {
+  background-color: #4a5568 !important;
+  border-color: #409eff !important;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3) !important;
+}
+
+.dark .connection-card.active {
+  background-color: #4a5568 !important;
+  border-color: #409eff !important;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3) !important;
+}
+
+.dark .connection-name {
+  color: #f7fafc !important;
+}
+
+.dark .connection-details {
+  color: #a0aec0 !important;
+}
+
+.dark .connection-icon {
+  color: #e2e8f0 !important;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .connections-grid {
+    grid-template-columns: 1fr;
+    gap: 0.5rem;
+    padding: 0.5rem;
+  }
+  
+  .connection-card {
+    width: 100%;
+    height: auto;
+    max-width: 70px;
+    padding: 0.5rem 0.25rem;
+  }
+  
+  .connection-name {
+    font-size: 0.7rem;
+  }
+  
+  .connection-details {
+    font-size: 0.6rem;
+  }
+  
+  .connection-icon .el-icon {
+    font-size: 18px;
+  }
 }
 </style>

@@ -173,13 +173,26 @@ watch(form, () => {
 const loadSavedConnection = async (savedConnection: any) => {
   try {
     const connection = await getDecryptedConnection(savedConnection);
-    Object.assign(form, connection);
+    
+    // Create a clean connection object
+    const cleanConnection = {
+      id: connection.id,
+      type: connection.type,
+      host: connection.host,
+      port: connection.port,
+      username: connection.username,
+      password: connection.password,
+      database: connection.database
+    };
+    
+    Object.assign(form, cleanConnection);
+    form.name = savedConnection.name;
     
     // Set editing mode
     isEditing.value = true;
     originalConnectionId.value = savedConnection.id;
     
-    console.log('Loaded saved connection:', connection);
+    console.log('Loaded saved connection:', cleanConnection);
   } catch (err) {
     console.error('Failed to load saved connection:', err);
   }
@@ -223,9 +236,20 @@ const handleConnect = async () => {
       // Update last used if it's a saved connection
       await updateLastUsed(form.id);
       
+      // Create a clean DatabaseConnection object without extra properties
+      const cleanConnection: DatabaseConnection = {
+        id: form.id,
+        type: form.type,
+        host: form.host,
+        port: form.port,
+        username: form.username,
+        password: form.password,
+        database: form.database
+      };
+      
       // Emit connection created event to add to active connections
       const connectionName = form.name || `${form.type} - ${form.host}`;
-      emit('connection-created', form, connectionName);
+      emit('connection-created', cleanConnection, connectionName);
     } else {
       // Show detailed error from useDatabase
       const errorMessage = error.value || 'Connection failed';

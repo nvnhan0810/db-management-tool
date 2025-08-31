@@ -4,7 +4,7 @@ import { contextBridge, ipcRenderer } from 'electron';
 
 const validChannels: string[] = [];
 
-const invokeChannels = ['database:connect', 'database:disconnect', 'database:disconnectAll', 'database:query', 'database:getTables'];
+const invokeChannels = ['database:connect', 'database:disconnect', 'database:disconnectAll', 'database:hasActiveConnections', 'database:query', 'database:getTables', 'reload:prevent'];
 
 contextBridge.exposeInMainWorld(
   'electron',
@@ -12,6 +12,16 @@ contextBridge.exposeInMainWorld(
     invoke: async (channel: string, data: any) => {
       if (invokeChannels.includes(channel)) {
         return await ipcRenderer.invoke(channel, data);
+      }
+    },
+    on: (channel: string, callback: Function) => {
+      if (channel === 'reload-prevented') {
+        ipcRenderer.on(channel, (event, ...args) => callback(...args));
+      }
+    },
+    off: (channel: string, callback: Function) => {
+      if (channel === 'reload-prevented') {
+        ipcRenderer.removeListener(channel, callback as any);
       }
     },
   }

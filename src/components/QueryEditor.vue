@@ -43,7 +43,7 @@ const emit = defineEmits<{
 }>();
 
 const query = ref('');
-const { isConnected, queryResult, error, executeQuery: runQuery, disconnect, getTables } = useDatabase();
+const { isConnected, queryResult, error, executeQuery: runQuery, disconnect, getTables, hasActiveConnections } = useDatabase();
 
 // Computed properties
 const connectionName = computed(() => {
@@ -51,7 +51,7 @@ const connectionName = computed(() => {
 });
 
 const showTablesSidebar = computed(() => {
-  return props.connection?.database && isConnected.value;
+  return props.connection?.database && props.connection?.isConnected;
 });
 
 // Tables state
@@ -98,10 +98,40 @@ defineExpose({
   addQueryTab
 });
 
+// Method to verify connection status
+const verifyConnection = async () => {
+  if (!props.connection?.id) {
+    console.log('No connection ID available for verification');
+    return false;
+  }
+  
+  try {
+    // Check if connection is still active in database service
+    const hasConnections = await hasActiveConnections();
+    console.log('Database service has active connections:', hasConnections);
+    return hasConnections;
+  } catch (error) {
+    console.error('Error verifying connection:', error);
+    return false;
+  }
+};
+
 const loadTables = async () => {
   // Check if we have a valid connection and are connected
-  if (!props.connection?.database || !isConnected.value || !props.connection?.id) {
-    console.log('Skipping loadTables - no valid connection or not connected');
+  if (!props.connection?.database || !props.connection?.isConnected || !props.connection?.id) {
+    console.log('Skipping loadTables - no valid connection or not connected', {
+      database: props.connection?.database,
+      isConnected: props.connection?.isConnected,
+      id: props.connection?.id
+    });
+    tables.value = [];
+    return;
+  }
+  
+  // Verify connection is still active
+  const isConnectionActive = await verifyConnection();
+  if (!isConnectionActive) {
+    console.log('Connection verification failed - connection may be inactive');
     tables.value = [];
     return;
   }
@@ -109,13 +139,13 @@ const loadTables = async () => {
   isLoadingTables.value = true;
   try {
     console.log('Loading tables for connection:', props.connection.id);
-    // Load real tables from database
-    const databaseTables = await getTables();
+    // Load real tables from database using the specific connection ID
+    const databaseTables = await getTables(props.connection.id);
     
     // Ensure databaseTables is an array
     if (Array.isArray(databaseTables)) {
       tables.value = databaseTables;
-      console.log(`Loaded ${databaseTables.length} tables`);
+      console.log(`Loaded ${databaseTables.length} tables for connection ${props.connection.id}`);
     } else {
       console.warn('getTables returned non-array result:', databaseTables);
       tables.value = [];
@@ -154,17 +184,17 @@ onUnmounted(() => {
 
 // Watch for connection changes to load tables
 watch(() => props.connection?.database, (newDatabase: string | undefined) => {
-  console.log('Database changed:', newDatabase, 'isConnected:', isConnected.value);
-  if (newDatabase && isConnected.value && props.connection?.id) {
+  console.log('Database changed:', newDatabase, 'isConnected:', props.connection?.isConnected);
+  if (newDatabase && props.connection?.isConnected && props.connection?.id) {
     loadTables();
   } else {
     tables.value = [];
   }
 }, { immediate: true });
 
-watch(isConnected, (connected: boolean) => {
-  console.log('Connection status changed:', connected, 'database:', props.connection?.database);
-  if (connected && props.connection?.database && props.connection?.id) {
+watch(() => props.connection?.isConnected, (isConnected: boolean | undefined) => {
+  console.log('Connection status changed:', isConnected, 'database:', props.connection?.database);
+  if (isConnected && props.connection?.database && props.connection?.id) {
     loadTables();
   } else {
     tables.value = [];
@@ -173,8 +203,8 @@ watch(isConnected, (connected: boolean) => {
 
 // Watch for connection object changes
 watch(() => props.connection, (newConnection) => {
-  console.log('Connection object changed:', newConnection?.id, 'isConnected:', isConnected.value);
-  if (newConnection?.database && isConnected.value && newConnection?.id) {
+  console.log('Connection object changed:', newConnection?.id, 'isConnected:', newConnection?.isConnected);
+  if (newConnection?.database && newConnection?.isConnected && newConnection?.id) {
     loadTables();
   } else {
     tables.value = [];

@@ -75,6 +75,10 @@ class DatabaseService {
     }
   }
 
+  hasActiveConnections(): boolean {
+    return this.connections.size > 0;
+  }
+
   async query(connectionId: string, query: string): Promise<QueryResult> {
     const connection = this.connections.get(connectionId);
     if (!connection) {
