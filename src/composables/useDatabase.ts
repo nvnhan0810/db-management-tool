@@ -14,7 +14,7 @@ export function useDatabase() {
       // Convert reactive object to plain object for IPC
       const plainConnection = toRaw(connection);
       const success = await window.electron.invoke('database:connect', plainConnection);
-      console.log('success', success);
+      
       if (success) {
         isConnected.value = true;
         currentConnection.value = connection;
@@ -40,6 +40,17 @@ export function useDatabase() {
     }
   };
 
+  const disconnectAll = async (): Promise<void> => {
+    try {
+      await window.electron.invoke('database:disconnectAll', null);
+      isConnected.value = false;
+      currentConnection.value = null;
+      error.value = null;
+    } catch (err) {
+      error.value = err instanceof Error ? err.message : 'Failed to disconnect all databases';
+    }
+  };
+
   const executeQuery = async (query: string): Promise<void> => {
     if (!currentConnection.value) {
       error.value = 'No active database connection';
@@ -51,10 +62,28 @@ export function useDatabase() {
         connectionId: currentConnection.value.id, 
         query 
       });
+      
       queryResult.value = result;
       error.value = result.success ? null : result.error || 'Query execution failed';
     } catch (err) {
       error.value = err instanceof Error ? err.message : 'Failed to execute query';
+    }
+  };
+
+  const getTables = async (): Promise<Array<{ name: string; type?: string }>> => {
+    if (!currentConnection.value) {
+      console.warn('No active database connection for getTables');
+      return []; // Return empty array instead of throwing error
+    }
+
+    try {
+      const tables = await window.electron.invoke('database:getTables', { 
+        connectionId: currentConnection.value.id 
+      });
+      return tables || []; // Ensure we always return an array
+    } catch (err) {
+      console.error('Error getting tables:', err);
+      return []; // Return empty array on error instead of throwing
     }
   };
 
@@ -65,6 +94,8 @@ export function useDatabase() {
     error,
     connect,
     disconnect,
+    disconnectAll,
     executeQuery,
+    getTables,
   };
 } 

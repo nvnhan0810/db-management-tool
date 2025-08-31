@@ -1,53 +1,185 @@
 <template>
   <div class="query-editor">
-    <div class="editor-toolbar">
-      <el-button-group>
-        <el-button type="primary" @click="executeQuery" :disabled="!isConnected">
-          Execute
-        </el-button>
-        <el-button @click="clearQuery">Clear</el-button>
-      </el-button-group>
-    </div>
-    <div class="editor-container">
-      <el-input
-        v-model="query"
-        type="textarea"
-        :rows="10"
-        placeholder="Enter your SQL query here..."
-        resize="none"
-      />
-    </div>
-    <div v-if="error" class="error-message">
-      {{ error }}
-    </div>
-    <div v-if="queryResult" class="query-results">
-      <el-table
-        v-if="queryResult.success && queryResult.results"
-        :data="queryResult.results"
-        style="width: 100%"
-        height="400"
-        border
-      >
-        <el-table-column
-          v-for="field in queryResult.fields"
-          :key="field.name"
-          :prop="field.name"
-          :label="field.name"
+    <!-- Title Bar -->
+            <!-- QueryTitleBar removed - functionality moved to CustomTitleBar -->
+    
+    <div class="query-content">
+      <!-- Database Tables Sidebar -->
+      <el-aside v-if="showTablesSidebar" width="250px">
+        <DatabaseTables
+          :tables="tables"
+          :is-loading="isLoadingTables"
+          :active-table-name="activeTableName || undefined"
+          @select-table="handleSelectTable"
         />
-      </el-table>
-      <div v-else-if="!queryResult.success" class="error-message">
-        {{ queryResult.error }}
-      </div>
+      </el-aside>
+      
+      <!-- Main Content Area - RightSidebar is now the main content -->
+      <el-main>
+        <RightSidebar
+          :visible="true"
+          :active-table-name="activeTableName || undefined"
+          ref="rightSidebarRef"
+          @table-selected="handleTableSelected"
+        />
+      </el-main>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue';
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
+import type { ActiveConnection } from '../composables/useConnections';
 import { useDatabase } from '../composables/useDatabase';
+import DatabaseTables from './DatabaseTables.vue';
+import RightSidebar from './RightSidebar.vue';
+
+const props = defineProps<{
+  connection: ActiveConnection | null;
+}>();
+
+const emit = defineEmits<{
+  'new-connection': [];
+}>();
 
 const query = ref('');
-const { isConnected, queryResult, error, executeQuery: runQuery } = useDatabase();
+const { isConnected, queryResult, error, executeQuery: runQuery, disconnect, getTables } = useDatabase();
+
+// Computed properties
+const connectionName = computed(() => {
+  return props.connection?.name || 'Unknown Connection';
+});
+
+const showTablesSidebar = computed(() => {
+  return props.connection?.database && isConnected.value;
+});
+
+// Tables state
+const tables = ref<Array<{ name: string; type?: string }>>([]);
+const isLoadingTables = ref(false);
+const showRightSidebar = ref(false);
+const rightSidebarRef = ref();
+const activeTableName = ref<string | null>(null);
+
+// Methods
+
+const handleSelectTable = (table: { name: string; type?: string }) => {
+  // Add table info to right sidebar (don't update main query)
+  if (rightSidebarRef.value) {
+    const tableData = {
+      name: table.name,
+      columns: [
+        { name: 'id', type: 'INT', nullable: false },
+        { name: 'name', type: 'VARCHAR(255)', nullable: true },
+        { name: 'email', type: 'VARCHAR(255)', nullable: true },
+        { name: 'created_at', type: 'TIMESTAMP', nullable: false }
+      ],
+      rows: 100
+    };
+    rightSidebarRef.value.addTableTab(tableData);
+    showRightSidebar.value = true;
+    activeTableName.value = table.name;
+  }
+};
+
+const handleTableSelected = (tableName: string) => {
+  activeTableName.value = tableName;
+};
+
+// Method to add query tab
+const addQueryTab = () => {
+  if (rightSidebarRef.value) {
+    rightSidebarRef.value.addQueryTab();
+  }
+};
+
+// Expose methods for parent component
+defineExpose({
+  addQueryTab
+});
+
+const loadTables = async () => {
+  // Check if we have a valid connection and are connected
+  if (!props.connection?.database || !isConnected.value || !props.connection?.id) {
+    console.log('Skipping loadTables - no valid connection or not connected');
+    tables.value = [];
+    return;
+  }
+  
+  isLoadingTables.value = true;
+  try {
+    console.log('Loading tables for connection:', props.connection.id);
+    // Load real tables from database
+    const databaseTables = await getTables();
+    
+    // Ensure databaseTables is an array
+    if (Array.isArray(databaseTables)) {
+      tables.value = databaseTables;
+      console.log(`Loaded ${databaseTables.length} tables`);
+    } else {
+      console.warn('getTables returned non-array result:', databaseTables);
+      tables.value = [];
+    }
+  } catch (err) {
+    console.error('Error loading tables:', err);
+    // Fallback to empty array if loading fails
+    tables.value = [];
+  } finally {
+    isLoadingTables.value = false;
+  }
+};
+
+// Keyboard shortcuts
+const handleKeydown = (event: KeyboardEvent) => {
+  // Ctrl+N (Windows/Linux) or Cmd+N (Mac) for new connection
+  // Only allow when we have an active connection
+  if ((event.ctrlKey || event.metaKey) && event.key === 'n') {
+    if (props.connection) {
+      event.preventDefault();
+      console.log('Ctrl+N pressed in QueryEditor with active connection');
+      emit('new-connection');
+    } else {
+      console.log('Ctrl+N pressed but no active connection - ignored');
+    }
+  }
+};
+
+onMounted(() => {
+  document.addEventListener('keydown', handleKeydown);
+});
+
+onUnmounted(() => {
+  document.removeEventListener('keydown', handleKeydown);
+});
+
+// Watch for connection changes to load tables
+watch(() => props.connection?.database, (newDatabase: string | undefined) => {
+  console.log('Database changed:', newDatabase, 'isConnected:', isConnected.value);
+  if (newDatabase && isConnected.value && props.connection?.id) {
+    loadTables();
+  } else {
+    tables.value = [];
+  }
+}, { immediate: true });
+
+watch(isConnected, (connected: boolean) => {
+  console.log('Connection status changed:', connected, 'database:', props.connection?.database);
+  if (connected && props.connection?.database && props.connection?.id) {
+    loadTables();
+  } else {
+    tables.value = [];
+  }
+});
+
+// Watch for connection object changes
+watch(() => props.connection, (newConnection) => {
+  console.log('Connection object changed:', newConnection?.id, 'isConnected:', isConnected.value);
+  if (newConnection?.database && isConnected.value && newConnection?.id) {
+    loadTables();
+  } else {
+    tables.value = [];
+  }
+}, { immediate: true });
 
 const executeQuery = async () => {
   if (!query.value.trim()) return;
@@ -57,15 +189,32 @@ const executeQuery = async () => {
 const clearQuery = () => {
   query.value = '';
 };
+
+
 </script>
 
 <style scoped>
 .query-editor {
   display: flex;
   flex-direction: column;
-  gap: 1rem;
   height: 100%;
 }
+
+.query-content {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+}
+
+.query-workspace {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  height: 100%;
+  padding: 1rem;
+}
+
+
 
 .editor-toolbar {
   display: flex;
@@ -86,5 +235,10 @@ const clearQuery = () => {
 
 .query-results {
   margin-top: 1rem;
+}
+
+.el-main {
+  padding: 0;
+  overflow: hidden;
 }
 </style> 

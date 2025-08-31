@@ -11,11 +11,17 @@ if (started) {
 const createWindow = () => {
   // Create the browser window.
   const mainWindow = new BrowserWindow({
-    width: 800,
-    height: 600,
+    width: 1200,
+    height: 800,
+    frame: false, // Disable default title bar
+    titleBarStyle: 'hidden',
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
+      nodeIntegration: false,
+      contextIsolation: true,
     },
+    // Set dark theme
+    backgroundColor: '#1a202c',
   });
 
   // and load the index.html of the app.
@@ -34,10 +40,32 @@ const createWindow = () => {
 // Some APIs can only be used after this event occurs.
 app.on('ready', createWindow);
 
-// Quit when all windows are closed, except on macOS. There, it's common
-// for applications and their menu bar to stay active until the user quits
-// explicitly with Cmd + Q.
-app.on('window-all-closed', () => {
+// Disconnect all database connections before app quits
+app.on('before-quit', async (event) => {
+  event.preventDefault();
+  
+  try {
+    console.log('App is quitting, disconnecting all database connections...');
+    await databaseService.disconnectAll();
+    console.log('All database connections disconnected successfully');
+  } catch (error) {
+    console.error('Error disconnecting database connections on quit:', error);
+  }
+  
+  // Force quit after disconnecting
+  app.exit(0);
+});
+
+// Also handle window-all-closed event
+app.on('window-all-closed', async () => {
+  try {
+    console.log('All windows closed, disconnecting all database connections...');
+    await databaseService.disconnectAll();
+    console.log('All database connections disconnected successfully');
+  } catch (error) {
+    console.error('Error disconnecting database connections on window close:', error);
+  }
+  
   if (process.platform !== 'darwin') {
     app.quit();
   }
@@ -53,8 +81,9 @@ app.on('activate', () => {
 
 // In this file you can include the rest of your app's specific main process
 // code. You can also put them in separate files and import them here.
+
+// Database handlers
 ipcMain.handle('database:connect', (event, connection) => {
-  console.log('database:connect', connection);
   return databaseService.connect(connection);
 });
 
@@ -62,6 +91,44 @@ ipcMain.handle('database:disconnect', (event, connectionId) => {
   return databaseService.disconnect(connectionId);
 });
 
-ipcMain.handle('database:query', (event, connectionId, query) => {
+ipcMain.handle('database:disconnectAll', () => {
+  return databaseService.disconnectAll();
+});
+
+ipcMain.handle('database:query', (event, { connectionId, query }) => {
   return databaseService.query(connectionId, query);
+});
+
+ipcMain.handle('database:getTables', async (event, { connectionId }) => {
+  return databaseService.getTables(connectionId);
+});
+
+// Window control handlers
+ipcMain.handle('window:minimize', () => {
+  const window = BrowserWindow.getFocusedWindow();
+  if (window) {
+    window.minimize();
+  }
+});
+
+ipcMain.handle('window:maximize', () => {
+  const window = BrowserWindow.getFocusedWindow();
+  if (window) {
+    if (window.isMaximized()) {
+      window.unmaximize();
+    } else {
+      window.maximize();
+    }
+  }
+});
+
+ipcMain.handle('window:close', () => {
+  const window = BrowserWindow.getFocusedWindow();
+  if (window) {
+    window.close();
+  }
+});
+
+ipcMain.handle('app:quit', () => {
+  app.quit();
 });
