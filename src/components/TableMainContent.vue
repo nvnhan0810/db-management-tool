@@ -12,11 +12,6 @@
               Refresh
             </el-button>
           </div>
-          <div class="debug-info">
-            <p>Debug: tableData.length = {{ tableData.length }}</p>
-            <p>Debug: isLoadingData = {{ isLoadingData }}</p>
-            <p>Debug: columns.length = {{ columns.length }}</p>
-          </div>
         </div>
       </div>
       <el-table
@@ -156,14 +151,12 @@ const columnsWithFullType = computed(() => {
 .main-content-section {
   flex: 1; /* Take remaining space */
   border: 1px solid var(--el-border-color);
-  border-radius: 6px;
   background-color: var(--el-bg-color-page);
   overflow: hidden; /* Hide overflow, let table handle scroll */
   display: flex;
   flex-direction: column;
-  min-height: 300px; /* Reasonable minimum height */
-  max-height: 600px; /* Reasonable maximum height */
   position: relative; /* For absolute positioning if needed */
+  flex-grow: 1;
 }
 
 .data-view {
@@ -171,8 +164,6 @@ const columnsWithFullType = computed(() => {
   overflow: hidden; /* Hide overflow, let table handle scroll */
   display: flex;
   flex-direction: column;
-  min-height: 300px; /* Reasonable minimum height */
-  max-height: 600px; /* Reasonable maximum height */
   position: relative; /* For absolute positioning if needed */
 }
 

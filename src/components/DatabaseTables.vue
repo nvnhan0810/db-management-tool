@@ -50,7 +50,7 @@ defineEmits<{
 <style scoped>
 .database-tables {
   width: 100%;
-  height: 100%;
+  height: calc(100vh - 32px);
   display: flex;
   flex-direction: column;
 }
@@ -92,14 +92,14 @@ defineEmits<{
   flex: 1;
   overflow-y: auto;
   padding: 0.25rem;
-  height: calc(100vh - 120px); /* Full remaining height */
+  height: calc(100vh - 32px - 35.5px); /* Full remaining height */
 }
 
 .table-item {
   display: flex;
   align-items: center;
-  padding: 0.5rem;
-  margin-bottom: 0.125rem;
+  padding: 0.25rem 0.5rem;
+  /* margin-bottom: 0.125rem; */
   border-radius: 4px;
   cursor: pointer;
   transition: all 0.2s ease;

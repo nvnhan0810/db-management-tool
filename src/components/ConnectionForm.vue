@@ -1,103 +1,79 @@
 <template>
   <div class="connection-layout">
-    <!-- Left Side - Connection Form -->
-    <div class="connection-form">
-      <h3>{{ isEditing ? 'Edit Connection' : 'Database Connection' }}</h3>
-      <el-form :model="form" label-width="140px">
-        <el-form-item label="Connection Name">
-          <el-input 
-            v-model="form.name" 
-            placeholder="Enter connection name (optional for connect/test, required for save)"
-            :class="{ 'is-error': nameError }"
-          />
-          <div v-if="nameError" class="field-error">{{ nameError }}</div>
-        </el-form-item>
+    <div class="connection-wrapper">
+      <!-- Left Side - Connection Form -->
+      <div class="connection-form">
+        <h3>{{ isEditing ? 'Edit Connection' : 'Database Connection' }}</h3>
+        <el-form :model="form" label-width="130px">
+          <el-form-item label="Connection Name">
+            <el-input v-model="form.name"
+              placeholder="Enter connection name (optional for connect/test, required for save)"
+              :class="{ 'is-error': nameError }" />
+            <div v-if="nameError" class="field-error">{{ nameError }}</div>
+          </el-form-item>
 
-        <el-form-item label="Database Type">
-          <el-select v-model="form.type" placeholder="Select database type">
-            <el-option label="MySQL" value="mysql" />
-            <!-- <el-option label="PostgreSQL" value="postgresql" />
+          <el-form-item label="Database Type">
+            <el-select v-model="form.type" placeholder="Select database type">
+              <el-option label="MySQL" value="mysql" />
+              <!-- <el-option label="PostgreSQL" value="postgresql" />
             <el-option label="SQLite" value="sqlite" /> -->
-          </el-select>
-        </el-form-item>
-
-        <template v-if="form.type !== 'sqlite'">
-          <el-form-item label="Host">
-            <el-input v-model="form.host" placeholder="localhost" />
+            </el-select>
           </el-form-item>
 
-          <el-form-item label="Port">
-            <el-input-number v-model="form.port" :min="1" :max="65535" />
+          <template v-if="form.type !== 'sqlite'">
+            <el-form-item label="Host">
+              <el-input v-model="form.host" placeholder="localhost" />
+            </el-form-item>
+
+            <el-form-item label="Port">
+              <el-input-number v-model="form.port" :min="1" :max="65535" />
+            </el-form-item>
+
+            <el-form-item label="Username">
+              <el-input v-model="form.username" />
+            </el-form-item>
+
+            <el-form-item label="Password">
+              <el-input v-model="form.password" type="password" />
+            </el-form-item>
+          </template>
+
+          <el-form-item label="Database">
+            <el-input v-model="form.database"
+              :placeholder="form.type === 'sqlite' ? 'Path to database file' : 'Database name'" />
           </el-form-item>
 
-          <el-form-item label="Username">
-            <el-input v-model="form.username" />
-          </el-form-item>
 
-          <el-form-item label="Password">
-            <el-input v-model="form.password" type="password" />
-          </el-form-item>
-        </template>
-
-        <el-form-item label="Database">
-          <el-input v-model="form.database" :placeholder="form.type === 'sqlite' ? 'Path to database file' : 'Database name'" />
-        </el-form-item>
-
-        <el-form-item>
           <div class="form-actions">
-            <el-button 
-              type="primary" 
-              @click="handleConnect" 
-              :loading="isConnecting"
-            >
+            <el-button v-if="isEditing" type="info" @click="resetForm">
+              New
+            </el-button>
+            <el-button type="primary" @click="handleConnect" :loading="isConnecting">
               Connect
             </el-button>
-            <el-button 
-              type="success" 
-              @click="handleTest" 
-              :loading="isTesting"
-            >
+            <el-button type="success" @click="handleTest" :loading="isTesting">
               Test
             </el-button>
-            <el-button 
-              type="warning" 
-              @click="handleSave" 
-              :loading="isSaving"
-            >
+            <el-button type="warning" @click="handleSave" :loading="isSaving">
               {{ isEditing ? 'Update' : 'Save' }}
             </el-button>
-            <el-button 
-              v-if="isEditing"
-              type="info" 
-              @click="resetForm"
-            >
-              New Connection
-            </el-button>
           </div>
-        </el-form-item>
-      </el-form>
+        </el-form>
 
-      <div v-if="error" class="error-message">
-        {{ error }}
+        <div v-if="error" class="error-message">
+          {{ error }}
+        </div>
+      </div>
+
+      <!-- Right Side - Saved Connections -->
+      <div class="saved-connections-sidebar">
+        <SavedConnections :refresh-key="refreshKey" @load-connection="loadSavedConnection" />
       </div>
     </div>
 
-    <!-- Right Side - Saved Connections -->
-    <div class="saved-connections-sidebar">
-      <SavedConnections 
-        :refresh-key="refreshKey"
-        @load-connection="loadSavedConnection" 
-      />
-    </div>
-
     <!-- Test Result Dialog -->
-    <el-dialog
-      v-model="showTestResult"
-      :title="testResult?.success ? 'Test Successful' : 'Test Failed'"
-      width="400px"
-      :close-on-click-modal="true"
-      :close-on-press-escape="true"
-    >
+    <el-dialog v-model="showTestResult" :title="testResult?.success ? 'Test Successful' : 'Test Failed'" width="400px"
+      :close-on-click-modal="true" :close-on-press-escape="true">
       <div class="test-result-content">
         <div class="test-result-icon">
           <div v-if="testResult?.success" class="success-icon">✓</div>
@@ -105,7 +81,7 @@
         </div>
         <p class="test-result-message">{{ testResult?.message }}</p>
       </div>
-      
+
       <template #footer>
         <div class="dialog-footer">
           <el-button type="primary" @click="showTestResult = false">
@@ -368,9 +344,17 @@ const resetForm = () => {
 <style scoped>
 .connection-layout {
   display: flex;
-  gap: 2rem;
+  justify-content: center;
+  align-items: center;
   height: 100vh;
-  padding: 2rem;
+  width: 100vw;
+}
+
+.connection-wrapper {
+  display: flex;
+  gap: 2rem;
+  margin: auto;
+  min-width: 800px;
 }
 
 .connection-form {
@@ -402,6 +386,17 @@ const resetForm = () => {
   display: flex;
   gap: 0.5rem;
   flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.form-actions .el-button {
+  margin: 0;
+}
+
+@media (max-width: 768px) {
+  .form-actions button {
+    flex: 1;
+  }
 }
 
 .error-message {

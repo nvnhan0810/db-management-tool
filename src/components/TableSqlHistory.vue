@@ -103,7 +103,7 @@ const formatExecutionTime = (executionTime: number): string => {
 <style scoped>
 .sql-section {
   border: 1px solid var(--el-border-color);
-  border-radius: 6px;
+  /* border-radius: 6px; */
   padding: 1rem;
   background-color: var(--el-bg-color-page);
 }
@@ -124,7 +124,7 @@ const formatExecutionTime = (executionTime: number): string => {
 }
 
 .sql-content {
-  max-height: 300px;
+  height: calc(400px - 40px);
   overflow-y: auto;
 }
 

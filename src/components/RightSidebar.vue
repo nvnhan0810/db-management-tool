@@ -3,80 +3,57 @@
     <!-- Browser-style Tabs -->
     <div class="tabs-container">
       <div class="tabs-list">
-        <div 
-          v-for="tab in tableStore.tabs" 
-          :key="tab.id"
-          class="tab-item"
-          :class="{ active: tableStore.activeTab === tab.id }"
-          @click="setActiveTab(tab.id)"
-        >
+        <div v-for="tab in tableStore.tabs" :key="tab.id" class="tab-item"
+          :class="{ active: tableStore.activeTab === tab.id }" @click="setActiveTab(tab.id)">
           <span class="tab-title">{{ tab.title }}</span>
-          <el-button 
-            size="small" 
-            class="close-tab"
-            @click.stop="closeTab(tab.id)"
-          >
-            <el-icon><Close /></el-icon>
+          <el-button size="small" class="close-tab" @click.stop="closeTab(tab.id)">
+            <el-icon>
+              <Close />
+            </el-icon>
           </el-button>
         </div>
       </div>
     </div>
-    
+
     <!-- Tab Content Area -->
     <div class="content-container">
       <div v-if="tableStore.activeTab && getActiveTabContent()" class="content-area">
         <!-- Table Info Tab -->
         <div v-if="getActiveTabContent()?.type === 'table'" class="table-info">
-          <!-- 1. Filter Section (only show in data mode) -->
-          <TableFilterSection 
-            v-if="displayMode === 'data'"
-            :columns="(getActiveTabContent()?.data as TableData)?.columns || []"
-            @update:filters="handleFiltersUpdate"
-            @apply-filters="handleApplyFilters"
-          />
+          <div class="table-info-wrapper">
+            <!-- 1. Filter Section (only show in data mode) -->
+            <TableFilterSection v-if="displayMode === 'data'"
+              :columns="(getActiveTabContent()?.data as TableData)?.columns || []" @update:filters="handleFiltersUpdate"
+              @apply-filters="handleApplyFilters" />
 
 
-          <!-- 2. Main Content Section -->
-          <TableMainContent 
-            :display-mode="displayMode"
-            :columns="(getActiveTabContent()?.data as TableData)?.columns || []"
-            :table-name="(getActiveTabContent()?.data as TableData)?.name || ''"
-            :rows="(getActiveTabContent()?.data as TableData)?.rows"
-            :table-data="tableData"
-            :is-loading-data="isLoadingData"
-            :indexes="(getActiveTabContent()?.data as TableData)?.indexes || []"
-            @refresh-data="handleRetryLoadData"
-          />
-          
+            <!-- 2. Main Content Section -->
+            <TableMainContent :display-mode="displayMode"
+              :columns="(getActiveTabContent()?.data as TableData)?.columns || []"
+              :table-name="(getActiveTabContent()?.data as TableData)?.name || ''"
+              :rows="(getActiveTabContent()?.data as TableData)?.rows" :table-data="tableData"
+              :is-loading-data="isLoadingData" :indexes="(getActiveTabContent()?.data as TableData)?.indexes || []"
+              @refresh-data="handleRetryLoadData" />
 
 
-          <!-- 3. Settings Section -->
-          <TableSettings 
-            :display-mode="displayMode"
-            :records-per-page="recordsPerPage"
-            :current-page="currentPage"
-            :total-pages="totalPages"
-            @update:display-mode="handleDisplayModeUpdate"
-            @update:records-per-page="handleRecordsPerPageUpdate"
-            @update:current-page="handleCurrentPageUpdate"
-            @load-data="handleRetryLoadData"
-          />
+
+            <!-- 3. Settings Section -->
+            <TableSettings :display-mode="displayMode" :records-per-page="recordsPerPage" :current-page="currentPage"
+              :total-pages="totalPages" @update:display-mode="handleDisplayModeUpdate"
+              @update:records-per-page="handleRecordsPerPageUpdate" @update:current-page="handleCurrentPageUpdate"
+              @load-data="handleRetryLoadData" />
+          </div>
 
           <!-- 4. SQL Section -->
-          <TableSqlHistory 
-            :executed-queries="executedQueries"
-          />
+          <TableSqlHistory :executed-queries="executedQueries" />
         </div>
-        
+
         <!-- Query Tab -->
         <div v-else-if="getActiveTabContent()?.type === 'query'" class="query-editor">
-          <SqlEditor 
-            :connection-id="connectionId"
-            @query-executed="handleQueryExecuted"
-          />
+          <SqlEditor :connection-id="connectionId" @query-executed="handleQueryExecuted" />
         </div>
       </div>
-      
+
       <div v-else class="empty-state">
         <el-empty description="Click on a table to view its information" />
       </div>
@@ -135,7 +112,7 @@ const executedQueries = computed(() => tableStore.executedQueries);
 // Use Pinia store methods
 const setActiveTab = (tabId: string) => {
   tableStore.activeTab = tabId;
-  
+
   // Emit table-selected event if this is a table tab
   const tab = tableStore.getActiveTabContent();
   if (tab?.type === 'table' && tab.data && 'name' in tab.data) {
@@ -165,7 +142,7 @@ const executeQuery = async () => {
   const activeTabContent = getActiveTabContent();
   if (activeTabContent?.type === 'query' && activeTabContent.data) {
     const queryData = activeTabContent.data as QueryData;
-    
+
     try {
       // TODO: Implement actual query execution
       // For now, just mock a result
@@ -180,7 +157,7 @@ const executeQuery = async () => {
           { name: 'name' }
         ]
       };
-      
+
       // Add to executed queries for the active table tab if it exists
       if (tableStore.activeTab && tableStore.tableTabStates.has(tableStore.activeTab)) {
         tableStore.addExecutedQuery(queryData.query, true);
@@ -190,7 +167,7 @@ const executeQuery = async () => {
         success: false,
         error: error instanceof Error ? error.message : 'Query failed'
       };
-      
+
       // Add to executed queries with error for the active table tab if it exists
       if (tableStore.activeTab && tableStore.tableTabStates.has(tableStore.activeTab)) {
         tableStore.addExecutedQuery(queryData.query, false, error instanceof Error ? error.message : 'Query failed');
@@ -250,16 +227,16 @@ const generateSQL = () => {
   if (activeTabContent?.type === 'table' && activeTabContent.data && tableStore.activeTableState) {
     const tableData = activeTabContent.data as any;
     let sql = `SELECT * FROM ${tableData.name}`;
-    
+
     const validFilters = filterRows.value.filter((f: any) => f.apply && f.column && f.operator && f.value);
     if (validFilters.length > 0) {
       sql += ' WHERE ' + validFilters.map((f: any) => `${f.column} ${f.operator} '${f.value}'`).join(' AND ');
     }
-    
+
     if (displayMode.value === 'data') {
       sql += ` LIMIT ${recordsPerPage.value} OFFSET ${(currentPage.value - 1) * recordsPerPage.value}`;
     }
-    
+
     // Store generated SQL in store if needed
     // generatedSQL.value = sql;
   }
@@ -282,7 +259,7 @@ const loadTableStructure = async (tableName: string) => {
     const activeTabContent = getActiveTabContent();
     if (activeTabContent?.type === 'table' && activeTabContent.data) {
       const tableData = activeTabContent.data as TableData;
-      
+
       // The columns should already be available from the tableData
       // This method can be extended to fetch more detailed column information
       // like constraints, indexes, etc. from the database
@@ -327,10 +304,10 @@ const handleApplyFilters = (filters: Array<{ apply: boolean; column: string; ope
   if (tableStore.activeTableState) {
     tableStore.activeTableState.filterRows = filters;
   }
-  
+
   // Generate SQL with the applied filters
   generateSQL();
-  
+
   // TODO: Execute the generated SQL to load data
   // This would typically call a method to load table data with the filters
 };
@@ -339,37 +316,37 @@ const handleRetryLoadData = async () => {
   if (!tableStore.activeTab || !tableStore.tableTabStates.has(tableStore.activeTab)) {
     return;
   }
-  
+
   const tableState = tableStore.tableTabStates.get(tableStore.activeTab)!;
   const tableData = getActiveTabContent()?.data as any;
-  
+
   if (!tableData) {
     return;
   }
-  
+
   try {
     // Set loading state
     tableState.isLoadingData = true;
-    
+
     // Generate SQL for loading data with pagination
     const offset = (tableState.currentPage - 1) * tableState.recordsPerPage;
     const sql = `SELECT * FROM ${tableData.name} LIMIT ${tableState.recordsPerPage} OFFSET ${offset}`;
-    
+
     // Execute query to get actual data
     const connectionId = props.connectionId || currentConnection.value?.id;
-    
+
     const result = await window.electron.invoke('database:query', {
       connectionId: connectionId,
       query: sql
     });
-    
+
     if (result.success) {
       // Update table data with real data (even if empty array)
       tableState.tableData = result.data || [];
-      
+
       // Add to executed queries
       tableStore.addExecutedQuery(sql, true);
-      
+
       // Check if data is empty
       if (!result.data || result.data.length === 0) {
         // Table has no data
@@ -408,7 +385,7 @@ defineExpose({
 <style scoped>
 .right-sidebar {
   width: 100%;
-  height: 100%;
+  height: calc(100vh - 32px);
   background-color: var(--el-bg-color-page);
   display: flex;
   flex-direction: column;
@@ -417,14 +394,14 @@ defineExpose({
 .tabs-container {
   background-color: var(--el-bg-color);
   border-bottom: 1px solid var(--el-border-color);
-  height: 35px; /* Match Tables header height */
+  height: 35px;
+  /* Match Tables header height */
   display: flex;
   align-items: center;
 }
 
 .tabs-list {
   display: flex;
-  /* gap: 0.25rem; */
   overflow-x: auto;
   align-items: flex-end;
 }
@@ -442,7 +419,8 @@ defineExpose({
   min-width: 0;
   flex-shrink: 0;
   position: relative;
-  height: 34px; /* Fixed height for consistency */
+  height: 34px;
+  /* Fixed height for consistency */
 }
 
 .tab-item:hover {
@@ -492,7 +470,6 @@ defineExpose({
 
 .content-area {
   flex: 1;
-  padding: 1.5rem;
   overflow-y: auto;
 }
 
@@ -509,7 +486,6 @@ defineExpose({
   display: flex;
   flex-direction: column;
   height: 100%;
-  gap: 1rem;
 }
 
 .label {
@@ -519,6 +495,13 @@ defineExpose({
 
 .value {
   color: var(--el-text-color-primary);
+}
+
+.table-info-wrapper {
+  height: calc(100vh - 32px - 36px - 434px);
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
 }
 
 .columns-section h5 {
@@ -583,28 +566,33 @@ defineExpose({
 .table-info {
   display: flex;
   flex-direction: column;
-  gap: 1rem;
   height: 100%;
 }
 
 /* Filter section - fixed height */
-.table-info > div:nth-child(1) {
+.table-info>div:nth-child(1) {
   flex: 0 0 auto;
 }
 
 /* Main content section - takes most space but leaves room for bottom sections */
-.table-info > div:nth-child(2) {
-  flex: 1; /* Take remaining space */
-  min-height: 300px; /* Reasonable minimum height */
-  max-height: 600px; /* Reasonable maximum height */
-  overflow: hidden; /* Hide overflow, let table handle scroll */
-  display: flex; /* Ensure flex layout */
-  flex-direction: column; /* Vertical layout */
+.table-info>div:nth-child(2) {
+  flex: 1;
+  /* Take remaining space */
+  min-height: 400px;
+  /* Reasonable minimum height */
+  max-height: 400px;
+  /* Reasonable maximum height */
+  overflow: hidden;
+  /* Hide overflow, let table handle scroll */
+  display: flex;
+  /* Ensure flex layout */
+  flex-direction: column;
+  /* Vertical layout */
 }
 
 /* Settings and SQL sections - no extra spacing */
-.table-info > div:nth-child(3),
-.table-info > div:nth-child(4) {
+.table-info>div:nth-child(3),
+.table-info>div:nth-child(4) {
   flex: 0 0 auto;
   background-color: var(--el-bg-color-page);
   z-index: 10;
@@ -616,7 +604,7 @@ defineExpose({
 .table-info {
   display: flex;
   flex-direction: column;
-  gap: 1rem; /* Consistent spacing between sections */
+  /* Consistent spacing between sections */
 }
 
 .error-message {

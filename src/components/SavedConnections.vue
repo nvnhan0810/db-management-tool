@@ -25,13 +25,7 @@
         <div class="connection-info">
           <div class="connection-name">{{ connection.name }}</div>
           <div class="connection-details">
-            {{ connection.type }} - {{ connection.host }}:{{ connection.port }}
-          </div>
-          <div class="connection-database">{{ connection.database }}</div>
-          <div class="connection-meta">
-            <span v-if="connection.lastUsed">
-              Last used: {{ formatDate(connection.lastUsed) }}
-            </span>
+            {{ connection.host }} {{ connection.database ? ` - ${connection.database}` : '' }}
           </div>
         </div>
         <div class="connection-actions">
@@ -40,7 +34,7 @@
             type="danger" 
             @click.stop="deleteConnection(connection.id)"
           >
-            Delete
+            <el-icon><Delete /></el-icon>
           </el-button>
         </div>
       </div>
@@ -143,13 +137,14 @@ const formatDate = (dateString: string) => {
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
+  height: 100%;
 }
 
 .connection-item {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 1rem;
+  padding: 0.75rem;
   border: 1px solid var(--el-border-color);
   border-radius: 8px;
   cursor: pointer;
@@ -183,15 +178,7 @@ const formatDate = (dateString: string) => {
 }
 
 .dark .connection-details {
-  color: #e2e8f0 !important;
-}
-
-.dark .connection-database {
   color: #a0aec0 !important;
-}
-
-.dark .connection-meta {
-  color: #718096 !important;
 }
 
 .dark .header h3 {
@@ -203,26 +190,15 @@ const formatDate = (dateString: string) => {
 }
 
 .connection-name {
+  font-size: 0.875rem;
   font-weight: 600;
   color: var(--el-text-color-primary);
   margin-bottom: 0.25rem;
 }
 
 .connection-details {
-  font-size: 0.875rem;
+  font-size: 0.75rem;
   color: var(--el-text-color-regular);
-  margin-bottom: 0.25rem;
-}
-
-.connection-database {
-  font-size: 0.75rem;
-  color: var(--el-text-color-secondary);
-  margin-bottom: 0.25rem;
-}
-
-.connection-meta {
-  font-size: 0.75rem;
-  color: var(--el-text-color-placeholder);
 }
 
 .connection-actions {

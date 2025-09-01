@@ -17,7 +17,7 @@
         @contextmenu.prevent="showContextMenu($event, connection)"
       >
         <div class="connection-icon">
-          <el-icon :size="24">
+          <el-icon :size="20">
             <Connection />
           </el-icon>
           <div 
@@ -221,6 +221,9 @@ const closeConnection = () => {
   word-break: break-word;
   max-width: 100%;
   flex-shrink: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .connection-details {

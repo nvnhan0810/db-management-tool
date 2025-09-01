@@ -127,7 +127,6 @@ watch(filterRows, (newFilters) => {
 <style scoped>
 .filter-section {
   border: 1px solid var(--el-border-color);
-  border-radius: 6px;
   padding: 1rem;
   background-color: var(--el-bg-color-page);
 }

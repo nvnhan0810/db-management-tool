@@ -92,7 +92,6 @@ watch(() => props.currentPage, (newPage) => {
   align-items: center;
   padding: 0.5rem 0.75rem;
   border: 1px solid var(--el-border-color);
-  border-radius: 6px;
   background-color: var(--el-bg-color-page);
   min-height: 50px; /* Reduce height */
 }
