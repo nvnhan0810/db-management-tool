@@ -19,6 +19,14 @@
                     </div>
                 </el-tooltip>
 
+                <el-tooltip content="Select Database" placement="bottom">
+                    <div class="nav-tab" @click="$emit('select-database')">
+                        <el-icon>
+                            <Folder />
+                        </el-icon>
+                    </div>
+                </el-tooltip>
+
                 <!-- Divider -->
                 <div class="nav-divider"></div>
 
@@ -94,6 +102,7 @@
 import {
     Close,
     Edit,
+    Folder,
     FullScreen,
     Link,
     Minus,
@@ -117,6 +126,7 @@ const emit = defineEmits<{
     'add-query': [];
     'new-connection': [];
     'disconnect': [];
+    'select-database': [];
     'toggle-sidebar': [];
 }>();
 

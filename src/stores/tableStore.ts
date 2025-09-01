@@ -211,6 +211,8 @@ export const useTableStore = defineStore('table', () => {
     tabs.value.push(newTab);
     activeTab.value = tableId;
     
+
+    
     // Initialize table tab state
     const initialSQL = `SELECT * FROM ${tableData.name} LIMIT 25`;
     const tableState: TableTabState = {
@@ -437,6 +439,8 @@ export const useTableStore = defineStore('table', () => {
       };
     }
   };
+
+
 
   return {
     // State

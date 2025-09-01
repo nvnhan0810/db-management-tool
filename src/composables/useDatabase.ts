@@ -13,7 +13,9 @@ export function useDatabase() {
     try {
       // Convert reactive object to plain object for IPC
       const plainConnection = toRaw(connection);
+      console.log('Attempting to connect with:', plainConnection);
       const success = await window.electron.invoke('database:connect', plainConnection);
+      console.log('Connection result:', success);
       
       if (success) {
         isConnected.value = true;
@@ -22,6 +24,7 @@ export function useDatabase() {
       }
       return success;
     } catch (err) {
+      console.error('Connection error:', err);
       error.value = err instanceof Error ? err.message : 'Failed to connect to database';
       return false;
     }
@@ -121,6 +124,7 @@ export function useDatabase() {
       const tables = await window.electron.invoke('database:getTables', { 
         connectionId: targetConnectionId 
       });
+      
       return tables || []; // Ensure we always return an array
     } catch (err) {
       console.error('Error getting tables for connection:', targetConnectionId, err);
@@ -131,16 +135,12 @@ export function useDatabase() {
           errorMessage.includes('ECONNREFUSED') ||
           errorMessage.includes('connection lost')) {
         
-        console.log('Connection error detected in getTables, attempting to reconnect...');
-        
         // Try to reconnect to the same connection
         try {
           const connection = currentConnection.value;
           if (connection && connection.id === targetConnectionId) {
-            console.log('Attempting to reconnect to:', connection.name);
             const reconnected = await connect(connection);
             if (reconnected) {
-              console.log('Reconnection successful, retrying getTables...');
               // Retry the original request
               const retryTables = await window.electron.invoke('database:getTables', { 
                 connectionId: targetConnectionId 
@@ -149,11 +149,57 @@ export function useDatabase() {
             }
           }
         } catch (reconnectErr) {
-          console.log('Reconnection failed:', reconnectErr);
+          // Ignore reconnect errors
         }
       }
       
       return []; // Return empty array on error instead of throwing
+    }
+  };
+
+  const getDatabases = async (connectionId?: string): Promise<Array<{ name: string; tableCount?: number }>> => {
+    // Use provided connectionId or fall back to currentConnection
+    const targetConnectionId = connectionId || currentConnection.value?.id;
+    
+    if (!targetConnectionId) {
+      console.warn('No connection ID provided for getDatabases');
+      return []; // Return empty array instead of throwing error
+    }
+
+    try {
+      const databases = await window.electron.invoke('database:getDatabases', { 
+        connectionId: targetConnectionId 
+      });
+      
+      return databases || []; // Ensure we always return an array
+    } catch (err) {
+      console.error('Error getting databases for connection:', targetConnectionId, err);
+      
+      // Check if error is connection-related and try to reconnect
+      const errorMessage = err instanceof Error ? err.message : '';
+      if (errorMessage.includes('connection is in closed state') || 
+          errorMessage.includes('ECONNREFUSED') ||
+          errorMessage.includes('connection lost')) {
+        
+        // Try to reconnect to the same connection
+        try {
+          const connection = currentConnection.value;
+          if (connection && connection.id === targetConnectionId) {
+            const reconnected = await connect(connection);
+            if (reconnected) {
+              // Retry the original request
+              const retryDatabases = await window.electron.invoke('database:getDatabases', { 
+                connectionId: targetConnectionId 
+              });
+              return retryDatabases || [];
+            }
+          }
+        } catch (reconnectErr) {
+          console.error('Reconnection failed:', reconnectErr);
+        }
+      }
+      
+      return []; // Return empty array on error
     }
   };
 
@@ -262,6 +308,7 @@ export function useDatabase() {
     hasActiveConnections,
     executeQuery,
     getTables,
+    getDatabases,
     getTableStructure,
     refreshConnectionStatus,
   };

@@ -410,6 +410,128 @@ class DatabaseService {
       throw error;
     }
   }
+
+  async getDatabases(connectionId: string): Promise<Array<{ name: string; tableCount?: number }>> {
+    const connection = this.connections.get(connectionId);
+    
+    if (!connection) {
+      console.warn(`No active connection found for ID: ${connectionId}`);
+      return []; // Return empty array instead of throwing error
+    }
+
+    try {
+      let databases: Array<{ name: string; tableCount?: number }> = [];
+
+      if (connection.query) {
+        // MySQL/PostgreSQL - use SHOW DATABASES
+        const [results] = await connection.query('SHOW DATABASES');
+        
+        // Convert to our format and get table counts
+        databases = await Promise.all(
+          (results as Array<{ Database: string }>).map(async (row) => {
+            const dbName = row.Database;
+            try {
+              // Get table count for each database
+              const [tableCountResult] = await connection.query(`
+                SELECT COUNT(*) as count 
+                FROM INFORMATION_SCHEMA.TABLES 
+                WHERE TABLE_SCHEMA = ?
+              `, [dbName]);
+              
+              const tableCount = (tableCountResult as Array<{ count: number }>)[0]?.count || 0;
+              
+              return {
+                name: dbName,
+                tableCount: tableCount
+              };
+            } catch (err) {
+              console.warn(`Could not get table count for database ${dbName}:`, err);
+              return {
+                name: dbName,
+                tableCount: 0
+              };
+            }
+          })
+        );
+      } else if (connection.all) {
+        // SQLite - databases are files, so we only have the current database
+        const connectionInfo = this.connectionInfo.get(connectionId);
+        if (connectionInfo && connectionInfo.database) {
+          // Get table count for current database
+          const tableCount = await new Promise<number>((resolve, reject) => {
+            connection.all(`
+              SELECT COUNT(*) as count 
+              FROM sqlite_master 
+              WHERE type IN ('table', 'view')
+            `, (err: Error | null, rows: any[]) => {
+              if (err) reject(err);
+              else resolve(rows[0]?.count || 0);
+            });
+          });
+          
+          databases = [{
+            name: connectionInfo.database,
+            tableCount: tableCount
+          }];
+        }
+      }
+
+      return databases;
+    } catch (error) {
+      console.error('Error getting databases:', error);
+      return []; // Return empty array on error instead of throwing
+    }
+  }
+
+  async executeQuery(connectionId: string, query: string): Promise<QueryResult> {
+    const connection = this.connections.get(connectionId);
+    
+    if (!connection) {
+      throw new Error(`No active connection found for ID: ${connectionId}`);
+    }
+
+    try {
+      let result: QueryResult;
+
+      if (connection.query) {
+        // MySQL/PostgreSQL
+        const [rows, fields] = await connection.query(query);
+        
+        result = {
+          rows: rows as any[],
+          fields: fields?.map(field => ({
+            name: field.name,
+            type: field.type,
+            length: field.length
+          })) || [],
+          affectedRows: (rows as any).affectedRows || 0,
+          insertId: (rows as any).insertId || null
+        };
+      } else if (connection.all) {
+        // SQLite
+        const rows = await new Promise<any[]>((resolve, reject) => {
+          connection.all(query, (err: Error | null, rows: any[]) => {
+            if (err) reject(err);
+            else resolve(rows || []);
+          });
+        });
+        
+        result = {
+          rows: rows,
+          fields: [], // SQLite doesn't provide field info easily
+          affectedRows: 0, // SQLite doesn't provide this easily
+          insertId: null
+        };
+      } else {
+        throw new Error('Unsupported database connection type');
+      }
+
+      return result;
+    } catch (error) {
+      console.error('Error executing query:', error);
+      throw error;
+    }
+  }
 }
 
 export const databaseService = new DatabaseService(); 

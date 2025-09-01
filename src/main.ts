@@ -153,6 +153,46 @@ ipcMain.handle('database:getTableStructure', async (event, { connectionId, table
   }
 });
 
+ipcMain.handle('database:getDatabases', async (event, { connectionId }) => {
+  try {
+    // Validate parameters
+    if (!connectionId) {
+      throw new Error('Missing connectionId');
+    }
+    
+    const result = await databaseService.getDatabases(connectionId);
+    
+    if (result === undefined) {
+      throw new Error('Database service returned undefined');
+    }
+    
+    return result;
+  } catch (error) {
+    console.error('IPC getDatabases error:', error);
+    throw error;
+  }
+});
+
+ipcMain.handle('database:executeQuery', async (event, { connectionId, query }) => {
+  try {
+    // Validate parameters
+    if (!connectionId || !query) {
+      throw new Error('Missing connectionId or query');
+    }
+    
+    const result = await databaseService.executeQuery(connectionId, query);
+    
+    if (result === undefined) {
+      throw new Error('Database service returned undefined');
+    }
+    
+    return result;
+  } catch (error) {
+    console.error('IPC executeQuery error:', error);
+    throw error;
+  }
+});
+
 // Window control handlers
 ipcMain.handle('window:minimize', () => {
   const window = BrowserWindow.getFocusedWindow();

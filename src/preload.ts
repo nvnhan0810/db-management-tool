@@ -4,7 +4,7 @@ import { contextBridge, ipcRenderer } from 'electron';
 
 const validChannels: string[] = [];
 
-const invokeChannels = ['database:connect', 'database:disconnect', 'database:disconnectAll', 'database:hasActiveConnections', 'database:query', 'database:getTables', 'database:getTableStructure', 'reload:prevent'];
+const invokeChannels = ['database:connect', 'database:disconnect', 'database:disconnectAll', 'database:hasActiveConnections', 'database:query', 'database:getTables', 'database:getTableStructure', 'database:getDatabases', 'database:executeQuery', 'reload:prevent'];
 
 contextBridge.exposeInMainWorld(
   'electron',

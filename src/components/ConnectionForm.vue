@@ -40,7 +40,8 @@
 
           <el-form-item label="Database">
             <el-input v-model="form.database"
-              :placeholder="form.type === 'sqlite' ? 'Path to database file' : 'Database name'" />
+              :placeholder="form.type === 'sqlite' ? 'Path to database file' : 'Database name (optional)'" />
+            <div class="field-hint">Leave empty to connect without selecting a database</div>
           </el-form-item>
 
 
@@ -96,6 +97,7 @@
 <script setup lang="ts">
 import { ElMessage } from 'element-plus';
 import { onMounted, reactive, ref, watch } from 'vue';
+import { useConnections } from '../composables/useConnections';
 import { useDatabase } from '../composables/useDatabase';
 import { useSavedConnections } from '../composables/useSavedConnections';
 import type { DatabaseConnection } from '../types';
@@ -108,6 +110,7 @@ const {
   getDecryptedConnection,
   updateLastUsed 
 } = useSavedConnections();
+const { activeConnections } = useConnections();
 
 const isConnecting = ref(false);
 
@@ -177,8 +180,8 @@ const loadSavedConnection = async (savedConnection: any) => {
 const validateForm = () => {
   nameError.value = '';
   
-  if (!form.host || !form.username || !form.database) {
-    return 'Please fill in all required fields';
+  if (!form.host || !form.username) {
+    return 'Please fill in all required fields (Host and Username)';
   }
   
   return null;
@@ -195,6 +198,7 @@ const validateName = () => {
 
 const emit = defineEmits<{
   'connection-created': [connection: DatabaseConnection, name: string];
+  'open-new-window': [connection: DatabaseConnection, name: string];
 }>();
 
 const handleConnect = async () => {
@@ -225,6 +229,8 @@ const handleConnect = async () => {
       
       // Emit connection created event to add to active connections
       const connectionName = form.name || `${form.type} - ${form.host}`;
+      
+      // Emit connection created event to add to active connections in current window
       emit('connection-created', cleanConnection, connectionName);
     } else {
       // Show detailed error from useDatabase
@@ -409,6 +415,12 @@ const resetForm = () => {
 
 .field-error {
   color: var(--el-color-danger);
+  font-size: 0.75rem;
+  margin-top: 0.25rem;
+}
+
+.field-hint {
+  color: var(--el-text-color-secondary);
   font-size: 0.75rem;
   margin-top: 0.25rem;
 }

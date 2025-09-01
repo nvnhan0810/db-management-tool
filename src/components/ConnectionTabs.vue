@@ -1,109 +1,78 @@
 <template>
   <div class="connection-tabs">
-    <div v-if="!hasConnections" class="no-connections">
-      <el-empty description="No active connections" />
-    </div>
+    <!-- Show database list when connected and has database -->
+    <DatabaseList
+      v-if="hasConnections && currentConnection && currentConnection.database"
+      :databases="selectedDatabases"
+      :active-database="currentConnection.database"
+      :connection-id="currentConnection.id"
+      @select-database="handleSelectDatabase"
+      @add-database="handleAddDatabase"
+      @disconnect-database="handleDisconnectDatabase"
+    />
     
-    <div v-else class="connections-grid">
-      <div 
-        v-for="(connection, index) in connections" 
-        :key="connection.tabId"
-        class="connection-card"
-        :class="{ 
-          'active': connection.tabId === currentTabId,
-          'connected': connection.isConnected 
-        }"
-        @click="$emit('switch-tab', connection.tabId)"
-        @contextmenu.prevent="showContextMenu($event, connection)"
-      >
-        <div class="connection-icon">
-          <el-icon :size="20">
-            <Connection />
-          </el-icon>
-          <div 
-            class="status-dot"
-            :class="{ 'connected': connection.isConnected }"
-          ></div>
-        </div>
-        <div class="connection-name">
-          {{ connection.name || `Connection ${index + 1}` }}
-        </div>
-        <div class="connection-details">
-          {{ connection.database }}
-        </div>
+    <!-- Show no database selected state when connected but no database -->
+    <div v-else-if="hasConnections && currentConnection && !currentConnection.database" class="no-database">
+      <div class="no-database-content">
+        <el-icon :size="48" class="database-icon">
+          <Folder />
+        </el-icon>
+        <h4>No Database Selected</h4>
+        <p>You're connected but haven't selected a database yet.</p>
+        <el-button type="primary" @click="handleSelectDatabase('')">
+          Select Database
+        </el-button>
       </div>
     </div>
-
-    <!-- Context Menu -->
-    <el-dropdown 
-      ref="contextMenuRef"
-      trigger="contextmenu"
-      :visible="contextMenuVisible"
-      @visible-change="handleContextMenuVisibleChange"
-      placement="bottom-start"
-    >
-      <span class="context-menu-trigger"></span>
-      <template #dropdown>
-        <el-dropdown-menu>
-          <el-dropdown-item @click="closeConnection" divided>
-            <el-icon><Close /></el-icon>
-            <span>Close Connection</span>
-          </el-dropdown-item>
-        </el-dropdown-menu>
-      </template>
-    </el-dropdown>
+    
+    <!-- Show empty state when no connections -->
+    <div v-else class="no-connections">
+      <el-empty description="No active connections" />
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { Close, Connection } from '@element-plus/icons-vue';
-import { ref } from 'vue';
+import { Folder } from '@element-plus/icons-vue';
+import { computed } from 'vue';
 import type { ActiveConnection } from '../composables/useConnections';
+import DatabaseList from './DatabaseList.vue';
 
 const props = defineProps<{
   connections: ActiveConnection[];
   currentTabId: string | null;
   hasConnections: boolean;
+  selectedDatabases?: Array<{ name: string; tableCount: number; isConnected: boolean }>;
 }>();
 
 const emit = defineEmits<{
-  'switch-tab': [tabId: string];
-  'close-tab': [tabId: string];
+  'select-database': [databaseName: string];
+  'add-database': [databaseName: string];
+  'disconnect-database': [databaseName: string];
 }>();
 
-// Context menu state
-const contextMenuVisible = ref(false);
-const contextMenuRef = ref();
-const selectedConnection = ref<ActiveConnection | null>(null);
+// Get current connection
+const currentConnection = computed(() => {
+  if (!props.currentTabId) return null;
+  return props.connections.find(conn => conn.tabId === props.currentTabId);
+});
 
-const showContextMenu = (event: MouseEvent, connection: ActiveConnection) => {
-  event.preventDefault();
-  selectedConnection.value = connection;
-  contextMenuVisible.value = true;
-  
-  // Position the context menu at the mouse position
-  if (contextMenuRef.value) {
-    const dropdown = contextMenuRef.value.$el;
-    dropdown.style.position = 'fixed';
-    dropdown.style.left = `${event.clientX}px`;
-    dropdown.style.top = `${event.clientY}px`;
-    dropdown.style.zIndex = '9999';
-  }
+// Use selectedDatabases from props or default empty array
+const selectedDatabases = computed(() => {
+  return props.selectedDatabases || [];
+});
+
+// Database handlers
+const handleSelectDatabase = (databaseName: string) => {
+  emit('select-database', databaseName);
 };
 
-const handleContextMenuVisibleChange = (visible: boolean) => {
-  contextMenuVisible.value = visible;
-  if (!visible) {
-    selectedConnection.value = null;
-  }
+const handleAddDatabase = (databaseName: string) => {
+  emit('add-database', databaseName);
 };
 
-const closeConnection = () => {
-  if (selectedConnection.value) {
-    emit('close-tab', selectedConnection.value.tabId);
-    contextMenuVisible.value = false;
-    selectedConnection.value = null;
-  }
+const handleDisconnectDatabase = (databaseName: string) => {
+  emit('disconnect-database', databaseName);
 };
 </script>
 
@@ -138,6 +107,36 @@ const closeConnection = () => {
   align-items: center;
   justify-content: center;
   padding: 2rem;
+}
+
+.no-database {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem;
+}
+
+.no-database-content {
+  text-align: center;
+  color: var(--el-text-color-regular);
+}
+
+.no-database-content h4 {
+  margin: 1rem 0 0.5rem 0;
+  color: var(--el-text-color-primary);
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.no-database-content p {
+  margin: 0 0 1.5rem 0;
+  color: var(--el-text-color-secondary);
+  font-size: 0.875rem;
+}
+
+.database-icon {
+  color: var(--el-text-color-placeholder);
 }
 
 .connections-grid {

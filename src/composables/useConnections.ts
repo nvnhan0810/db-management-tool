@@ -7,6 +7,7 @@ export interface ActiveConnection extends Omit<DatabaseConnection, 'id'> {
   isConnected: boolean;
   lastActivity: Date;
   tabId: string; // Unique tab identifier
+  selectedDatabase?: string; // Currently selected database
 }
 
 export function useConnections() {
@@ -124,28 +125,8 @@ export function useConnections() {
       host: connection.host
     });
     
-    // First, try to connect to the database
-    let isConnected = false;
-    try {
-      if (window.electron) {
-        // Create a plain object with only the necessary database connection properties
-        const plainConnection = {
-          id: connection.id,
-          type: connection.type,
-          host: connection.host,
-          port: connection.port,
-          username: connection.username,
-          password: connection.password,
-          database: connection.database
-        };
-        
-        isConnected = await window.electron.invoke('database:connect', plainConnection);
-        console.log(`Database connection ${connection.id} established:`, isConnected);
-      }
-    } catch (error) {
-      console.error('Error connecting to database:', error);
-      isConnected = false;
-    }
+    // Connection is already established in ConnectionForm, so we assume it's connected
+    const isConnected = true;
     
     const activeConnection: ActiveConnection = {
       ...connection,
@@ -288,6 +269,61 @@ export function useConnections() {
     }
   };
 
+  // Select database for current connection
+  const selectDatabase = async (databaseName: string) => {
+    if (!currentTabId.value) {
+      return false;
+    }
+    
+    const connection = activeConnections.value.find(conn => conn.tabId === currentTabId.value);
+    if (!connection) {
+      return false;
+    }
+    
+    try {
+      // Update connection to use selected database
+      connection.database = databaseName;
+      connection.selectedDatabase = databaseName;
+      
+      // Reconnect with new database
+      if (window.electron) {
+        // First disconnect the current connection
+        try {
+          await window.electron.invoke('database:disconnect', connection.id);
+        } catch (disconnectError) {
+          // Ignore disconnect errors
+        }
+        
+        // Create new connection with the selected database
+        const plainConnection = {
+          id: connection.id, // This is the UUID from DatabaseConnection
+          type: connection.type,
+          host: connection.host,
+          port: connection.port,
+          username: connection.username,
+          password: connection.password,
+          database: databaseName
+        };
+        
+        const isConnected = await window.electron.invoke('database:connect', plainConnection);
+        connection.isConnected = isConnected;
+        
+        if (isConnected) {
+          return true;
+        } else {
+          return false;
+        }
+      } else {
+        return true;
+      }
+    } catch (error) {
+      console.error('Error selecting database:', error);
+      return false;
+    }
+    
+    return false;
+  };
+
   // Test method to simulate app restart
   const testRestartDetection = () => {
     console.log('Testing restart detection...');
@@ -319,6 +355,7 @@ export function useConnections() {
     refreshConnectionStatus,
     getConnectionByTabId,
     clearAllConnections,
+    selectDatabase,
     markAppQuit,
     isFreshStart,
     testRestartDetection,

@@ -9,40 +9,72 @@
       @add-query="handleAddQuery"
       @new-connection="handleNewConnection"
       @disconnect="handleDisconnect"
+      @select-database="handleSelectDatabase"
       @toggle-sidebar="handleToggleSidebar"
     />
     
     <div class="query-content">
-      <!-- Database Tables Sidebar -->
-      <el-aside v-if="showTablesSidebar" width="250px">
-        <DatabaseTables
-          :tables="tables"
-          :is-loading="isLoadingTables"
-          :active-table-name="activeTableName || undefined"
-          @select-table="handleSelectTable"
-        />
-      </el-aside>
+      <!-- Show content only when connected and has database -->
+      <template v-if="isConnected && props.connection?.database">
+        <!-- Database Tables Sidebar -->
+        <el-aside v-if="showTablesSidebar" width="250px">
+          <DatabaseTables
+            :tables="tables"
+            :is-loading="isLoadingTables"
+            :active-table-name="activeTableName || undefined"
+            @select-table="handleSelectTable"
+          />
+        </el-aside>
+        
+        <!-- Main Content Area - RightSidebar is now the main content -->
+        <el-main :class="{ 'with-row-detail': showRowDetailSidebar && hasSelectedRow }">
+          <RightSidebar
+            :visible="showRightSidebar"
+            :active-table-name="activeTableName || undefined"
+            :connection-id="props.connection?.id"
+            :show-row-detail="showRowDetailSidebar && hasSelectedRow"
+            :is-sidebar-hidden="isSidebarHidden"
+            ref="rightSidebarRef"
+            @table-selected="handleTableSelected"
+            @close-sidebar="handleCloseSidebar"
+            @show-sidebar="handleShowSidebar"
+            @row-selected="handleRowSelected"
+          />
+        </el-main>
+      </template>
       
-      <!-- Main Content Area - RightSidebar is now the main content -->
-      <el-main :class="{ 'with-row-detail': showRowDetailSidebar && hasSelectedRow }">
-        <RightSidebar
-          :visible="showRightSidebar"
-          :active-table-name="activeTableName || undefined"
-          :connection-id="props.connection?.id"
-          :show-row-detail="showRowDetailSidebar && hasSelectedRow"
-          :is-sidebar-hidden="isSidebarHidden"
-          ref="rightSidebarRef"
-          @table-selected="handleTableSelected"
-          @close-sidebar="handleCloseSidebar"
-          @show-sidebar="handleShowSidebar"
-          @row-selected="handleRowSelected"
-        />
-      </el-main>
+      <!-- Show no database selected state when connected but no database -->
+      <template v-else-if="isConnected && !props.connection?.database">
+        <el-main class="no-database-main">
+          <div class="no-database-content">
+            <el-icon :size="64" class="database-icon">
+              <Folder />
+            </el-icon>
+            <h2>No Database Selected</h2>
+            <p>You're connected to the server but haven't selected a database yet.</p>
+            <p>Click the database button in the title bar to select a database.</p>
+          </div>
+        </el-main>
+      </template>
+      
+      <!-- Show not connected state -->
+      <template v-else>
+        <el-main class="not-connected-main">
+          <div class="not-connected-content">
+            <el-icon :size="64" class="connection-icon">
+              <Connection />
+            </el-icon>
+            <h2>Not Connected</h2>
+            <p>Please establish a database connection first.</p>
+          </div>
+        </el-main>
+      </template>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
+import { Connection, Folder } from '@element-plus/icons-vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import type { ActiveConnection } from '../composables/useConnections';
@@ -57,7 +89,9 @@ const props = defineProps<{
 }>();
 
 const emit = defineEmits<{
-  'new-connection': [];
+  'open-new-window': [];
+  'disconnect-connection': [tabId: string];
+  'select-database': [];
 }>();
 
 const query = ref('');
@@ -93,7 +127,7 @@ const handleSelectTable = async (table: { name: string; type?: string }) => {
     try {
       // First try to refresh connection status and auto-reconnect if needed
       if (props.connection && !props.connection.isConnected) {
-        console.log('Connection appears to be disconnected, attempting to refresh...');
+
         await refreshConnectionStatus();
       }
       
@@ -165,16 +199,32 @@ const handleAddQuery = () => {
   tableStore.addQueryTab();
 };
 
-// Handle new connection
+// Handle new connection - always open new window
 const handleNewConnection = () => {
-  emit('new-connection');
+  emit('open-new-window');
 };
 
 // Handle disconnect
 const handleDisconnect = async () => {
   if (props.connection?.id) {
-    await disconnect();
+    try {
+      // Disconnect from database
+      await disconnect();
+      
+      // Remove from active connections
+      if (props.connection.tabId) {
+        // Emit event to parent to handle connection removal
+        emit('disconnect-connection', props.connection.tabId);
+      }
+    } catch (error) {
+      console.error('Error disconnecting:', error);
+    }
   }
+};
+
+// Handle select database from title bar
+const handleSelectDatabase = () => {
+  emit('select-database');
 };
 
 // Handle toggle sidebar
@@ -238,14 +288,14 @@ const loadTableStructure = async (tableName: string) => {
 // Method to verify connection status
 const verifyConnection = async () => {
   if (!props.connection?.id) {
-    console.log('No connection ID available for verification');
+
     return false;
   }
   
   try {
     // Check if connection is still active in database service
     const hasConnections = await hasActiveConnections();
-    console.log('Database service has active connections:', hasConnections);
+
     return hasConnections;
   } catch (error) {
     console.error('Error verifying connection:', error);
@@ -253,14 +303,9 @@ const verifyConnection = async () => {
   }
 };
 
-const loadTables = async () => {
+const loadTables = async (retryCount = 0) => {
   // Check if we have a valid connection and are connected
   if (!props.connection?.database || !props.connection?.isConnected || !props.connection?.id) {
-    console.log('Skipping loadTables - no valid connection or not connected', {
-      database: props.connection?.database,
-      isConnected: props.connection?.isConnected,
-      id: props.connection?.id
-    });
     tables.value = [];
     return;
   }
@@ -268,21 +313,27 @@ const loadTables = async () => {
   // Verify connection is still active
   const isConnectionActive = await verifyConnection();
   if (!isConnectionActive) {
-    console.log('Connection verification failed - connection may be inactive');
-    tables.value = [];
-    return;
+    // Retry up to 3 times with increasing delay
+    if (retryCount < 3) {
+      const delay = (retryCount + 1) * 200; // 200ms, 400ms, 600ms
+      setTimeout(() => {
+        loadTables(retryCount + 1);
+      }, delay);
+      return;
+    } else {
+      tables.value = [];
+      return;
+    }
   }
   
   isLoadingTables.value = true;
   try {
-    console.log('Loading tables for connection:', props.connection.id);
     // Load real tables from database using the specific connection ID
     const databaseTables = await getTables(props.connection.id);
     
     // Ensure databaseTables is an array
     if (Array.isArray(databaseTables)) {
       tables.value = databaseTables;
-      console.log(`Loaded ${databaseTables.length} tables for connection ${props.connection.id}`);
     } else {
       console.warn('getTables returned non-array result:', databaseTables);
       tables.value = [];
@@ -310,7 +361,7 @@ const handleReloadData = async () => {
         // Show confirmation dialog
         const confirmed = await showDiscardChangesDialog();
         if (!confirmed) {
-          console.log('User cancelled reload due to unsaved changes');
+
           return;
         }
         // Clear unsaved changes if user confirmed
@@ -328,12 +379,12 @@ const handleReloadData = async () => {
       ElMessage.success('Table data reloaded successfully');
     } else if (props.connection?.isConnected && props.connection?.id) {
       // No active table but we have a connection - reload table list
-      console.log('Reloading table list for connection:', props.connection.id);
+
       await loadTables();
       ElMessage.success('Table list reloaded successfully');
     } else {
       // No active table and no connection - skip
-      console.log('No active table or connection - skipping reload');
+
       ElMessage.info('No data to reload');
     }
   } catch (error) {
@@ -377,10 +428,10 @@ const handleKeydown = async (event: KeyboardEvent) => {
   if ((event.ctrlKey || event.metaKey) && event.key === 'n') {
     if (props.connection) {
       event.preventDefault();
-      console.log('Ctrl+N pressed in QueryEditor with active connection');
-      emit('new-connection');
+
+      emit('open-new-window');
     } else {
-      console.log('Ctrl+N pressed but no active connection - ignored');
+
     }
   }
   
@@ -398,17 +449,22 @@ onUnmounted(() => {
 });
 
 // Watch for connection changes to load tables
-watch(() => props.connection?.database, (newDatabase: string | undefined) => {
-  console.log('Database changed:', newDatabase, 'isConnected:', props.connection?.isConnected);
+watch(() => props.connection?.database, (newDatabase: string | undefined, oldDatabase: string | undefined) => {
   if (newDatabase && props.connection?.isConnected && props.connection?.id) {
-    loadTables();
+    // Add delay to ensure connection is fully established
+    setTimeout(() => {
+      loadTables();
+    }, 100);
+    
+    // Note: Database state switching is handled by Home.vue
+    // No need to call switchToDatabase here to avoid duplicate calls
   } else {
     tables.value = [];
   }
 }, { immediate: true });
 
 watch(() => props.connection?.isConnected, (isConnected: boolean | undefined) => {
-  console.log('Connection status changed:', isConnected, 'database:', props.connection?.database);
+
   if (isConnected && props.connection?.database && props.connection?.id) {
     loadTables();
   } else {
@@ -418,7 +474,7 @@ watch(() => props.connection?.isConnected, (isConnected: boolean | undefined) =>
 
 // Watch for connection object changes
 watch(() => props.connection, (newConnection) => {
-  console.log('Connection object changed:', newConnection?.id, 'isConnected:', newConnection?.isConnected);
+
   if (newConnection?.database && newConnection?.isConnected && newConnection?.id) {
     loadTables();
   } else {
@@ -495,5 +551,41 @@ defineExpose({
 
 .el-main.with-row-detail {
   margin-right: 400px;
+}
+
+.no-database-main,
+.not-connected-main {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: var(--el-bg-color-page);
+}
+
+.no-database-content,
+.not-connected-content {
+  text-align: center;
+  color: var(--el-text-color-regular);
+  max-width: 400px;
+}
+
+.no-database-content h2,
+.not-connected-content h2 {
+  margin: 1rem 0 0.5rem 0;
+  color: var(--el-text-color-primary);
+  font-size: 1.5rem;
+  font-weight: 600;
+}
+
+.no-database-content p,
+.not-connected-content p {
+  margin: 0.5rem 0;
+  color: var(--el-text-color-secondary);
+  font-size: 1rem;
+  line-height: 1.5;
+}
+
+.database-icon,
+.connection-icon {
+  color: var(--el-text-color-placeholder);
 }
 </style> 
