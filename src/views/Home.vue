@@ -3,7 +3,7 @@
         <!-- Custom Title Bar -->
         <CustomTitleBar 
             :current-connection="currentConnection || null"
-            :active-tab="activeTab"
+            :active-tab="tableStore.activeTab || undefined"
             @tab-change="handleTabChange"
             @add-query="handleAddQuery"
             @new-connection="handleNewConnection"
@@ -58,6 +58,7 @@ import CustomTitleBar from '../components/CustomTitleBar.vue';
 import QueryEditor from '../components/QueryEditor.vue';
 import { useConnections } from '../composables/useConnections';
 import { useDatabase } from '../composables/useDatabase';
+import { useTableStore } from '../stores/tableStore';
 
 const { 
     activeConnections, 
@@ -73,6 +74,9 @@ const {
 } = useConnections();
 
 const { disconnectAll, hasActiveConnections } = useDatabase();
+
+// Use Pinia store
+const tableStore = useTableStore();
 
 const showConnectionModal = ref(false);
 const activeTab = ref('home');
@@ -147,15 +151,14 @@ const handleCloseTab = async (tabId: string) => {
 
 // Handle tab change
 const handleTabChange = (tabId: string) => {
-    activeTab.value = tabId;
+    tableStore.activeTab = tabId;
 };
 
 // Handle add query
 const handleAddQuery = () => {
-    // Forward to QueryEditor if connected
-    if (currentConnection.value && queryEditorRef.value) {
-        // Call QueryEditor's addQueryTab method
-        queryEditorRef.value.addQueryTab();
+    // Use Pinia store to add query tab
+    if (currentConnection.value) {
+        tableStore.addQueryTab();
     } else {
         // If not connected, show connection modal
         showConnectionModal.value = true;

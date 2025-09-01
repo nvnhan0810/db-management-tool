@@ -4,10 +4,10 @@
     <div class="tabs-container">
       <div class="tabs-list">
         <div 
-          v-for="tab in tabs" 
+          v-for="tab in tableStore.tabs" 
           :key="tab.id"
           class="tab-item"
-          :class="{ active: activeTab === tab.id }"
+          :class="{ active: tableStore.activeTab === tab.id }"
           @click="setActiveTab(tab.id)"
         >
           <span class="tab-title">{{ tab.title }}</span>
@@ -24,99 +24,56 @@
     
     <!-- Tab Content Area -->
     <div class="content-container">
-      <div v-if="activeTab && getActiveTabContent()" class="content-area">
+      <div v-if="tableStore.activeTab && getActiveTabContent()" class="content-area">
         <!-- Table Info Tab -->
         <div v-if="getActiveTabContent()?.type === 'table'" class="table-info">
-          <div class="table-header">
-            <h3>{{ getActiveTabContent()?.title }}</h3>
-            <div class="table-actions">
-              <el-button size="small" @click="generateSelectQuery">
-                SELECT *
-              </el-button>
-              <el-button size="small" @click="generateDescribeQuery">
-                DESCRIBE
-              </el-button>
-            </div>
-          </div>
+          <!-- 1. Filter Section (only show in data mode) -->
+          <TableFilterSection 
+            v-if="displayMode === 'data'"
+            :columns="(getActiveTabContent()?.data as TableData)?.columns || []"
+            @update:filters="handleFiltersUpdate"
+            @apply-filters="handleApplyFilters"
+          />
+
+
+          <!-- 2. Main Content Section -->
+          <TableMainContent 
+            :display-mode="displayMode"
+            :columns="(getActiveTabContent()?.data as TableData)?.columns || []"
+            :table-name="(getActiveTabContent()?.data as TableData)?.name || ''"
+            :rows="(getActiveTabContent()?.data as TableData)?.rows"
+            :table-data="tableData"
+            :is-loading-data="isLoadingData"
+            :indexes="(getActiveTabContent()?.data as TableData)?.indexes || []"
+            @refresh-data="handleRetryLoadData"
+          />
           
-          <div class="table-details">
-            <div class="detail-item">
-              <span class="label">Table Name:</span>
-              <span class="value">{{ (getActiveTabContent()?.data as TableData)?.name }}</span>
-            </div>
-            <div class="detail-item">
-              <span class="label">Columns:</span>
-              <span class="value">{{ (getActiveTabContent()?.data as TableData)?.columns?.length || 0 }}</span>
-            </div>
-            <div class="detail-item">
-              <span class="label">Rows:</span>
-              <span class="value">{{ (getActiveTabContent()?.data as TableData)?.rows || 'Unknown' }}</span>
-            </div>
-          </div>
-          
-          <!-- Columns List -->
-          <div class="columns-section">
-            <h4>Columns</h4>
-            <div class="columns-list">
-              <div 
-                v-for="column in (getActiveTabContent()?.data as TableData)?.columns" 
-                :key="column.name"
-                class="column-item"
-              >
-                <div class="column-name">{{ column.name }}</div>
-                <div class="column-type">{{ column.type }}</div>
-                <div class="column-nullable">{{ column.nullable ? 'NULL' : 'NOT NULL' }}</div>
-              </div>
-            </div>
-          </div>
+
+
+          <!-- 3. Settings Section -->
+          <TableSettings 
+            :display-mode="displayMode"
+            :records-per-page="recordsPerPage"
+            :current-page="currentPage"
+            :total-pages="totalPages"
+            @update:display-mode="handleDisplayModeUpdate"
+            @update:records-per-page="handleRecordsPerPageUpdate"
+            @update:current-page="handleCurrentPageUpdate"
+            @load-data="handleRetryLoadData"
+          />
+
+          <!-- 4. SQL Section -->
+          <TableSqlHistory 
+            :executed-queries="executedQueries"
+          />
         </div>
         
         <!-- Query Tab -->
         <div v-else-if="getActiveTabContent()?.type === 'query'" class="query-editor">
-          <div class="query-header">
-            <h3>{{ getActiveTabContent()?.title }}</h3>
-            <div class="query-actions">
-              <el-button size="small" type="primary" @click="executeQuery">
-                Execute
-              </el-button>
-              <el-button size="small" @click="clearQuery">
-                Clear
-              </el-button>
-            </div>
-          </div>
-          
-          <div class="query-input">
-            <el-input
-              :model-value="(getActiveTabContent()?.data as QueryData)?.query || ''"
-              @update:model-value="updateQuery"
-              type="textarea"
-              :rows="12"
-              placeholder="Enter your SQL query here..."
-              resize="none"
-            />
-          </div>
-          
-          <!-- Query Results -->
-          <div v-if="(getActiveTabContent()?.data as QueryData)?.result" class="query-results">
-            <h4>Results</h4>
-            <el-table
-              v-if="(getActiveTabContent()?.data as QueryData)?.result?.success"
-              :data="(getActiveTabContent()?.data as QueryData)?.result?.data"
-              style="width: 100%"
-              height="300"
-              border
-            >
-              <el-table-column
-                v-for="field in (getActiveTabContent()?.data as QueryData)?.result?.fields"
-                :key="field.name"
-                :prop="field.name"
-                :label="field.name"
-              />
-            </el-table>
-            <div v-else class="error-message">
-              {{ (getActiveTabContent()?.data as QueryData)?.result?.error }}
-            </div>
-          </div>
+          <SqlEditor 
+            :connection-id="connectionId"
+            @query-executed="handleQueryExecuted"
+          />
         </div>
       </div>
       
@@ -129,40 +86,22 @@
 
 <script setup lang="ts">
 import { Close } from '@element-plus/icons-vue';
-import { computed, ref } from 'vue';
+import { computed, watch } from 'vue';
+import { useDatabase } from '../composables/useDatabase';
+import { useTableStore } from '../stores/tableStore';
+import SqlEditor from './SqlEditor.vue';
+import TableFilterSection from './TableFilterSection.vue';
+import TableMainContent from './TableMainContent.vue';
+import TableSettings from './TableSettings.vue';
+import TableSqlHistory from './TableSqlHistory.vue';
 
-interface TableColumn {
-  name: string;
-  type: string;
-  nullable: boolean;
-}
-
-interface TableData {
-  name: string;
-  columns: TableColumn[];
-  rows?: number;
-}
-
-interface QueryData {
-  query: string;
-  result?: {
-    success: boolean;
-    data?: any[];
-    fields?: any[];
-    error?: string;
-  };
-}
-
-interface Tab {
-  id: string;
-  title: string;
-  type: 'table' | 'query';
-  data?: TableData | QueryData;
-}
+// Use types from Pinia store
+import type { QueryData, TableData } from '../stores/tableStore';
 
 const props = defineProps<{
   visible: boolean;
   activeTableName?: string;
+  connectionId?: string; // Add connection ID prop
 }>();
 
 const emit = defineEmits<{
@@ -170,85 +109,56 @@ const emit = defineEmits<{
   'table-selected': [tableName: string];
 }>();
 
-const tabs = ref<Tab[]>([]);
-const activeTab = ref<string | null>(null);
-const queryCounter = ref(1);
+// Get current connection from useDatabase
+const { currentConnection } = useDatabase();
 
-// Computed
-const hasTabs = computed(() => tabs.value.length > 0);
+// Use Pinia store
+const tableStore = useTableStore();
+
+// Use computed properties from Pinia store
+const hasTabs = computed(() => tableStore.hasTabs);
+
+// Get active table state from store
+const activeTableState = computed(() => tableStore.activeTableState);
+
+const displayMode = computed(() => tableStore.displayMode);
+
+const filterRows = computed(() => tableStore.filterRows);
+const tableData = computed(() => tableStore.tableData);
+const isLoadingData = computed(() => tableStore.isLoadingData);
+const recordsPerPage = computed(() => tableStore.recordsPerPage);
+const currentPage = computed(() => tableStore.currentPage);
+const totalPages = computed(() => tableStore.totalPages);
+const executedQueries = computed(() => tableStore.executedQueries);
 
 // Methods
+// Use Pinia store methods
 const setActiveTab = (tabId: string) => {
-  activeTab.value = tabId;
+  tableStore.activeTab = tabId;
   
   // Emit table-selected event if this is a table tab
-  const tab = tabs.value.find(t => t.id === tabId);
+  const tab = tableStore.getActiveTabContent();
   if (tab?.type === 'table' && tab.data && 'name' in tab.data) {
     emit('table-selected', tab.data.name);
   }
 };
 
 const getActiveTabContent = () => {
-  return tabs.value.find(tab => tab.id === activeTab.value);
+  return tableStore.getActiveTabContent();
 };
 
 const addQueryTab = () => {
-  const queryId = `query-${Date.now()}`;
-  const queryTitle = `Query ${queryCounter.value}`;
-  
-  const newTab: Tab = {
-    id: queryId,
-    title: queryTitle,
-    type: 'query',
-    data: {
-      query: '',
-      result: undefined
-    }
-  };
-  
-  tabs.value.push(newTab);
-  activeTab.value = queryId;
-  queryCounter.value++;
+  tableStore.addQueryTab();
 };
 
-const addTableTab = (tableData: TableData) => {
-  const tableId = `table-${tableData.name}-${Date.now()}`;
-  
-  // Check if table tab already exists
-  const existingTab = tabs.value.find(tab => 
-    tab.type === 'table' && tab.data && 'name' in tab.data && tab.data.name === tableData.name
-  );
-  
-  if (existingTab) {
-    activeTab.value = existingTab.id;
-    return;
-  }
-  
-  const newTab: Tab = {
-    id: tableId,
-    title: tableData.name,
-    type: 'table',
-    data: tableData
-  };
-  
-  tabs.value.push(newTab);
-  activeTab.value = tableId;
+const addTableTab = async (tableData: any) => {
+  // This method is now handled by the store
+  // The store will automatically load table data
+  console.log('addTableTab called - this should be handled by store');
 };
 
 const closeTab = (tabId: string) => {
-  const index = tabs.value.findIndex(tab => tab.id === tabId);
-  if (index > -1) {
-    tabs.value.splice(index, 1);
-    
-    // If closed tab was active, switch to another tab
-    if (activeTab.value === tabId) {
-      if (tabs.value.length > 0) {
-        activeTab.value = tabs.value[Math.min(index, tabs.value.length - 1)].id;
-      } else {
-        activeTab.value = null;
-      }
-    }
-  }
+  tableStore.closeTab(tabId);
 };
 
 const executeQuery = async () => {
@@ -270,11 +180,21 @@ const executeQuery = async () => {
           { name: 'name' }
         ]
       };
+      
+      // Add to executed queries for the active table tab if it exists
+      if (tableStore.activeTab && tableStore.tableTabStates.has(tableStore.activeTab)) {
+        tableStore.addExecutedQuery(queryData.query, true);
+      }
     } catch (error) {
       queryData.result = {
         success: false,
         error: error instanceof Error ? error.message : 'Query failed'
       };
+      
+      // Add to executed queries with error for the active table tab if it exists
+      if (tableStore.activeTab && tableStore.tableTabStates.has(tableStore.activeTab)) {
+        tableStore.addExecutedQuery(queryData.query, false, error instanceof Error ? error.message : 'Query failed');
+      }
     }
   }
 };
@@ -299,56 +219,189 @@ const clearQuery = () => {
 const generateSelectQuery = () => {
   const activeTabContent = getActiveTabContent();
   if (activeTabContent?.type === 'table' && activeTabContent.data) {
-    const tableData = activeTabContent.data as TableData;
+    const tableData = activeTabContent.data as any;
     // Create a new query tab with SELECT * query
-    const queryId = `query-${Date.now()}`;
-    const queryTitle = `Query ${queryCounter.value}`;
-    
-    const newTab: Tab = {
-      id: queryId,
-      title: queryTitle,
-      type: 'query',
-      data: {
-        query: `SELECT * FROM ${tableData.name}`,
-        result: undefined
-      }
-    };
-    
-    tabs.value.push(newTab);
-    activeTab.value = queryId;
-    queryCounter.value++;
+    tableStore.addQueryTab();
+    const newTab = tableStore.getActiveTabContent();
+    if (newTab?.type === 'query' && newTab.data) {
+      newTab.data.query = `SELECT * FROM ${tableData.name}`;
+    }
   }
 };
 
 const generateDescribeQuery = () => {
   const activeTabContent = getActiveTabContent();
   if (activeTabContent?.type === 'table' && activeTabContent.data) {
-    const tableData = activeTabContent.data as TableData;
+    const tableData = activeTabContent.data as any;
     // Create a new query tab with DESCRIBE query
-    const queryId = `query-${Date.now()}`;
-    const queryTitle = `Query ${queryCounter.value}`;
-    
-    const newTab: Tab = {
-      id: queryId,
-      title: queryTitle,
-      type: 'query',
-      data: {
-        query: `DESCRIBE ${tableData.name}`,
-        result: undefined
-      }
-    };
-    
-    tabs.value.push(newTab);
-    activeTab.value = queryId;
-    queryCounter.value++;
+    tableStore.addQueryTab();
+    const newTab = tableStore.getActiveTabContent();
+    if (newTab?.type === 'query' && newTab.data) {
+      newTab.data.query = `DESCRIBE ${tableData.name}`;
+    }
   }
+};
+
+
+
+// SQL generation and execution
+const generateSQL = () => {
+  const activeTabContent = getActiveTabContent();
+  if (activeTabContent?.type === 'table' && activeTabContent.data && tableStore.activeTableState) {
+    const tableData = activeTabContent.data as any;
+    let sql = `SELECT * FROM ${tableData.name}`;
+    
+    const validFilters = filterRows.value.filter((f: any) => f.apply && f.column && f.operator && f.value);
+    if (validFilters.length > 0) {
+      sql += ' WHERE ' + validFilters.map((f: any) => `${f.column} ${f.operator} '${f.value}'`).join(' AND ');
+    }
+    
+    if (displayMode.value === 'data') {
+      sql += ` LIMIT ${recordsPerPage.value} OFFSET ${(currentPage.value - 1) * recordsPerPage.value}`;
+    }
+    
+    // Store generated SQL in store if needed
+    // generatedSQL.value = sql;
+  }
+};
+
+
+
+// Watch for changes to regenerate SQL
+watch([filterRows, displayMode, recordsPerPage, currentPage], () => {
+  generateSQL();
+}, { deep: true });
+
+
+
+// Method to load table structure (columns)
+const loadTableStructure = async (tableName: string) => {
+  try {
+    // TODO: Implement actual database call to get table structure
+    // For now, we'll use the columns from the tableData
+    const activeTabContent = getActiveTabContent();
+    if (activeTabContent?.type === 'table' && activeTabContent.data) {
+      const tableData = activeTabContent.data as TableData;
+      
+      // The columns should already be available from the tableData
+      // This method can be extended to fetch more detailed column information
+      // like constraints, indexes, etc. from the database
+    }
+  } catch (error) {
+    console.error('Error loading table structure:', error);
+  }
+};
+
+// Use Pinia store method
+const addExecutedQuery = (sql: string, success: boolean, error?: string) => {
+  tableStore.addExecutedQuery(sql, success, error);
+};
+
+// Event handlers for child components
+const handleFiltersUpdate = (filters: Array<{ apply: boolean; column: string; operator: string; value: string }>) => {
+  if (tableStore.activeTableState) {
+    tableStore.activeTableState.filterRows = filters;
+  }
+};
+
+const handleDisplayModeUpdate = (mode: 'data' | 'structure') => {
+  if (tableStore.activeTableState) {
+    tableStore.activeTableState.displayMode = mode;
+  }
+};
+
+const handleRecordsPerPageUpdate = (records: number) => {
+  if (tableStore.activeTableState) {
+    tableStore.activeTableState.recordsPerPage = records;
+  }
+};
+
+const handleCurrentPageUpdate = (page: number) => {
+  if (tableStore.activeTableState) {
+    tableStore.activeTableState.currentPage = page;
+  }
+};
+
+const handleApplyFilters = (filters: Array<{ apply: boolean; column: string; operator: string; value: string }>) => {
+  // Update filterRows with the new filters
+  if (tableStore.activeTableState) {
+    tableStore.activeTableState.filterRows = filters;
+  }
+  
+  // Generate SQL with the applied filters
+  generateSQL();
+  
+  // TODO: Execute the generated SQL to load data
+  // This would typically call a method to load table data with the filters
+};
+
+const handleRetryLoadData = async () => {
+  if (!tableStore.activeTab || !tableStore.tableTabStates.has(tableStore.activeTab)) {
+    return;
+  }
+  
+  const tableState = tableStore.tableTabStates.get(tableStore.activeTab)!;
+  const tableData = getActiveTabContent()?.data as any;
+  
+  if (!tableData) {
+    return;
+  }
+  
+  try {
+    // Set loading state
+    tableState.isLoadingData = true;
+    
+    // Generate SQL for loading data with pagination
+    const offset = (tableState.currentPage - 1) * tableState.recordsPerPage;
+    const sql = `SELECT * FROM ${tableData.name} LIMIT ${tableState.recordsPerPage} OFFSET ${offset}`;
+    
+    // Execute query to get actual data
+    const connectionId = props.connectionId || currentConnection.value?.id;
+    
+    const result = await window.electron.invoke('database:query', {
+      connectionId: connectionId,
+      query: sql
+    });
+    
+    if (result.success) {
+      // Update table data with real data (even if empty array)
+      tableState.tableData = result.data || [];
+      
+      // Add to executed queries
+      tableStore.addExecutedQuery(sql, true);
+      
+      // Check if data is empty
+      if (!result.data || result.data.length === 0) {
+        // Table has no data
+      }
+    } else {
+      throw new Error(result.error || 'Failed to load table data');
+    }
+  } catch (error) {
+    // Add error to executed queries
+    const offset = (tableState.currentPage - 1) * tableState.recordsPerPage;
+    const sql = `SELECT * FROM ${tableData.name} LIMIT ${tableState.recordsPerPage} OFFSET ${offset}`;
+    const errorMessage = error instanceof Error ? error.message : 'Failed to load table data';
+    tableStore.addExecutedQuery(sql, false, errorMessage);
+  } finally {
+    // Clear loading state
+    tableState.isLoadingData = false;
+  }
+};
+
+// Handle query execution from SqlEditor
+const handleQueryExecuted = (result: any) => {
+  // Query result is already handled by the store
+  console.log('Query executed:', result);
 };
 
 // Expose methods for parent component
 defineExpose({
   addTableTab,
   addQueryTab,
-  setActiveTab
+  setActiveTab,
+  addExecutedQuery,
+  handleRetryLoadData
 });
 </script>
 
@@ -452,24 +505,11 @@ defineExpose({
 }
 
 /* Table Info Styles */
-.table-info h4 {
-  margin: 0 0 1rem 0;
-  color: var(--el-text-color-primary);
-}
-
-.table-details {
-  margin-bottom: 1.5rem;
-}
-
-.detail-item {
+.table-info {
   display: flex;
-  justify-content: space-between;
-  padding: 0.5rem 0;
-  border-bottom: 1px solid var(--el-border-color-light);
-}
-
-.detail-item:last-child {
-  border-bottom: none;
+  flex-direction: column;
+  height: 100%;
+  gap: 1rem;
 }
 
 .label {
@@ -537,6 +577,46 @@ defineExpose({
 .query-results h5 {
   margin: 1rem 0 0.5rem 0;
   color: var(--el-text-color-primary);
+}
+
+/* Table Tab Content Layout */
+.table-info {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  height: 100%;
+}
+
+/* Filter section - fixed height */
+.table-info > div:nth-child(1) {
+  flex: 0 0 auto;
+}
+
+/* Main content section - takes most space but leaves room for bottom sections */
+.table-info > div:nth-child(2) {
+  flex: 1; /* Take remaining space */
+  min-height: 300px; /* Reasonable minimum height */
+  max-height: 600px; /* Reasonable maximum height */
+  overflow: hidden; /* Hide overflow, let table handle scroll */
+  display: flex; /* Ensure flex layout */
+  flex-direction: column; /* Vertical layout */
+}
+
+/* Settings and SQL sections - no extra spacing */
+.table-info > div:nth-child(3),
+.table-info > div:nth-child(4) {
+  flex: 0 0 auto;
+  background-color: var(--el-bg-color-page);
+  z-index: 10;
+}
+
+
+
+/* Ensure table info container has proper height */
+.table-info {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem; /* Consistent spacing between sections */
 }
 
 .error-message {

@@ -19,6 +19,7 @@
         <RightSidebar
           :visible="true"
           :active-table-name="activeTableName || undefined"
+          :connection-id="props.connection?.id"
           ref="rightSidebarRef"
           @table-selected="handleTableSelected"
         />
@@ -31,6 +32,7 @@
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import type { ActiveConnection } from '../composables/useConnections';
 import { useDatabase } from '../composables/useDatabase';
+import { useTableStore } from '../stores/tableStore';
 import DatabaseTables from './DatabaseTables.vue';
 import RightSidebar from './RightSidebar.vue';
 
@@ -43,7 +45,10 @@ const emit = defineEmits<{
 }>();
 
 const query = ref('');
-const { isConnected, queryResult, error, executeQuery: runQuery, disconnect, getTables, hasActiveConnections } = useDatabase();
+const { isConnected, queryResult, error, executeQuery: runQuery, disconnect, getTables, getTableStructure, hasActiveConnections, refreshConnectionStatus } = useDatabase();
+
+// Use Pinia store
+const tableStore = useTableStore();
 
 // Computed properties
 const connectionName = computed(() => {
@@ -63,22 +68,67 @@ const activeTableName = ref<string | null>(null);
 
 // Methods
 
-const handleSelectTable = (table: { name: string; type?: string }) => {
+const handleSelectTable = async (table: { name: string; type?: string }) => {
   // Add table info to right sidebar (don't update main query)
   if (rightSidebarRef.value) {
-    const tableData = {
-      name: table.name,
-      columns: [
-        { name: 'id', type: 'INT', nullable: false },
-        { name: 'name', type: 'VARCHAR(255)', nullable: true },
-        { name: 'email', type: 'VARCHAR(255)', nullable: true },
-        { name: 'created_at', type: 'TIMESTAMP', nullable: false }
-      ],
-      rows: 100
-    };
-    rightSidebarRef.value.addTableTab(tableData);
-    showRightSidebar.value = true;
-    activeTableName.value = table.name;
+    try {
+      // First try to refresh connection status and auto-reconnect if needed
+      if (props.connection && !props.connection.isConnected) {
+        console.log('Connection appears to be disconnected, attempting to refresh...');
+        await refreshConnectionStatus();
+      }
+      
+      // Load real table structure from database
+      const tableStructure = await loadTableStructure(table.name);
+      
+      // Check if tableStructure is valid
+      if (!tableStructure || typeof tableStructure !== 'object') {
+        throw new Error(`Invalid table structure returned: ${JSON.stringify(tableStructure)}`);
+      }
+      
+      const tableData = {
+        name: table.name,
+        columns: tableStructure.columns || [],
+        rows: tableStructure.rows || 0,
+        indexes: tableStructure.indexes || []
+      };
+      
+      // Add table tab using store with connection ID
+      const tableId = await tableStore.addTableTab(tableData, props.connection?.id);
+      
+      // Load table structure and add to executed queries
+      const structureQuery = `DESCRIBE ${table.name}`;
+      tableStore.addExecutedQuery(structureQuery, true);
+      
+      // Auto-load table data using store
+      // The data will be loaded automatically when the tab is created
+      showRightSidebar.value = true;
+      activeTableName.value = table.name;
+    } catch (error) {
+      console.error('Error loading table structure:', error);
+      
+      // Fallback to basic table data with some mock columns
+      const tableData = {
+        name: table.name,
+        columns: [
+          { name: 'id', type: 'INT', nullable: false },
+          { name: 'name', type: 'VARCHAR(255)', nullable: true }
+        ],
+        rows: 0,
+        indexes: []
+      };
+      
+      // Add table tab using store with connection ID
+      await tableStore.addTableTab(tableData, props.connection?.id);
+      
+      // Add error to executed queries
+      const errorQuery = `DESCRIBE ${table.name}`;
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+      tableStore.addExecutedQuery(errorQuery, false, errorMessage);
+      
+      showRightSidebar.value = true;
+      activeTableName.value = table.name;
+    }
   }
 };
 
@@ -88,15 +138,29 @@ const handleTableSelected = (tableName: string) => {
 
 // Method to add query tab
 const addQueryTab = () => {
-  if (rightSidebarRef.value) {
-    rightSidebarRef.value.addQueryTab();
-  }
+  tableStore.addQueryTab();
 };
 
 // Expose methods for parent component
 defineExpose({
   addQueryTab
 });
+
+// Method to load table structure from database
+const loadTableStructure = async (tableName: string) => {
+  if (!props.connection?.id) {
+    throw new Error('No connection ID available');
+  }
+  
+  try {
+    // Use real database call to get table structure
+    const structure = await getTableStructure(props.connection.id, tableName);
+    return structure;
+  } catch (error) {
+    console.error('Error loading table structure:', error);
+    throw error;
+  }
+};
 
 // Method to verify connection status
 const verifyConnection = async () => {

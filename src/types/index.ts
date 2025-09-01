@@ -27,5 +27,29 @@ export interface AppSettings {
 }
 
 export interface QueryResult {
-  [key: string]: any;
+  success: boolean;
+  data?: any[];
+  fields?: any[];
+  rowCount?: number;
+  error?: string;
+}
+
+export interface TableColumn {
+  name: string;
+  type: string;
+  nullable: boolean;
+  default_value?: string;
+  extra?: string;
+  comment?: string;
+  ordinal_position?: number;
+  character_set?: string;
+  collation?: string;
+  foreign_key?: string;
+}
+
+export interface TableIndex {
+  name: string;
+  algorithm?: string;
+  is_unique: boolean;
+  column_name: string;
 } 

@@ -100,12 +100,15 @@ class DatabaseService {
         });
       }
 
-      return {
+      const result = {
         success: true,
-        results,
+        data: results,
         fields,
         rowCount: Array.isArray(results) ? results.length : 0,
       };
+      
+      console.log('Database service query result:', result);
+      return result;
     } catch (error) {
       console.error('Query execution error:', error);
       return {
@@ -166,6 +169,245 @@ class DatabaseService {
     } catch (error) {
       console.error('Error getting tables:', error);
       return []; // Return empty array on error instead of throwing
+    }
+  }
+
+  async getTableStructure(connectionId: string, tableName: string): Promise<{
+    columns: Array<{ 
+      name: string; 
+      type: string; 
+      nullable: boolean;
+      ordinal_position?: number;
+      character_set?: string;
+      collation?: string;
+      default_value?: string;
+      extra?: string;
+      foreign_key?: string;
+      comment?: string;
+    }>;
+    rows?: number;
+    indexes?: Array<{
+      name: string;
+      algorithm?: string;
+      is_unique: boolean;
+      column_name: string;
+    }>;
+  }> {
+    const connection = this.connections.get(connectionId);
+    const connectionInfo = this.connectionInfo.get(connectionId);
+    
+    if (!connection) {
+      throw new Error(`No active connection found for ID: ${connectionId}`);
+    }
+
+    if (!connectionInfo) {
+      throw new Error(`No connection info found for ID: ${connectionId}`);
+    }
+
+    try {
+      let columns: Array<{ 
+        name: string; 
+        type: string; 
+        nullable: boolean;
+        ordinal_position?: number;
+        character_set?: string;
+        collation?: string;
+        default_value?: string;
+        extra?: string;
+        comment?: string;
+      }> = [];
+      let rows: number | undefined;
+      let indexes: Array<{ name: string; algorithm?: string; is_unique: boolean; column_name: string }> = [];
+
+      if (connection.query) {
+        // MySQL/PostgreSQL
+        const query = `
+          SELECT 
+            ORDINAL_POSITION as ordinal_position,
+            COLUMN_NAME as name,
+            CONCAT(DATA_TYPE, 
+              CASE 
+                WHEN CHARACTER_MAXIMUM_LENGTH IS NOT NULL THEN CONCAT('(', CHARACTER_MAXIMUM_LENGTH, ')')
+                WHEN NUMERIC_PRECISION IS NOT NULL AND NUMERIC_SCALE IS NOT NULL THEN CONCAT('(', NUMERIC_PRECISION, ',', NUMERIC_SCALE, ')')
+                WHEN NUMERIC_PRECISION IS NOT NULL THEN CONCAT('(', NUMERIC_PRECISION, ')')
+                ELSE ''
+              END
+            ) as type,
+            IS_NULLABLE = 'YES' as nullable,
+            CHARACTER_SET_NAME as character_set,
+            COLLATION_NAME as collation,
+            COLUMN_DEFAULT as default_value,
+            EXTRA as extra,
+            COLUMN_COMMENT as comment
+          FROM INFORMATION_SCHEMA.COLUMNS 
+          WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ?
+          ORDER BY ORDINAL_POSITION
+        `;
+        
+        const [columnResults] = await connection.query(query, [connectionInfo.database, tableName]);
+        
+        if (Array.isArray(columnResults)) {
+          columns = columnResults as Array<{ 
+            name: string; 
+            type: string; 
+            nullable: boolean;
+            ordinal_position?: number;
+            character_set?: string;
+            collation?: string;
+            default_value?: string;
+            extra?: string;
+            comment?: string;
+          }>;
+        } else {
+          columns = [];
+        }
+        
+        // If no columns found, try alternative query
+        if (columns.length === 0) {
+          try {
+            const [altResults] = await connection.query(`DESCRIBE ${tableName}`);
+            if (Array.isArray(altResults)) {
+              columns = altResults.map((row: any) => ({
+                name: row.Field || row.field,
+                type: row.Type || row.type,
+                nullable: (row.Null || row.null) === 'YES'
+              }));
+            }
+          } catch (altError) {
+            console.warn('Alternative query failed:', altError);
+          }
+        }
+
+        // Get row count
+        try {
+          const [countResults] = await connection.query(`SELECT COUNT(*) as count FROM ${tableName}`);
+          rows = (countResults as any[])[0]?.count;
+        } catch (countError) {
+          console.warn('Could not get row count for table:', tableName, countError);
+        }
+
+        // Get indexes
+        let indexes: Array<{ name: string; algorithm?: string; is_unique: boolean; column_name: string }> = [];
+        try {
+          const indexQuery = `
+            SELECT 
+              INDEX_NAME as name,
+              INDEX_TYPE as algorithm,
+              NON_UNIQUE = 0 as is_unique,
+              COLUMN_NAME as column_name,
+              SEQ_IN_INDEX as seq_in_index
+            FROM INFORMATION_SCHEMA.STATISTICS 
+            WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ?
+            ORDER BY INDEX_NAME, SEQ_IN_INDEX
+          `;
+          
+          const [indexResults] = await connection.query(indexQuery, [connectionInfo.database, tableName]);
+          
+          if (Array.isArray(indexResults)) {
+            // Process indexes to handle composite indexes properly
+            const indexMap = new Map<string, { name: string; algorithm?: string; is_unique: boolean; columns: string[] }>();
+            
+            indexResults.forEach((row: any) => {
+              const indexName = row.name;
+              if (!indexMap.has(indexName)) {
+                indexMap.set(indexName, {
+                  name: indexName,
+                  algorithm: row.algorithm,
+                  is_unique: row.is_unique,
+                  columns: []
+                });
+              }
+              indexMap.get(indexName)!.columns.push(row.column_name);
+            });
+            
+            // Convert to flat structure for table display
+            indexes = [];
+            indexMap.forEach((index) => {
+              index.columns.forEach((columnName) => {
+                indexes.push({
+                  name: index.name,
+                  algorithm: index.algorithm,
+                  is_unique: index.is_unique,
+                  column_name: columnName
+                });
+              });
+            });
+          }
+        } catch (indexError) {
+          console.warn('Could not get indexes for table:', tableName, indexError);
+        }
+      } else if (connection.all) {
+        // SQLite
+        const columnResults = await new Promise<Array<{ name: string; type: string; nullable: boolean }>>((resolve, reject) => {
+          connection.all(`PRAGMA table_info(${tableName})`, (err: Error | null, rows: any[]) => {
+            if (err) reject(err);
+            else {
+              const columns = rows.map(row => ({
+                name: row.name,
+                type: row.type,
+                nullable: row.notnull === 0
+              }));
+              resolve(columns);
+            }
+          });
+        });
+        columns = columnResults;
+
+        // SQLite indexes (simplified)
+        try {
+          const indexResults = await new Promise<Array<{ name: string; unique: number; origin: string }>>((resolve, reject) => {
+            connection.all(`PRAGMA index_list(${tableName})`, (err: Error | null, rows: any[]) => {
+              if (err) reject(err);
+              else resolve(rows);
+            });
+          });
+          
+          // Get detailed index info for each index
+          for (const index of indexResults) {
+            try {
+              const indexInfoResults = await new Promise<Array<{ name: string; seqno: number }>>((resolve, reject) => {
+                connection.all(`PRAGMA index_info(${index.name})`, (err: Error | null, rows: any[]) => {
+                  if (err) reject(err);
+                  else resolve(rows);
+                });
+              });
+              
+              // Get column names from table info
+              for (const indexInfo of indexInfoResults) {
+                const columnName = indexInfo.name;
+                indexes.push({
+                  name: index.name,
+                  algorithm: 'BTREE', // SQLite default
+                  is_unique: index.unique === 1,
+                  column_name: columnName
+                });
+              }
+            } catch (indexInfoError) {
+              console.warn(`Could not get info for index ${index.name}:`, indexInfoError);
+            }
+          }
+        } catch (indexError) {
+          console.warn('Could not get indexes for SQLite table:', tableName, indexError);
+        }
+
+        // Get row count for SQLite
+        try {
+          const countResults = await new Promise<Array<{ count: number }>>((resolve, reject) => {
+            connection.all(`SELECT COUNT(*) as count FROM ${tableName}`, (err: Error | null, rows: any[]) => {
+              if (err) reject(err);
+              else resolve(rows);
+            });
+          });
+          rows = countResults[0]?.count;
+        } catch (countError) {
+          console.warn('Could not get row count for table:', tableName, countError);
+        }
+      }
+
+      return { columns, rows, indexes };
+    } catch (error) {
+      console.error('Error getting table structure:', error);
+      throw error;
     }
   }
 }
