@@ -28,12 +28,17 @@
 
 
             <!-- 2. Main Content Section -->
-            <TableMainContent :display-mode="displayMode"
+            <TableMainContent 
+              ref="tableMainContentRef"
+              :display-mode="displayMode"
               :columns="(getActiveTabContent()?.data as TableData)?.columns || []"
               :table-name="(getActiveTabContent()?.data as TableData)?.name || ''"
               :rows="(getActiveTabContent()?.data as TableData)?.rows" :table-data="tableData"
               :is-loading-data="isLoadingData" :indexes="(getActiveTabContent()?.data as TableData)?.indexes || []"
-              @refresh-data="handleRetryLoadData" />
+              @refresh-data="handleRetryLoadData"
+              @row-selected="handleRowSelected"
+              @row-updated="handleRowUpdated"
+              @row-deleted="handleRowDeleted" />
 
 
 
@@ -58,14 +63,23 @@
         <el-empty description="Click on a table to view its information" />
       </div>
     </div>
+    
+    <!-- Row Detail Sidebar -->
+    <RowDetailSidebar 
+      :visible="props.showRowDetail && !!selectedRow"
+      :selected-row="selectedRow"
+      @close="emit('close-sidebar')"
+      @update-row="(rowData: any, field: string, newValue: any) => handleRowUpdated(selectedRow, field, newValue)"
+    />
   </div>
 </template>
 
 <script setup lang="ts">
 import { Close } from '@element-plus/icons-vue';
-import { computed, watch } from 'vue';
+import { computed, ref, watch } from 'vue';
 import { useDatabase } from '../composables/useDatabase';
 import { useTableStore } from '../stores/tableStore';
+import RowDetailSidebar from './RowDetailSidebar.vue';
 import SqlEditor from './SqlEditor.vue';
 import TableFilterSection from './TableFilterSection.vue';
 import TableMainContent from './TableMainContent.vue';
@@ -79,11 +93,15 @@ const props = defineProps<{
   visible: boolean;
   activeTableName?: string;
   connectionId?: string; // Add connection ID prop
+  showRowDetail?: boolean; // Add show row detail prop
+  isSidebarHidden?: boolean; // Add is sidebar hidden prop
 }>();
 
 const emit = defineEmits<{
   'close-sidebar': [];
+  'show-sidebar': [];
   'table-selected': [tableName: string];
+  'row-selected': [row: any];
 }>();
 
 // Get current connection from useDatabase
@@ -107,6 +125,12 @@ const recordsPerPage = computed(() => tableStore.recordsPerPage);
 const currentPage = computed(() => tableStore.currentPage);
 const totalPages = computed(() => tableStore.totalPages);
 const executedQueries = computed(() => tableStore.executedQueries);
+
+// Row detail sidebar state
+const selectedRow = ref<any>(null);
+
+// Table main content ref
+const tableMainContentRef = ref();
 
 // Methods
 // Use Pinia store methods
@@ -249,6 +273,20 @@ watch([filterRows, displayMode, recordsPerPage, currentPage], () => {
   generateSQL();
 }, { deep: true });
 
+// Watch for display mode changes to clear selected row
+watch(() => displayMode.value, (newMode) => {
+  if (newMode === 'structure') {
+    selectedRow.value = null;
+    emit('row-selected', null);
+  }
+});
+
+// Watch for active tab changes to clear selected row
+watch(() => tableStore.activeTab, () => {
+  selectedRow.value = null;
+  emit('row-selected', null);
+});
+
 
 
 // Method to load table structure (columns)
@@ -372,13 +410,85 @@ const handleQueryExecuted = (result: any) => {
   console.log('Query executed:', result);
 };
 
+// Handle row selection from table
+const handleRowSelected = (row: any) => {
+  selectedRow.value = row;
+  // Always show sidebar when row is selected
+  emit('show-sidebar');
+  // Emit row selected event
+  emit('row-selected', row);
+};
+
+// Handle row update from table or detail sidebar
+const handleRowUpdated = (row: any, field: string, newValue: any) => {
+  // Update the row in the table data
+  if (tableStore.activeTableState) {
+    const rowIndex = tableStore.activeTableState.tableData.findIndex((r: any) => r === row);
+    if (rowIndex !== -1) {
+      tableStore.activeTableState.tableData[rowIndex][field] = newValue;
+    }
+  }
+  
+  // Update selected row if it's the same row
+  if (selectedRow.value === row) {
+    selectedRow.value = { ...selectedRow.value, [field]: newValue };
+  }
+};
+
+// Handle row deleted
+const handleRowDeleted = (row: any) => {
+  console.log('handleRowDeleted called with:', row);
+  
+  // Remove the row from table data
+  if (tableStore.activeTableState) {
+    // Try to find row by reference first
+    let rowIndex = tableStore.activeTableState.tableData.findIndex((r: any) => r === row);
+    
+    // If not found by reference, try to find by content
+    if (rowIndex === -1) {
+      rowIndex = tableStore.activeTableState.tableData.findIndex((r: any) => {
+        // Compare by JSON string if no ID
+        return JSON.stringify(r) === JSON.stringify(row);
+      });
+    }
+    
+    console.log('Found row index:', rowIndex);
+    
+    if (rowIndex !== -1) {
+      tableStore.activeTableState.tableData.splice(rowIndex, 1);
+      console.log('Row removed from table data');
+    }
+  }
+  
+  // Clear selected row
+  selectedRow.value = null;
+  emit('row-selected', null);
+};
+
+// Check for unsaved changes in the active table
+const hasUnsavedChanges = (): boolean => {
+  if (tableMainContentRef.value && tableMainContentRef.value.hasUnsavedChanges) {
+    return tableMainContentRef.value.hasUnsavedChanges();
+  }
+  return false;
+};
+
+// Clear unsaved changes in the active table
+const clearUnsavedChanges = (): void => {
+  if (tableMainContentRef.value && tableMainContentRef.value.clearUnsavedChanges) {
+    tableMainContentRef.value.clearUnsavedChanges();
+  }
+};
+
 // Expose methods for parent component
 defineExpose({
   addTableTab,
   addQueryTab,
   setActiveTab,
   addExecutedQuery,
-  handleRetryLoadData
+  handleRetryLoadData,
+  hasUnsavedChanges,
+  clearUnsavedChanges
 });
 </script>
 

@@ -1,15 +1,5 @@
 <template>
     <div id="home">
-        <!-- Custom Title Bar -->
-        <CustomTitleBar 
-            :current-connection="currentConnection || null"
-            :active-tab="tableStore.activeTab || undefined"
-            @tab-change="handleTabChange"
-            @add-query="handleAddQuery"
-            @new-connection="handleNewConnection"
-            @disconnect="handleDisconnect"
-        />
-        
         <el-container>
             <!-- Left Sidebar - Connection Tabs (only show when multiple connections) -->
             <el-aside v-if="activeConnections.length > 1" width="120px">
@@ -54,7 +44,6 @@ import { onMounted, onUnmounted, ref } from 'vue';
 import ConnectionForm from '../components/ConnectionForm.vue';
 import ConnectionModal from '../components/ConnectionModal.vue';
 import ConnectionTabs from '../components/ConnectionTabs.vue';
-import CustomTitleBar from '../components/CustomTitleBar.vue';
 import QueryEditor from '../components/QueryEditor.vue';
 import { useConnections } from '../composables/useConnections';
 import { useDatabase } from '../composables/useDatabase';
@@ -82,6 +71,7 @@ const showConnectionModal = ref(false);
 const activeTab = ref('home');
 const queryEditorRef = ref();
 const cleanupReloadPreventionRef = ref<(() => void) | null>(null);
+const isDataReloading = ref(false); // Flag to track data reload
 
 // State persistence - prevent reload when connections are active
 const handleBeforeUnload = async (e: BeforeUnloadEvent) => {
@@ -102,7 +92,12 @@ const handleBeforeUnload = async (e: BeforeUnloadEvent) => {
       return e.returnValue;
     }
     
-    // Disconnect all database connections
+    // Only disconnect connections if this is a real app quit, not a data reload
+    if (isDataReloading.value) {
+      return e.returnValue;
+    }
+    
+    // Disconnect all database connections for real app quit
     try {
       console.log('Disconnecting all database connections before app quit...');
       await disconnectAll();
@@ -149,29 +144,7 @@ const handleCloseTab = async (tabId: string) => {
     await removeConnection(tabId);
 };
 
-// Handle tab change
-const handleTabChange = (tabId: string) => {
-    tableStore.activeTab = tabId;
-};
 
-// Handle add query
-const handleAddQuery = () => {
-    // Use Pinia store to add query tab
-    if (currentConnection.value) {
-        tableStore.addQueryTab();
-    } else {
-        // If not connected, show connection modal
-        showConnectionModal.value = true;
-    }
-};
-
-// Handle disconnect
-const handleDisconnect = async () => {
-    // Remove current connection
-    if (currentTabId.value) {
-        await removeConnection(currentTabId.value);
-    }
-};
 
 // Handle app quit - disconnect all connections
 const handleAppQuit = async () => {
@@ -194,20 +167,35 @@ const handleGlobalKeydown = async (event: KeyboardEvent) => {
     if ((event.ctrlKey || event.metaKey) && event.key === 'n') {
         if (activeConnections.value.length === 0) {
             event.preventDefault();
-            console.log('Ctrl+N prevented on Home screen - no active connections');
         }
     }
     
-    // Prevent Cmd+R (Mac) or Ctrl+R (Windows/Linux) when there are active connections
+    // Handle Cmd+R (Mac) or Ctrl+R (Windows/Linux) for data reload
     if ((event.ctrlKey || event.metaKey) && event.key === 'r') {
         const hasConnections = await hasActiveConnections();
         if (hasConnections || activeConnections.value.length > 0) {
+            // Always prevent browser reload when we have connections
             event.preventDefault();
             event.stopPropagation();
             event.stopImmediatePropagation();
-            console.log('Reload prevented - active connections detected');
-            // Show warning message to user
-            ElMessage.warning('Cannot reload app while database connections are active. Please disconnect all connections first.');
+            
+            // Call QueryEditor reload method directly
+            if (queryEditorRef.value && queryEditorRef.value.handleReloadData) {
+                isDataReloading.value = true; // Set flag before reload
+                try {
+                    await queryEditorRef.value.handleReloadData();
+                } catch (error) {
+                    console.error('Error in handleReloadData:', error);
+                } finally {
+                    // Delay clearing the flag to prevent beforeunload from disconnecting
+                    setTimeout(() => {
+                        isDataReloading.value = false;
+                    }, 100); // 100ms delay
+                }
+            } else {
+                // Show warning if we can't reload data
+                ElMessage.warning('Cannot reload data - QueryEditor not available');
+            }
             return false;
         }
     }
@@ -309,16 +297,8 @@ onMounted(() => {
         window.electron.on('reload-prevented', handleReloadPrevented);
     }
     
-    // Additional reload prevention
+    // Additional CMD+R prevention at window level
     window.addEventListener('keydown', (event) => {
-        // Prevent Cmd+R / Ctrl+R at window level
-        if ((event.ctrlKey || event.metaKey) && event.key === 'r') {
-            if (activeConnections.value.length > 0) {
-                event.preventDefault();
-                event.stopPropagation();
-                return false;
-            }
-        }
         // Prevent F5 at window level
         if (event.key === 'F5') {
             if (activeConnections.value.length > 0) {

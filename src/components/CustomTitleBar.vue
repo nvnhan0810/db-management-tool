@@ -54,6 +54,13 @@
 
         <!-- Right side - Window controls and theme toggle -->
         <div class="title-bar-right">
+            <!-- Sidebar toggle button -->
+            <el-button size="small" class="control-btn sidebar-toggle" @click="handleSidebarToggle">
+                <el-icon>
+                    <component :is="sidebarVisible ? 'Hide' : 'View'" />
+                </el-icon>
+            </el-button>
+            
             <!-- Theme toggle button (always visible) -->
             <el-button size="small" class="control-btn theme-toggle" @click="handleThemeToggle">
                 <el-icon>
@@ -102,6 +109,7 @@ import { useTheme } from '../composables/useTheme';
 const props = defineProps<{
     currentConnection: ActiveConnection | null;
     activeTab?: string;
+    sidebarVisible?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -109,6 +117,7 @@ const emit = defineEmits<{
     'add-query': [];
     'new-connection': [];
     'disconnect': [];
+    'toggle-sidebar': [];
 }>();
 
 // Platform detection
@@ -124,6 +133,10 @@ onMounted(() => {
 const handleThemeToggle = () => {
     console.log('Theme toggle clicked!');
     toggleTheme();
+};
+
+const handleSidebarToggle = () => {
+    emit('toggle-sidebar');
 };
 
 
@@ -262,6 +275,7 @@ const closeWindow = () => {
     flex: 1;
     justify-content: flex-end;
     gap: 8px;
+    -webkit-app-region: no-drag;
 }
 
 .window-controls {
@@ -291,12 +305,14 @@ const closeWindow = () => {
     background-color: #e53e3e;
 }
 
-.control-btn.theme-toggle {
+.control-btn.theme-toggle,
+.control-btn.sidebar-toggle {
     -webkit-app-region: no-drag;
     cursor: pointer;
 }
 
-.control-btn.theme-toggle:hover {
+.control-btn.theme-toggle:hover,
+.control-btn.sidebar-toggle:hover {
     background-color: rgba(255, 255, 255, 0.1);
 }
 

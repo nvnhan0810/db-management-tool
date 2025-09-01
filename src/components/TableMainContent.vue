@@ -20,6 +20,9 @@
         class="full-height-table"
         border
         v-loading="isLoadingData"
+        @row-click="handleRowClick"
+        highlight-current-row
+        :row-class-name="getRowClassName"
       >
         <el-table-column
           v-for="column in columns"
@@ -27,7 +30,34 @@
           :prop="column.name"
           :label="column.name"
           :width="150"
-        />
+          :min-width="100"
+          :resizable="true"
+          show-overflow-tooltip
+        >
+          <template #default="scope">
+            <div 
+              class="cell-content" 
+              :class="{ 
+                'modified-cell': isCellModified(scope.row, column.name),
+                'deleted-row': isRowDeleted(scope.row)
+              }"
+              @dblclick="startEditCell(scope.row, column.name, scope.row[column.name])"
+            >
+              <span v-if="editingCell && editingCell.row === scope.row && editingCell.field === column.name">
+                <el-input
+                  v-model="editingCell.value"
+                  size="small"
+                  @blur="saveCell(scope.row, column.name)"
+                  @keydown.escape.prevent="editingCell = null"
+                  ref="cellInput"
+                />
+              </span>
+              <span v-else class="truncated-text">
+                {{ truncateText(scope.row[column.name]) }}
+              </span>
+            </div>
+          </template>
+        </el-table-column>
       </el-table>
     </div>
     <div v-else class="structure-view">
@@ -97,7 +127,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue';
 
 interface TableColumn {
   name: string;
@@ -132,10 +162,132 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   'refresh-data': [];
+  'row-selected': [row: any];
+  'row-updated': [row: any, field: string, newValue: any];
+  'row-deleted': [row: any];
 }>();
+
+const editingCell = ref<{
+  row: any;
+  field: string;
+  value: string;
+} | null>(null);
+
+const cellInput = ref();
+const modifiedCells = ref<Set<string>>(new Set()); // Track modified cells
+const selectedRow = ref<any>(null); // Track selected row
+const deletedRows = ref<Set<any>>(new Set()); // Track deleted rows
 
 const loadTableData = () => {
   emit('refresh-data');
+};
+
+const handleRowClick = (row: any) => {
+  selectedRow.value = row;
+  emit('row-selected', row);
+};
+
+const truncateText = (text: any): string => {
+  if (text === null || text === undefined) {
+    return 'NULL';
+  }
+  const str = String(text);
+  return str.length > 50 ? str.substring(0, 50) + '...' : str;
+};
+
+const startEditCell = async (row: any, field: string, value: any) => {
+  editingCell.value = {
+    row,
+    field,
+    value: String(value || '')
+  };
+  
+  await nextTick();
+  if (cellInput.value) {
+    // Handle both single element and array of elements
+    const inputElement = Array.isArray(cellInput.value) ? cellInput.value[0] : cellInput.value;
+    if (inputElement && typeof inputElement.focus === 'function') {
+      inputElement.focus();
+    }
+  }
+};
+
+const saveCell = (row: any, field: string) => {
+  if (editingCell.value && editingCell.value.row === row && editingCell.value.field === field) {
+    const newValue = editingCell.value.value;
+    const cellKey = `${row.id || JSON.stringify(row)}_${field}`;
+    modifiedCells.value.add(cellKey);
+    emit('row-updated', row, field, newValue);
+    editingCell.value = null;
+  }
+};
+
+// Handle delete row
+const handleDeleteRow = (row: any) => {
+  if (selectedRow.value === row) {
+    deletedRows.value.add(row);
+    console.log('Row marked for deletion:', row);
+  }
+};
+
+// Handle save delete
+const handleSaveDelete = () => {
+  if (selectedRow.value && deletedRows.value.has(selectedRow.value)) {
+    console.log('Deleting row:', selectedRow.value);
+    emit('row-deleted', selectedRow.value);
+    deletedRows.value.delete(selectedRow.value);
+    selectedRow.value = null;
+  }
+};
+
+// Check if cell is modified
+const isCellModified = (row: any, field: string) => {
+  const cellKey = `${row.id || JSON.stringify(row)}_${field}`;
+  return modifiedCells.value.has(cellKey);
+};
+
+// Check if row is deleted
+const isRowDeleted = (row: any) => {
+  return deletedRows.value.has(row);
+};
+
+// Get row class name for styling
+const getRowClassName = ({ row }: { row: any }) => {
+  if (isRowDeleted(row)) {
+    return 'deleted-row';
+  }
+  return '';
+};
+
+// Keyboard event handler
+const handleKeydown = (event: KeyboardEvent) => {
+  // Handle Delete key
+  if (event.key === 'Delete' && selectedRow.value) {
+    handleDeleteRow(selectedRow.value);
+    event.preventDefault();
+    return;
+  }
+  
+  // Handle Ctrl/Cmd + S only when we have pending changes
+  if ((event.ctrlKey || event.metaKey) && event.key === 's') {
+    const hasPendingChanges = editingCell.value || (selectedRow.value && deletedRows.value.has(selectedRow.value));
+    
+    if (hasPendingChanges) {
+      // Handle save for editing cell
+      if (editingCell.value) {
+        saveCell(editingCell.value.row, editingCell.value.field);
+        event.preventDefault();
+        return;
+      }
+      
+      // Handle save for deleted row
+      if (selectedRow.value && deletedRows.value.has(selectedRow.value)) {
+        handleSaveDelete();
+        event.preventDefault();
+        return;
+      }
+    }
+  }
 };
 
 // Computed property để hiển thị full type (type + length)
@@ -144,6 +296,36 @@ const columnsWithFullType = computed(() => {
     ...column,
     fullType: column.type || 'Unknown'
   }));
+});
+
+// Check if there are unsaved changes
+const hasUnsavedChanges = () => {
+  return editingCell.value !== null || 
+         modifiedCells.value.size > 0 || 
+         deletedRows.value.size > 0;
+};
+
+// Clear all unsaved changes
+const clearUnsavedChanges = () => {
+  editingCell.value = null;
+  modifiedCells.value.clear();
+  deletedRows.value.clear();
+  selectedRow.value = null;
+};
+
+// Expose methods for parent component
+defineExpose({
+  hasUnsavedChanges,
+  clearUnsavedChanges
+});
+
+// Lifecycle hooks
+onMounted(() => {
+  document.addEventListener('keydown', handleKeydown);
+});
+
+onUnmounted(() => {
+  document.removeEventListener('keydown', handleKeydown);
 });
 </script>
 
@@ -376,5 +558,168 @@ const columnsWithFullType = computed(() => {
   padding: 2rem 0;
 }
 
+/* Cell content styles */
+.cell-content {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  padding: 8px 12px;
+  transition: all 0.2s ease;
+}
+
+.truncated-text {
+  display: block;
+  width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+  padding: 4px 0;
+  color: var(--el-text-color-primary);
+  transition: color 0.2s ease;
+}
+
+.truncated-text:hover {
+  color: var(--el-color-primary);
+}
+
+/* Modified cell styling */
+.modified-cell {
+  background-color: var(--el-color-warning-light-9) !important;
+  border-left: 3px solid var(--el-color-warning) !important;
+}
+
+.modified-cell .truncated-text {
+  color: var(--el-color-warning-dark-2);
+  font-weight: 500;
+}
+
+/* Deleted row styling */
+.deleted-row {
+  background-color: var(--el-color-danger-light-9) !important;
+  opacity: 0.7;
+}
+
+.deleted-row .cell-content {
+  background-color: var(--el-color-danger-light-9) !important;
+  border-left: 3px solid var(--el-color-danger) !important;
+}
+
+.deleted-row .truncated-text {
+  color: var(--el-color-danger-dark-2);
+  text-decoration: line-through;
+}
+
+/* Dark mode styles for modified cells */
+.dark .modified-cell {
+  background-color: rgba(230, 162, 60, 0.1) !important;
+  border-left-color: #e6a23c !important;
+}
+
+.dark .modified-cell .truncated-text {
+  color: #e6a23c;
+}
+
+/* Dark mode styles for deleted rows */
+.dark .deleted-row {
+  background-color: rgba(245, 108, 108, 0.1) !important;
+}
+
+.dark .deleted-row .cell-content {
+  background-color: rgba(245, 108, 108, 0.1) !important;
+  border-left-color: #f56c6c !important;
+}
+
+.dark .deleted-row .truncated-text {
+  color: #f56c6c;
+}
+
+/* Table row hover effects */
+:deep(.el-table__row:hover) {
+  background-color: var(--el-color-primary-light-9) !important;
+}
+
+:deep(.el-table__row:hover .cell-content) {
+  background-color: transparent;
+}
+
+:deep(.el-table__row:hover .truncated-text) {
+  color: var(--el-color-primary);
+}
+
+/* Current row highlighting */
+:deep(.el-table__row.current-row) {
+  background-color: var(--el-color-primary-light-8) !important;
+}
+
+:deep(.el-table__row.current-row .cell-content) {
+  background-color: transparent;
+}
+
+:deep(.el-table__row.current-row .truncated-text) {
+  color: var(--el-color-primary);
+  font-weight: 500;
+}
+
+/* Dark mode specific styles */
+.dark :deep(.el-table__row:hover) {
+  background-color: rgba(64, 158, 255, 0.1) !important;
+}
+
+.dark :deep(.el-table__row.current-row) {
+  background-color: rgba(64, 158, 255, 0.15) !important;
+}
+
+.dark .truncated-text {
+  color: var(--el-text-color-primary);
+}
+
+.dark .truncated-text:hover {
+  color: #409eff;
+}
+
+/* Table header styles */
+:deep(.el-table__header-wrapper) {
+  background-color: var(--el-bg-color-page);
+}
+
+:deep(.el-table__header th) {
+  background-color: var(--el-bg-color-page) !important;
+  color: var(--el-text-color-primary) !important;
+  border-bottom: 1px solid var(--el-border-color);
+}
+
+/* Table body styles */
+:deep(.el-table__body-wrapper) {
+  background-color: var(--el-bg-color);
+}
+
+:deep(.el-table__body td) {
+  background-color: var(--el-bg-color) !important;
+  color: var(--el-text-color-primary) !important;
+  border-bottom: 1px solid var(--el-border-color-light);
+}
+
+/* Dark mode table styles */
+.dark :deep(.el-table__header-wrapper) {
+  background-color: #2d3748;
+}
+
+.dark :deep(.el-table__header th) {
+  background-color: #2d3748 !important;
+  color: var(--el-text-color-primary) !important;
+  border-bottom-color: #4a5568;
+}
+
+.dark :deep(.el-table__body-wrapper) {
+  background-color: #1a202c;
+}
+
+.dark :deep(.el-table__body td) {
+  background-color: #1a202c !important;
+  color: var(--el-text-color-primary) !important;
+  border-bottom-color: #4a5568;
+}
 
 </style>

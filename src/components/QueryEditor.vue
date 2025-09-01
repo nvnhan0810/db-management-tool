@@ -1,7 +1,16 @@
 <template>
   <div class="query-editor">
     <!-- Title Bar -->
-            <!-- QueryTitleBar removed - functionality moved to CustomTitleBar -->
+    <CustomTitleBar 
+      :current-connection="props.connection"
+      :active-tab="tableStore.activeTab || undefined"
+      :sidebar-visible="showRowDetailSidebar"
+      @tab-change="handleTabChange"
+      @add-query="handleAddQuery"
+      @new-connection="handleNewConnection"
+      @disconnect="handleDisconnect"
+      @toggle-sidebar="handleToggleSidebar"
+    />
     
     <div class="query-content">
       <!-- Database Tables Sidebar -->
@@ -15,13 +24,18 @@
       </el-aside>
       
       <!-- Main Content Area - RightSidebar is now the main content -->
-      <el-main>
+      <el-main :class="{ 'with-row-detail': showRowDetailSidebar && hasSelectedRow }">
         <RightSidebar
-          :visible="true"
+          :visible="showRightSidebar"
           :active-table-name="activeTableName || undefined"
           :connection-id="props.connection?.id"
+          :show-row-detail="showRowDetailSidebar && hasSelectedRow"
+          :is-sidebar-hidden="isSidebarHidden"
           ref="rightSidebarRef"
           @table-selected="handleTableSelected"
+          @close-sidebar="handleCloseSidebar"
+          @show-sidebar="handleShowSidebar"
+          @row-selected="handleRowSelected"
         />
       </el-main>
     </div>
@@ -29,10 +43,12 @@
 </template>
 
 <script setup lang="ts">
+import { ElMessage, ElMessageBox } from 'element-plus';
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import type { ActiveConnection } from '../composables/useConnections';
 import { useDatabase } from '../composables/useDatabase';
 import { useTableStore } from '../stores/tableStore';
+import CustomTitleBar from './CustomTitleBar.vue';
 import DatabaseTables from './DatabaseTables.vue';
 import RightSidebar from './RightSidebar.vue';
 
@@ -62,7 +78,10 @@ const showTablesSidebar = computed(() => {
 // Tables state
 const tables = ref<Array<{ name: string; type?: string }>>([]);
 const isLoadingTables = ref(false);
-const showRightSidebar = ref(false);
+const showRightSidebar = ref(true); // Always show right sidebar
+const showRowDetailSidebar = ref(false); // Toggle for row detail sidebar
+const isSidebarHidden = ref(false); // Track if sidebar is manually hidden
+const hasSelectedRow = ref(false); // Track if there's a selected row
 const rightSidebarRef = ref();
 const activeTableName = ref<string | null>(null);
 
@@ -136,15 +155,69 @@ const handleTableSelected = (tableName: string) => {
   activeTableName.value = tableName;
 };
 
+// Handle tab change
+const handleTabChange = (tabId: string) => {
+  tableStore.activeTab = tabId;
+};
+
+// Handle add query
+const handleAddQuery = () => {
+  tableStore.addQueryTab();
+};
+
+// Handle new connection
+const handleNewConnection = () => {
+  emit('new-connection');
+};
+
+// Handle disconnect
+const handleDisconnect = async () => {
+  if (props.connection?.id) {
+    await disconnect();
+  }
+};
+
+// Handle toggle sidebar
+const handleToggleSidebar = () => {
+  if (isSidebarHidden.value) {
+    // If sidebar is hidden, check if there's a selected row
+    if (!hasSelectedRow.value) {
+      ElMessage.info('No Rows Selected');
+      return;
+    }
+    // Show sidebar
+    isSidebarHidden.value = false;
+    showRowDetailSidebar.value = true;
+  } else {
+    // If sidebar is visible, hide it
+    isSidebarHidden.value = true;
+    showRowDetailSidebar.value = false;
+  }
+};
+
 // Method to add query tab
 const addQueryTab = () => {
   tableStore.addQueryTab();
 };
 
-// Expose methods for parent component
-defineExpose({
-  addQueryTab
-});
+// Handle close sidebar
+const handleCloseSidebar = () => {
+  isSidebarHidden.value = true;
+  showRowDetailSidebar.value = false;
+};
+
+// Handle show sidebar
+const handleShowSidebar = () => {
+  isSidebarHidden.value = false;
+  showRowDetailSidebar.value = true;
+};
+
+// Handle row selected
+const handleRowSelected = (row: any) => {
+  hasSelectedRow.value = !!row;
+};
+
+// Expose methods for parent component (moved to end of file)
 
 // Method to load table structure from database
 const loadTableStructure = async (tableName: string) => {
@@ -223,8 +296,82 @@ const loadTables = async () => {
   }
 };
 
+// Handle reload data with CMD + R
+const handleReloadData = async () => {
+  try {
+    // Check if we have an active table tab
+    const activeTabContent = tableStore.getActiveTabContent();
+    
+    if (activeTabContent?.type === 'table') {
+      // We have an active table - check for unsaved changes
+      const hasUnsavedChanges = await checkForUnsavedChanges();
+      
+      if (hasUnsavedChanges) {
+        // Show confirmation dialog
+        const confirmed = await showDiscardChangesDialog();
+        if (!confirmed) {
+          console.log('User cancelled reload due to unsaved changes');
+          return;
+        }
+        // Clear unsaved changes if user confirmed
+        if (rightSidebarRef.value && rightSidebarRef.value.clearUnsavedChanges) {
+          rightSidebarRef.value.clearUnsavedChanges();
+        }
+      }
+      
+      // Reload table data
+
+      if (rightSidebarRef.value && rightSidebarRef.value.handleRetryLoadData) {
+        await rightSidebarRef.value.handleRetryLoadData();
+      }
+      
+      ElMessage.success('Table data reloaded successfully');
+    } else if (props.connection?.isConnected && props.connection?.id) {
+      // No active table but we have a connection - reload table list
+      console.log('Reloading table list for connection:', props.connection.id);
+      await loadTables();
+      ElMessage.success('Table list reloaded successfully');
+    } else {
+      // No active table and no connection - skip
+      console.log('No active table or connection - skipping reload');
+      ElMessage.info('No data to reload');
+    }
+  } catch (error) {
+    console.error('Error during reload:', error);
+    ElMessage.error('Failed to reload data');
+  }
+};
+
+// Check for unsaved changes in the active table
+const checkForUnsavedChanges = async (): Promise<boolean> => {
+  if (rightSidebarRef.value && rightSidebarRef.value.hasUnsavedChanges) {
+    return rightSidebarRef.value.hasUnsavedChanges();
+  }
+  return false;
+};
+
+// Show confirmation dialog for discarding changes
+const showDiscardChangesDialog = async (): Promise<boolean> => {
+  return new Promise((resolve) => {
+    ElMessageBox.confirm(
+      'You have unsaved changes. Are you sure you want to discard them and reload the data?',
+      'Discard Changes',
+      {
+        confirmButtonText: 'Discard & Reload',
+        cancelButtonText: 'Cancel',
+        type: 'warning',
+        distinguishCancelAndClose: true,
+      }
+    ).then(() => {
+      resolve(true);
+    }).catch(() => {
+      resolve(false);
+    });
+  });
+};
+
 // Keyboard shortcuts
-const handleKeydown = (event: KeyboardEvent) => {
+const handleKeydown = async (event: KeyboardEvent) => {
   // Ctrl+N (Windows/Linux) or Cmd+N (Mac) for new connection
   // Only allow when we have an active connection
   if ((event.ctrlKey || event.metaKey) && event.key === 'n') {
@@ -236,14 +383,18 @@ const handleKeydown = (event: KeyboardEvent) => {
       console.log('Ctrl+N pressed but no active connection - ignored');
     }
   }
+  
+  // CMD + R is now handled by Home.vue and calls handleReloadData directly
+  // No need to handle it here anymore
 };
 
 onMounted(() => {
-  document.addEventListener('keydown', handleKeydown);
+  // Add event listener with high priority (capture phase)
+  document.addEventListener('keydown', handleKeydown, { capture: true, passive: false });
 });
 
 onUnmounted(() => {
-  document.removeEventListener('keydown', handleKeydown);
+  document.removeEventListener('keydown', handleKeydown, { capture: true });
 });
 
 // Watch for connection changes to load tables
@@ -284,6 +435,11 @@ const clearQuery = () => {
   query.value = '';
 };
 
+// Expose methods for parent component
+defineExpose({
+  addQueryTab,
+  handleReloadData
+});
 
 </script>
 
@@ -334,5 +490,10 @@ const clearQuery = () => {
 .el-main {
   padding: 0;
   overflow: hidden;
+  transition: margin-right 0.3s ease;
+}
+
+.el-main.with-row-detail {
+  margin-right: 400px;
 }
 </style> 
