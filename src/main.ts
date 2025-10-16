@@ -14,14 +14,21 @@ const createWindow = () => {
     width: 1200,
     height: 800,
     frame: false, // Disable default title bar
-    titleBarStyle: 'hidden',
+    titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : 'hidden',
+    titleBarOverlay: process.platform === 'darwin' ? {
+      color: '#f8f9fa',
+      symbolColor: '#212529',
+      height: 32
+    } : false,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       nodeIntegration: false,
       contextIsolation: true,
     },
-    // Set dark theme
-    backgroundColor: '#1a202c',
+    // Set background color based on platform
+    backgroundColor: process.platform === 'darwin' ? '#f8f9fa' : '#1a202c',
+    // Enable vibrancy on macOS
+    vibrancy: process.platform === 'darwin' ? 'under-window' : undefined,
   });
 
   // Prevent reload when there are active database connections
@@ -45,12 +52,12 @@ const createWindow = () => {
   // and load the index.html of the app.
   if (MAIN_WINDOW_VITE_DEV_SERVER_URL) {
     mainWindow.loadURL(MAIN_WINDOW_VITE_DEV_SERVER_URL);
+    
+    // Open the DevTools.
+    mainWindow.webContents.openDevTools();
   } else {
     mainWindow.loadFile(path.join(__dirname, `../renderer/${MAIN_WINDOW_VITE_NAME}/index.html`));
   }
-
-  // Open the DevTools.
-  mainWindow.webContents.openDevTools();
 };
 
 // This method will be called when Electron has finished

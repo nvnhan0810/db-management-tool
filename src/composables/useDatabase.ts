@@ -1,5 +1,6 @@
 import { ref, toRaw } from 'vue';
-import type { DatabaseConnection, QueryResult } from '../types';
+import type { DatabaseConnection } from '@/types/connection';
+import type { QueryResult } from '@/types/query';
 
 // Create singleton state outside the function
 const isConnected = ref(false);
@@ -16,7 +17,7 @@ export function useDatabase() {
       console.log('Attempting to connect with:', plainConnection);
       const success = await window.electron.invoke('database:connect', plainConnection);
       console.log('Connection result:', success);
-      
+
       if (success) {
         isConnected.value = true;
         currentConnection.value = connection;
@@ -70,34 +71,34 @@ export function useDatabase() {
     }
 
     try {
-      const result = await window.electron.invoke('database:query', { 
-        connectionId: currentConnection.value.id, 
-        query 
+      const result = await window.electron.invoke('database:query', {
+        connectionId: currentConnection.value.id,
+        query
       });
-      
+
       queryResult.value = result;
       error.value = result.success ? null : result.error || 'Query execution failed';
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : '';
-      
+
       // Check if error is connection-related and try to reconnect
-      if (errorMessage.includes('connection is in closed state') || 
+      if (errorMessage.includes('connection is in closed state') ||
           errorMessage.includes('ECONNREFUSED') ||
           errorMessage.includes('connection lost')) {
-        
+
         console.log('Connection error detected in executeQuery, attempting to reconnect...');
-        
+
         try {
           console.log('Attempting to reconnect to:', currentConnection.value.name);
           const reconnected = await connect(currentConnection.value);
           if (reconnected) {
             console.log('Reconnection successful, retrying query...');
             // Retry the original query
-            const retryResult = await window.electron.invoke('database:query', { 
-              connectionId: currentConnection.value.id, 
-              query 
+            const retryResult = await window.electron.invoke('database:query', {
+              connectionId: currentConnection.value.id,
+              query
             });
-            
+
             queryResult.value = retryResult;
             error.value = retryResult.success ? null : retryResult.error || 'Query execution failed';
             return;
@@ -106,7 +107,7 @@ export function useDatabase() {
           console.log('Reconnection failed:', reconnectErr);
         }
       }
-      
+
       error.value = err instanceof Error ? err.message : 'Failed to execute query';
     }
   };
@@ -114,27 +115,27 @@ export function useDatabase() {
   const getTables = async (connectionId?: string): Promise<Array<{ name: string; type?: string }>> => {
     // Use provided connectionId or fall back to currentConnection
     const targetConnectionId = connectionId || currentConnection.value?.id;
-    
+
     if (!targetConnectionId) {
       console.warn('No connection ID provided for getTables');
       return []; // Return empty array instead of throwing error
     }
 
     try {
-      const tables = await window.electron.invoke('database:getTables', { 
-        connectionId: targetConnectionId 
+      const tables = await window.electron.invoke('database:getTables', {
+        connectionId: targetConnectionId
       });
-      
+
       return tables || []; // Ensure we always return an array
     } catch (err) {
       console.error('Error getting tables for connection:', targetConnectionId, err);
-      
+
       // Check if error is connection-related and try to reconnect
       const errorMessage = err instanceof Error ? err.message : '';
-      if (errorMessage.includes('connection is in closed state') || 
+      if (errorMessage.includes('connection is in closed state') ||
           errorMessage.includes('ECONNREFUSED') ||
           errorMessage.includes('connection lost')) {
-        
+
         // Try to reconnect to the same connection
         try {
           const connection = currentConnection.value;
@@ -142,8 +143,8 @@ export function useDatabase() {
             const reconnected = await connect(connection);
             if (reconnected) {
               // Retry the original request
-              const retryTables = await window.electron.invoke('database:getTables', { 
-                connectionId: targetConnectionId 
+              const retryTables = await window.electron.invoke('database:getTables', {
+                connectionId: targetConnectionId
               });
               return retryTables || [];
             }
@@ -152,7 +153,7 @@ export function useDatabase() {
           // Ignore reconnect errors
         }
       }
-      
+
       return []; // Return empty array on error instead of throwing
     }
   };
@@ -160,27 +161,27 @@ export function useDatabase() {
   const getDatabases = async (connectionId?: string): Promise<Array<{ name: string; tableCount?: number }>> => {
     // Use provided connectionId or fall back to currentConnection
     const targetConnectionId = connectionId || currentConnection.value?.id;
-    
+
     if (!targetConnectionId) {
       console.warn('No connection ID provided for getDatabases');
       return []; // Return empty array instead of throwing error
     }
 
     try {
-      const databases = await window.electron.invoke('database:getDatabases', { 
-        connectionId: targetConnectionId 
+      const databases = await window.electron.invoke('database:getDatabases', {
+        connectionId: targetConnectionId
       });
-      
+
       return databases || []; // Ensure we always return an array
     } catch (err) {
       console.error('Error getting databases for connection:', targetConnectionId, err);
-      
+
       // Check if error is connection-related and try to reconnect
       const errorMessage = err instanceof Error ? err.message : '';
-      if (errorMessage.includes('connection is in closed state') || 
+      if (errorMessage.includes('connection is in closed state') ||
           errorMessage.includes('ECONNREFUSED') ||
           errorMessage.includes('connection lost')) {
-        
+
         // Try to reconnect to the same connection
         try {
           const connection = currentConnection.value;
@@ -188,8 +189,8 @@ export function useDatabase() {
             const reconnected = await connect(connection);
             if (reconnected) {
               // Retry the original request
-              const retryDatabases = await window.electron.invoke('database:getDatabases', { 
-                connectionId: targetConnectionId 
+              const retryDatabases = await window.electron.invoke('database:getDatabases', {
+                connectionId: targetConnectionId
               });
               return retryDatabases || [];
             }
@@ -198,15 +199,15 @@ export function useDatabase() {
           console.error('Reconnection failed:', reconnectErr);
         }
       }
-      
+
       return []; // Return empty array on error
     }
   };
 
   const getTableStructure = async (connectionId: string, tableName: string): Promise<{
-    columns: Array<{ 
-      name: string; 
-      type: string; 
+    columns: Array<{
+      name: string;
+      type: string;
       nullable: boolean;
       ordinal_position?: number;
       character_set?: string;
@@ -228,24 +229,24 @@ export function useDatabase() {
       if (!window.electron || !window.electron.invoke) {
         throw new Error('window.electron.invoke is not available');
       }
-      
-      const structure = await window.electron.invoke('database:getTableStructure', { 
-        connectionId, 
-        tableName 
+
+      const structure = await window.electron.invoke('database:getTableStructure', {
+        connectionId,
+        tableName
       });
-      
+
       return structure;
     } catch (err) {
       console.error('Error getting table structure:', err);
-      
+
       // Check if error is connection-related and try to reconnect
       const errorMessage = err instanceof Error ? err.message : '';
-      if (errorMessage.includes('connection is in closed state') || 
+      if (errorMessage.includes('connection is in closed state') ||
           errorMessage.includes('ECONNREFUSED') ||
           errorMessage.includes('connection lost')) {
-        
+
         console.log('Connection error detected, attempting to reconnect...');
-        
+
         // Try to reconnect to the same connection
         try {
           const connection = currentConnection.value;
@@ -255,9 +256,9 @@ export function useDatabase() {
             if (reconnected) {
               console.log('Reconnection successful, retrying getTableStructure...');
               // Retry the original request
-              const retryStructure = await window.electron.invoke('database:getTableStructure', { 
-                connectionId, 
-                tableName 
+              const retryStructure = await window.electron.invoke('database:getTableStructure', {
+                connectionId,
+                tableName
               });
               return retryStructure;
             }
@@ -266,7 +267,7 @@ export function useDatabase() {
           console.log('Reconnection failed:', reconnectErr);
         }
       }
-      
+
       throw err;
     }
   };
@@ -275,7 +276,7 @@ export function useDatabase() {
   const refreshConnectionStatus = async (): Promise<boolean> => {
     try {
       const hasConnections = await hasActiveConnections();
-      
+
       if (!hasConnections && currentConnection.value) {
         console.log('Connection lost, attempting to reconnect...');
         const reconnected = await connect(currentConnection.value);
@@ -289,7 +290,7 @@ export function useDatabase() {
           return false;
         }
       }
-      
+
       return hasConnections;
     } catch (err) {
       console.error('Error refreshing connection status:', err);
@@ -312,4 +313,4 @@ export function useDatabase() {
     getTableStructure,
     refreshConnectionStatus,
   };
-} 
+}

@@ -1,7 +1,7 @@
 <template>
   <div class="query-editor">
     <!-- Title Bar -->
-    <CustomTitleBar 
+    <!-- <CustomTitleBar 
       :current-connection="props.connection"
       :active-tab="tableStore.activeTab || undefined"
       :sidebar-visible="showRowDetailSidebar"
@@ -11,7 +11,7 @@
       @disconnect="handleDisconnect"
       @select-database="handleSelectDatabase"
       @toggle-sidebar="handleToggleSidebar"
-    />
+    /> -->
     
     <div class="query-content">
       <!-- Show content only when connected and has database -->

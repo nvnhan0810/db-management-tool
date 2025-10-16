@@ -1,6 +1,6 @@
 import { computed, ref, watch } from 'vue';
 import { storageService, type SavedConnection } from '../services/storage';
-import type { DatabaseConnection } from '../types';
+import type { DatabaseConnection } from '@/types/connection';
 
 export function useSavedConnections() {
   const savedConnections = ref<SavedConnection[]>([]);
@@ -11,7 +11,7 @@ export function useSavedConnections() {
   const loadSavedConnections = async () => {
     isLoading.value = true;
     error.value = null;
-    
+
     try {
       savedConnections.value = await storageService.getSavedConnections();
     } catch (err) {
@@ -24,7 +24,7 @@ export function useSavedConnections() {
   // Save a new connection
   const saveConnection = async (connection: DatabaseConnection, name: string) => {
     error.value = null;
-    
+
     try {
       await storageService.saveConnection(connection, name);
       await loadSavedConnections(); // Reload the list
@@ -38,7 +38,7 @@ export function useSavedConnections() {
   // Delete a saved connection
   const deleteConnection = async (connectionId: string) => {
     error.value = null;
-    
+
     try {
       await storageService.deleteConnection(connectionId);
       await loadSavedConnections(); // Reload the list
@@ -70,8 +70,8 @@ export function useSavedConnections() {
 
   // Computed properties
   const hasConnections = computed(() => savedConnections.value.length > 0);
-  
-  const recentConnections = computed(() => 
+
+  const recentConnections = computed(() =>
     savedConnections.value.slice(0, 5) // Show only 5 most recent
   );
 
@@ -88,11 +88,11 @@ export function useSavedConnections() {
     savedConnections,
     isLoading,
     error,
-    
+
     // Computed
     hasConnections,
     recentConnections,
-    
+
     // Methods
     loadSavedConnections,
     saveConnection,

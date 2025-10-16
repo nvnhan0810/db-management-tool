@@ -2,9 +2,10 @@
 // https://www.electronjs.org/docs/latest/tutorial/process-model#preload-scripts
 import { contextBridge, ipcRenderer } from 'electron';
 
-const validChannels: string[] = [];
-
-const invokeChannels = ['database:connect', 'database:disconnect', 'database:disconnectAll', 'database:hasActiveConnections', 'database:query', 'database:getTables', 'database:getTableStructure', 'database:getDatabases', 'database:executeQuery', 'reload:prevent'];
+const invokeChannels = [
+  'database:connect', 'database:disconnect', 'database:disconnectAll', 'database:hasActiveConnections', 'database:query', 'database:getTables', 'database:getTableStructure', 'database:getDatabases', 'database:executeQuery', 'reload:prevent',
+  'window:minimize', 'window:maximize', 'window:close'
+];
 
 contextBridge.exposeInMainWorld(
   'electron',

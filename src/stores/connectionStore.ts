@@ -1,8 +1,8 @@
 import { defineStore } from 'pinia';
 import { ref, computed } from 'vue';
-import type { DatabaseConnection } from '../types';
+import type { DatabaseConnection } from '@/types/connection';
 
-export const useConnectionStore = defineStore('connection', () => {
+export const useConnectionStore = defineStore('connections', () => {
   // State
   const connections = ref<DatabaseConnection[]>([]);
   const activeConnection = ref<DatabaseConnection | null>(null);
@@ -27,7 +27,7 @@ export const useConnectionStore = defineStore('connection', () => {
     if (index > -1) {
       connections.value.splice(index, 1);
     }
-    
+
     if (activeConnection.value?.id === connectionId) {
       activeConnection.value = null;
       isConnected.value = false;
@@ -57,11 +57,11 @@ export const useConnectionStore = defineStore('connection', () => {
     activeConnection,
     isConnected,
     error,
-    
+
     // Getters
     hasConnections,
     activeConnectionId,
-    
+
     // Actions
     setConnections,
     addConnection,

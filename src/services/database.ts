@@ -7,6 +7,7 @@ class DatabaseService {
 
   async connect(connection: DatabaseConnection): Promise<boolean> {
     try {
+      console.log('Connecting to database:', connection);
       switch (connection.type) {
         case 'mysql':
           const mysqlConnection = await mysql.createConnection({

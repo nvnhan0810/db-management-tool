@@ -2,25 +2,23 @@
   <div class="connection-layout">
     <div class="connection-wrapper">
       <!-- Left Side - Connection Form -->
-      <div class="connection-form">
-        <h3>{{ isEditing ? 'Edit Connection' : 'Database Connection' }}</h3>
-        <el-form :model="form" label-width="130px">
-          <el-form-item label="Connection Name">
+      <!-- <div class="connection-form"> -->
+        <!-- <h3>{{ isEditing ? 'Edit Connection' : 'Database Connection' }}</h3> -->
+        <!-- <el-form :model="form" label-width="130px"> -->
+          <!-- <el-form-item label="Connection Name">
             <el-input v-model="form.name"
               placeholder="Enter connection name (optional for connect/test, required for save)"
               :class="{ 'is-error': nameError }" />
             <div v-if="nameError" class="field-error">{{ nameError }}</div>
-          </el-form-item>
+          </el-form-item> -->
 
-          <el-form-item label="Database Type">
+          <!-- <el-form-item label="Database Type">
             <el-select v-model="form.type" placeholder="Select database type">
               <el-option label="MySQL" value="mysql" />
-              <!-- <el-option label="PostgreSQL" value="postgresql" />
-            <el-option label="SQLite" value="sqlite" /> -->
             </el-select>
-          </el-form-item>
+          </el-form-item> -->
 
-          <template v-if="form.type !== 'sqlite'">
+          <!-- <template v-if="form.type !== 'sqlite'">
             <el-form-item label="Host">
               <el-input v-model="form.host" placeholder="localhost" />
             </el-form-item>
@@ -36,16 +34,16 @@
             <el-form-item label="Password">
               <el-input v-model="form.password" type="password" />
             </el-form-item>
-          </template>
+          </template> -->
 
-          <el-form-item label="Database">
+          <!-- <el-form-item label="Database">
             <el-input v-model="form.database"
               :placeholder="form.type === 'sqlite' ? 'Path to database file' : 'Database name (optional)'" />
             <div class="field-hint">Leave empty to connect without selecting a database</div>
-          </el-form-item>
+          </el-form-item> -->
 
 
-          <div class="form-actions">
+          <!-- <div class="form-actions">
             <el-button v-if="isEditing" type="info" @click="resetForm">
               New
             </el-button>
@@ -58,17 +56,18 @@
             <el-button type="warning" @click="handleSave" :loading="isSaving">
               {{ isEditing ? 'Update' : 'Save' }}
             </el-button>
-          </div>
-        </el-form>
+          </div> -->
+        <!-- </el-form> -->
 
-        <div v-if="error" class="error-message">
-          {{ error }}
-        </div>
-      </div>
+        <!-- <div v-if="error" class="error-message"> -->
+          <!-- {{ error }} -->
+        <!-- </div> -->
+      <!-- </div> -->
 
       <!-- Right Side - Saved Connections -->
       <div class="saved-connections-sidebar">
-        <SavedConnections :refresh-key="refreshKey" @load-connection="loadSavedConnection" />
+        <div>123</div>
+        <!-- <SavedConnections :refresh-key="refreshKey" @load-connection="loadSavedConnection" /> -->
       </div>
     </div>
 
@@ -97,20 +96,20 @@
 <script setup lang="ts">
 import { ElMessage } from 'element-plus';
 import { onMounted, reactive, ref, watch } from 'vue';
-import { useConnections } from '../composables/useConnections';
+// import { useConnections } from '../composables/useConnections';
 import { useDatabase } from '../composables/useDatabase';
 import { useSavedConnections } from '../composables/useSavedConnections';
-import type { DatabaseConnection } from '../types';
+import type { DatabaseConnection } from '@/types/connection';
 import SavedConnections from './SavedConnections.vue';
 
 const { connect, disconnect, error } = useDatabase();
-const { 
-  loadSavedConnections, 
-  saveConnection, 
+const {
+  loadSavedConnections,
+  saveConnection,
   getDecryptedConnection,
-  updateLastUsed 
+  updateLastUsed
 } = useSavedConnections();
-const { activeConnections } = useConnections();
+// const { activeConnections } = useConnections();
 
 const isConnecting = ref(false);
 
@@ -152,7 +151,7 @@ watch(form, () => {
 const loadSavedConnection = async (savedConnection: any) => {
   try {
     const connection = await getDecryptedConnection(savedConnection);
-    
+
     // Create a clean connection object
     const cleanConnection = {
       id: connection.id,
@@ -163,14 +162,14 @@ const loadSavedConnection = async (savedConnection: any) => {
       password: connection.password,
       database: connection.database
     };
-    
+
     Object.assign(form, cleanConnection);
     form.name = savedConnection.name;
-    
+
     // Set editing mode
     isEditing.value = true;
     originalConnectionId.value = savedConnection.id;
-    
+
     console.log('Loaded saved connection:', cleanConnection);
   } catch (err) {
     console.error('Failed to load saved connection:', err);
@@ -179,11 +178,11 @@ const loadSavedConnection = async (savedConnection: any) => {
 
 const validateForm = () => {
   nameError.value = '';
-  
+
   if (!form.host || !form.username) {
     return 'Please fill in all required fields (Host and Username)';
   }
-  
+
   return null;
 };
 
@@ -207,7 +206,7 @@ const handleConnect = async () => {
     error.value = validationError;
     return;
   }
-  
+
   error.value = null;
   isConnecting.value = true;
   try {
@@ -215,7 +214,7 @@ const handleConnect = async () => {
     if (success) {
       // Update last used if it's a saved connection
       await updateLastUsed(form.id);
-      
+
       // Create a clean DatabaseConnection object without extra properties
       const cleanConnection: DatabaseConnection = {
         id: form.id,
@@ -226,10 +225,10 @@ const handleConnect = async () => {
         password: form.password,
         database: form.database
       };
-      
+
       // Emit connection created event to add to active connections
       const connectionName = form.name || `${form.type} - ${form.host}`;
-      
+
       // Emit connection created event to add to active connections in current window
       emit('connection-created', cleanConnection, connectionName);
     } else {
@@ -256,7 +255,7 @@ const handleTest = async () => {
     error.value = validationError;
     return;
   }
-  
+
   error.value = null;
   isTesting.value = true;
   try {
@@ -293,14 +292,14 @@ const handleSave = async () => {
   if (!validateName()) {
     return;
   }
-  
+
   // Then validate all other required fields
   const validationError = validateForm();
   if (validationError) {
     error.value = validationError;
     return;
   }
-  
+
   error.value = null;
   isSaving.value = true;
   try {
@@ -313,7 +312,7 @@ const handleSave = async () => {
       await saveConnection(form, form.name!.trim());
       ElMessage.success('Connection saved successfully!');
     }
-    
+
     // Reset form and editing state
     resetForm();
     // Force refresh of saved connections list
@@ -336,219 +335,17 @@ const resetForm = () => {
   form.password = '';
   form.database = '';
   form.name = '';
-  
+
   // Reset editing state
   isEditing.value = false;
   originalConnectionId.value = null;
-  
+
   // Clear errors
   error.value = null;
   nameError.value = '';
 };
 </script>
 
-<style scoped>
-.connection-layout {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  height: 100vh;
-  width: 100vw;
-}
-
-.connection-wrapper {
-  display: flex;
-  gap: 2rem;
-  margin: auto;
-  min-width: 800px;
-}
-
-.connection-form {
-  flex: 1;
-  max-width: 500px;
-  padding: 1.5rem;
-  background: var(--el-bg-color);
-  border-radius: 8px;
-  border: 1px solid var(--el-border-color);
-  height: fit-content;
-}
-
-.connection-form h3 {
-  margin-bottom: 1.5rem;
-  color: var(--el-text-color-primary);
-}
-
-.saved-connections-sidebar {
-  flex: 1;
-  max-width: 400px;
-  padding: 1.5rem;
-  background: var(--el-bg-color);
-  border-radius: 8px;
-  border: 1px solid var(--el-border-color);
-  height: fit-content;
-}
-
-.form-actions {
-  display: flex;
-  gap: 0.5rem;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-}
-
-.form-actions .el-button {
-  margin: 0;
-}
-
-@media (max-width: 768px) {
-  .form-actions button {
-    flex: 1;
-  }
-}
-
-.error-message {
-  color: var(--el-color-danger);
-  padding: 0.5rem;
-  background-color: var(--el-color-danger-light-9);
-  border-radius: 4px;
-  margin-top: 1rem;
-}
-
-.field-error {
-  color: var(--el-color-danger);
-  font-size: 0.75rem;
-  margin-top: 0.25rem;
-}
-
-.field-hint {
-  color: var(--el-text-color-secondary);
-  font-size: 0.75rem;
-  margin-top: 0.25rem;
-}
-
-.test-result-content {
-  text-align: center;
-  padding: 1rem 0;
-}
-
-.test-result-icon {
-  margin-bottom: 1rem;
-}
-
-.success-icon {
-  font-size: 48px;
-  color: #67C23A;
-  font-weight: bold;
-}
-
-.error-icon {
-  font-size: 48px;
-  color: #F56C6C;
-  font-weight: bold;
-}
-
-.test-result-message {
-  color: var(--el-text-color-regular);
-  margin: 0;
-  line-height: 1.5;
-}
-
-.dialog-footer {
-  display: flex;
-  justify-content: center;
-}
-
-/* Responsive design */
-@media (max-width: 768px) {
-  .connection-layout {
-    flex-direction: column;
-    gap: 1rem;
-  }
-  
-  .connection-form,
-  .saved-connections-sidebar {
-    max-width: none;
-  }
-}
-
-/* Dark mode styles */
-.dark .connection-form,
-.dark .saved-connections-sidebar {
-  background: #2d3748 !important;
-  border-color: #4a5568 !important;
-}
-
-.dark .connection-form h3 {
-  color: #f7fafc !important;
-}
-
-/* Force dark mode for all input elements */
-.dark .connection-form .el-input__inner,
-.dark .connection-form .el-textarea__inner,
-.dark .connection-form .el-select .el-input__inner,
-.dark .connection-form .el-input-number .el-input__inner {
-  background-color: #1a202c !important;
-  border-color: #4a5568 !important;
-  color: #f7fafc !important;
-}
-
-.dark .connection-form .el-input__inner::placeholder,
-.dark .connection-form .el-textarea__inner::placeholder {
-  color: #a0aec0 !important;
-}
-
-.dark .connection-form .el-input__inner:focus,
-.dark .connection-form .el-textarea__inner:focus,
-.dark .connection-form .el-select .el-input__inner:focus,
-.dark .connection-form .el-input-number .el-input__inner:focus {
-  border-color: #409eff !important;
-  background-color: #1a202c !important;
-}
-
-.dark .connection-form .el-form-item__label {
-  color: #e2e8f0 !important;
-}
-
-/* Select dropdown styles */
-.dark .el-select-dropdown {
-  background-color: #2d3748 !important;
-  border-color: #4a5568 !important;
-}
-
-.dark .el-select-dropdown__item {
-  color: #f7fafc !important;
-}
-
-.dark .el-select-dropdown__item:hover {
-  background-color: #4a5568 !important;
-}
-
-.dark .el-select-dropdown__item.selected {
-  background-color: #409eff !important;
-  color: #ffffff !important;
-}
-
-/* Additional specificity for Element Plus components */
-.dark .connection-form .el-input .el-input__wrapper {
-  background-color: #1a202c !important;
-  border-color: #4a5568 !important;
-}
-
-.dark .connection-form .el-input .el-input__wrapper:hover {
-  border-color: #718096 !important;
-}
-
-.dark .connection-form .el-input .el-input__wrapper.is-focus {
-  border-color: #409eff !important;
-  box-shadow: 0 0 0 1px #409eff !important;
-}
-
-.dark .connection-form .el-input-number .el-input__wrapper {
-  background-color: #1a202c !important;
-  border-color: #4a5568 !important;
-}
-
-.dark .connection-form .el-select .el-input__wrapper {
-  background-color: #1a202c !important;
-  border-color: #4a5568 !important;
-}
-</style> 
+<style scoped lang="scss">
+@use '@/sass/components/connection-form.scss' as *;
+</style>
