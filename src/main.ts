@@ -31,28 +31,10 @@ const createWindow = () => {
     vibrancy: process.platform === 'darwin' ? 'under-window' : undefined,
   });
 
-  // Prevent reload when there are active database connections
-  mainWindow.webContents.on('will-navigate', async (event, navigationUrl) => {
-    // Check if this is a reload attempt (same URL)
-    if (navigationUrl === mainWindow.webContents.getURL()) {
-      try {
-        const hasConnections = await databaseService.hasActiveConnections();
-        if (hasConnections) {
-          event.preventDefault();
-          console.log('Reload prevented at main process level - active connections detected');
-          // Send message to renderer to show warning
-          mainWindow.webContents.send('reload-prevented', 'Cannot reload app while database connections are active');
-        }
-      } catch (error) {
-        console.error('Error checking active connections:', error);
-      }
-    }
-  });
-
   // and load the index.html of the app.
   if (MAIN_WINDOW_VITE_DEV_SERVER_URL) {
     mainWindow.loadURL(MAIN_WINDOW_VITE_DEV_SERVER_URL);
-    
+
     // Open the DevTools.
     mainWindow.webContents.openDevTools();
   } else {
@@ -68,7 +50,7 @@ app.on('ready', createWindow);
 // Disconnect all database connections before app quits
 app.on('before-quit', async (event) => {
   event.preventDefault();
-  
+
   try {
     console.log('App is quitting, disconnecting all database connections...');
     await databaseService.disconnectAll();
@@ -76,7 +58,7 @@ app.on('before-quit', async (event) => {
   } catch (error) {
     console.error('Error disconnecting database connections on quit:', error);
   }
-  
+
   // Force quit after disconnecting
   app.exit(0);
 });
@@ -90,7 +72,7 @@ app.on('window-all-closed', async () => {
   } catch (error) {
     console.error('Error disconnecting database connections on window close:', error);
   }
-  
+
   if (process.platform !== 'darwin') {
     app.quit();
   }
@@ -108,8 +90,15 @@ app.on('activate', () => {
 // code. You can also put them in separate files and import them here.
 
 // Database handlers
-ipcMain.handle('database:connect', (event, connection) => {
-  return databaseService.connect(connection);
+ipcMain.handle('database:connect', async (event, connection) => {
+  try {
+    const result = await databaseService.connect(connection);
+    return { success: result, error: null };
+  } catch (error) {
+    console.error('IPC database:connect error:', error);
+    const errorMessage = error instanceof Error ? error.message : 'Failed to connect to database';
+    return { success: false, error: errorMessage };
+  }
 });
 
 ipcMain.handle('database:disconnect', (event, connectionId) => {
@@ -146,13 +135,13 @@ ipcMain.handle('database:getTableStructure', async (event, { connectionId, table
     if (!connectionId || !tableName) {
       throw new Error('Missing connectionId or tableName');
     }
-    
+
     const result = await databaseService.getTableStructure(connectionId, tableName);
-    
+
     if (result === undefined) {
       throw new Error('Database service returned undefined');
     }
-    
+
     return result;
   } catch (error) {
     console.error('IPC getTableStructure error:', error);
@@ -166,13 +155,13 @@ ipcMain.handle('database:getDatabases', async (event, { connectionId }) => {
     if (!connectionId) {
       throw new Error('Missing connectionId');
     }
-    
+
     const result = await databaseService.getDatabases(connectionId);
-    
+
     if (result === undefined) {
       throw new Error('Database service returned undefined');
     }
-    
+
     return result;
   } catch (error) {
     console.error('IPC getDatabases error:', error);
@@ -186,13 +175,13 @@ ipcMain.handle('database:executeQuery', async (event, { connectionId, query }) =
     if (!connectionId || !query) {
       throw new Error('Missing connectionId or query');
     }
-    
+
     const result = await databaseService.executeQuery(connectionId, query);
-    
+
     if (result === undefined) {
       throw new Error('Database service returned undefined');
     }
-    
+
     return result;
   } catch (error) {
     console.error('IPC executeQuery error:', error);

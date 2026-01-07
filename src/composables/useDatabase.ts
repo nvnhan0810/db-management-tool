@@ -1,6 +1,6 @@
-import { ref, toRaw } from 'vue';
 import type { DatabaseConnection } from '@/types/connection';
 import type { QueryResult } from '@/types/query';
+import { ref, toRaw } from 'vue';
 
 // Create singleton state outside the function
 const isConnected = ref(false);
@@ -15,15 +15,20 @@ export function useDatabase() {
       // Convert reactive object to plain object for IPC
       const plainConnection = toRaw(connection);
       console.log('Attempting to connect with:', plainConnection);
-      const success = await window.electron.invoke('database:connect', plainConnection);
-      console.log('Connection result:', success);
+      const result = await window.electron.invoke('database:connect', plainConnection);
+      console.log('Connection result:', result);
 
-      if (success) {
+      if (result.success) {
         isConnected.value = true;
         currentConnection.value = connection;
         error.value = null;
+        return true;
+      } else {
+        // Set error message from IPC result
+        error.value = result.error || 'Failed to connect to database';
+        console.error('Connection failed:', error.value);
+        return false;
       }
-      return success;
     } catch (err) {
       console.error('Connection error:', err);
       error.value = err instanceof Error ? err.message : 'Failed to connect to database';

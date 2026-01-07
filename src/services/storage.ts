@@ -1,4 +1,4 @@
-import type { DatabaseConnection } from '../types';
+import type { DatabaseConnection } from '@/types/connection';
 
 export interface SavedConnection extends Omit<DatabaseConnection, 'password'> {
   name: string;
@@ -16,7 +16,7 @@ class StorageService {
     try {
       const stored = localStorage.getItem(this.STORAGE_KEY);
       if (!stored) return [];
-      
+
       const connections: SavedConnection[] = JSON.parse(stored);
       return connections.sort((a, b) => {
         // Sort by last used date, then by creation date
@@ -34,10 +34,10 @@ class StorageService {
   async saveConnection(connection: DatabaseConnection, name: string): Promise<void> {
     try {
       const existingConnections = await this.getSavedConnections();
-      
+
       // Encrypt password before saving
       const encryptedPassword = await this.encryptPassword(connection.password);
-      
+
       const savedConnection: SavedConnection = {
         id: connection.id,
         name,
@@ -96,7 +96,7 @@ class StorageService {
   async getDecryptedConnection(savedConnection: SavedConnection): Promise<DatabaseConnection & { name?: string }> {
     try {
       const decryptedPassword = await this.decryptPassword(savedConnection.encryptedPassword);
-      
+
       return {
         id: savedConnection.id,
         type: savedConnection.type,
@@ -118,7 +118,7 @@ class StorageService {
     try {
       const encoder = new TextEncoder();
       const data = encoder.encode(password);
-      
+
       // Create a proper key using PBKDF2 to derive a 256-bit key
       const salt = encoder.encode('db-client-salt');
       const keyMaterial = await crypto.subtle.importKey(
@@ -128,7 +128,7 @@ class StorageService {
         false,
         ['deriveBits', 'deriveKey']
       );
-      
+
       const key = await crypto.subtle.deriveKey(
         {
           name: 'PBKDF2',
@@ -144,7 +144,7 @@ class StorageService {
 
       // Generate IV
       const iv = crypto.getRandomValues(new Uint8Array(12));
-      
+
       // Encrypt
       const encrypted = await crypto.subtle.encrypt(
         { name: 'AES-GCM', iv },
@@ -187,7 +187,7 @@ class StorageService {
         false,
         ['deriveBits', 'deriveKey']
       );
-      
+
       const key = await crypto.subtle.deriveKey(
         {
           name: 'PBKDF2',

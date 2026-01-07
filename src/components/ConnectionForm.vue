@@ -97,10 +97,9 @@
 import { ElMessage } from 'element-plus';
 import { onMounted, reactive, ref, watch } from 'vue';
 // import { useConnections } from '../composables/useConnections';
+import type { DatabaseConnection } from '@/types/connection';
 import { useDatabase } from '../composables/useDatabase';
 import { useSavedConnections } from '../composables/useSavedConnections';
-import type { DatabaseConnection } from '@/types/connection';
-import SavedConnections from './SavedConnections.vue';
 
 const { connect, disconnect, error } = useDatabase();
 const {
@@ -116,9 +115,9 @@ const isConnecting = ref(false);
 
 const form = reactive<DatabaseConnection & { name?: string }>({
   id: crypto.randomUUID(),
-  type: 'mysql',
+  type: 'postgresql',
   host: 'localhost',
-  port: 3306,
+  port: 5432,
   username: '',
   password: '',
   database: '',
@@ -328,9 +327,9 @@ const handleSave = async () => {
 // Reset form to initial state
 const resetForm = () => {
   form.id = crypto.randomUUID();
-  form.type = 'mysql';
+  form.type = 'postgresql';
   form.host = 'localhost';
-  form.port = 3306;
+  form.port = 5432;
   form.username = '';
   form.password = '';
   form.database = '';

@@ -1,5 +1,7 @@
+import type { DatabaseConnection } from '@/types/connection';
+import type { QueryResult } from '@/types/query';
 import mysql from 'mysql2/promise';
-import type { DatabaseConnection, QueryResult } from '../types';
+import { Pool } from 'pg';
 
 class DatabaseService {
   private connections: Map<string, any> = new Map();
@@ -17,22 +19,42 @@ class DatabaseService {
             password: connection.password,
             database: connection.database,
           });
-          
+
           this.connections.set(connection.id, mysqlConnection);
           this.connectionInfo.set(connection.id, connection);
           break;
 
-        // case 'postgresql':
-        //   const pgPool = new Pool({
-        //     host: connection.host,
-        //     port: connection.port,
-        //     user: connection.username,
-        //     password: connection.password,
-        //     database: connection.database,
-        //   });
-        //   this.connections.set(connection.id, pgPool);
-        //   this.connectionInfo.set(connection.id, connection);
-        //   break;
+        case 'postgresql':
+          // PostgreSQL connection config
+          const pgConfig: any = {
+            host: connection.host,
+            port: connection.port,
+            user: connection.username,
+            password: connection.password,
+          };
+
+          // Only add database if it's provided and not empty
+          if (connection.database && connection.database.trim()) {
+            pgConfig.database = connection.database.trim();
+          }
+
+          // Add connection timeout
+          pgConfig.connectionTimeoutMillis = 10000; // 10 seconds
+
+          const pgPool = new Pool(pgConfig);
+
+          // Test the connection with a simple query
+          const client = await pgPool.connect();
+          try {
+            await client.query('SELECT NOW()');
+            console.log('PostgreSQL connection test successful');
+          } finally {
+            client.release();
+          }
+
+          this.connections.set(connection.id, pgPool);
+          this.connectionInfo.set(connection.id, connection);
+          break;
 
         // case 'sqlite':
         //   const sqliteDb = new sqlite3.Database(connection.database);
@@ -47,7 +69,9 @@ class DatabaseService {
       return true;
     } catch (error) {
       console.error('Database connection error:', error);
-      return false;
+      const errorMessage = error instanceof Error ? error.message : 'Unknown database connection error';
+      console.error('Error details:', errorMessage);
+      throw new Error(errorMessage);
     }
   }
 
@@ -67,7 +91,7 @@ class DatabaseService {
   async disconnectAll(): Promise<void> {
     const connectionIds = Array.from(this.connections.keys());
     const disconnectPromises = connectionIds.map(connectionId => this.disconnect(connectionId));
-    
+
     try {
       await Promise.all(disconnectPromises);
       console.log(`Disconnected ${connectionIds.length} active connections`);
@@ -90,9 +114,20 @@ class DatabaseService {
       let results: any;
       let fields: any;
 
-      if (connection.query) {
+      if (connection instanceof Pool) {
+        // PostgreSQL
+        const result = await connection.query(query);
+        results = result.rows;
+        fields = result.fields?.map(field => ({
+          name: field.name,
+          type: field.dataTypeID,
+          length: field.dataTypeSize
+        }));
+      } else if (connection.query && typeof connection.query === 'function') {
+        // MySQL
         [results, fields] = await connection.query(query);
       } else if (connection.all) {
+        // SQLite
         results = await new Promise((resolve, reject) => {
           connection.all(query, (err: Error | null, rows: any[]) => {
             if (err) reject(err);
@@ -107,7 +142,7 @@ class DatabaseService {
         fields,
         rowCount: Array.isArray(results) ? results.length : 0,
       };
-      
+
       console.log('Database service query result:', result);
       return result;
     } catch (error) {
@@ -122,7 +157,7 @@ class DatabaseService {
   async getTables(connectionId: string): Promise<Array<{ name: string; type?: string }>> {
     const connection = this.connections.get(connectionId);
     const connectionInfo = this.connectionInfo.get(connectionId);
-    
+
     if (!connection) {
       console.warn(`No active connection found for ID: ${connectionId}`);
       return []; // Return empty array instead of throwing error
@@ -136,26 +171,40 @@ class DatabaseService {
     try {
       let tables: Array<{ name: string; type?: string }> = [];
 
-      if (connection.query) {
-        // MySQL/PostgreSQL
+      if (connection instanceof Pool) {
+        // PostgreSQL
+        const query = connectionInfo.database
+          ? `SELECT table_name as name, table_type as type FROM information_schema.tables WHERE table_schema = 'public' AND table_catalog = $1 ORDER BY table_name`
+          : `SELECT table_name as name, table_type as type FROM information_schema.tables WHERE table_schema = 'public' ORDER BY table_name`;
+
+        const result = connectionInfo.database
+          ? await connection.query(query, [connectionInfo.database])
+          : await connection.query(query);
+
+        tables = result.rows.map((row: any) => ({
+          name: row.name,
+          type: row.type === 'BASE TABLE' ? 'table' : row.type === 'VIEW' ? 'view' : row.type
+        }));
+      } else if (connection.query && typeof connection.query === 'function') {
+        // MySQL
         const [results] = await connection.query(`
-          SELECT 
+          SELECT
             TABLE_NAME as name,
             TABLE_TYPE as type
-          FROM INFORMATION_SCHEMA.TABLES 
+          FROM INFORMATION_SCHEMA.TABLES
           WHERE TABLE_SCHEMA = ?
           ORDER BY TABLE_NAME
         `, [connectionInfo.database]);
-        
+
         tables = results as Array<{ name: string; type?: string }>;
       } else if (connection.all) {
         // SQLite
         const results = await new Promise<Array<{ name: string; type?: string }>>((resolve, reject) => {
           connection.all(`
-            SELECT 
+            SELECT
               name,
               type
-            FROM sqlite_master 
+            FROM sqlite_master
             WHERE type IN ('table', 'view')
             ORDER BY name
           `, (err: Error | null, rows: any[]) => {
@@ -174,9 +223,9 @@ class DatabaseService {
   }
 
   async getTableStructure(connectionId: string, tableName: string): Promise<{
-    columns: Array<{ 
-      name: string; 
-      type: string; 
+    columns: Array<{
+      name: string;
+      type: string;
       nullable: boolean;
       ordinal_position?: number;
       character_set?: string;
@@ -196,7 +245,7 @@ class DatabaseService {
   }> {
     const connection = this.connections.get(connectionId);
     const connectionInfo = this.connectionInfo.get(connectionId);
-    
+
     if (!connection) {
       throw new Error(`No active connection found for ID: ${connectionId}`);
     }
@@ -206,9 +255,9 @@ class DatabaseService {
     }
 
     try {
-      let columns: Array<{ 
-        name: string; 
-        type: string; 
+      let columns: Array<{
+        name: string;
+        type: string;
         nullable: boolean;
         ordinal_position?: number;
         character_set?: string;
@@ -223,11 +272,11 @@ class DatabaseService {
       if (connection.query) {
         // MySQL/PostgreSQL
         const query = `
-          SELECT 
+          SELECT
             ORDINAL_POSITION as ordinal_position,
             COLUMN_NAME as name,
-            CONCAT(DATA_TYPE, 
-              CASE 
+            CONCAT(DATA_TYPE,
+              CASE
                 WHEN CHARACTER_MAXIMUM_LENGTH IS NOT NULL THEN CONCAT('(', CHARACTER_MAXIMUM_LENGTH, ')')
                 WHEN NUMERIC_PRECISION IS NOT NULL AND NUMERIC_SCALE IS NOT NULL THEN CONCAT('(', NUMERIC_PRECISION, ',', NUMERIC_SCALE, ')')
                 WHEN NUMERIC_PRECISION IS NOT NULL THEN CONCAT('(', NUMERIC_PRECISION, ')')
@@ -240,17 +289,17 @@ class DatabaseService {
             COLUMN_DEFAULT as default_value,
             EXTRA as extra,
             COLUMN_COMMENT as comment
-          FROM INFORMATION_SCHEMA.COLUMNS 
+          FROM INFORMATION_SCHEMA.COLUMNS
           WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ?
           ORDER BY ORDINAL_POSITION
         `;
-        
+
         const [columnResults] = await connection.query(query, [connectionInfo.database, tableName]);
-        
+
         if (Array.isArray(columnResults)) {
-          columns = columnResults as Array<{ 
-            name: string; 
-            type: string; 
+          columns = columnResults as Array<{
+            name: string;
+            type: string;
             nullable: boolean;
             ordinal_position?: number;
             character_set?: string;
@@ -262,7 +311,7 @@ class DatabaseService {
         } else {
           columns = [];
         }
-        
+
         // If no columns found, try alternative query
         if (columns.length === 0) {
           try {
@@ -291,23 +340,23 @@ class DatabaseService {
         let indexes: Array<{ name: string; algorithm?: string; is_unique: boolean; column_name: string }> = [];
         try {
           const indexQuery = `
-            SELECT 
+            SELECT
               INDEX_NAME as name,
               INDEX_TYPE as algorithm,
               NON_UNIQUE = 0 as is_unique,
               COLUMN_NAME as column_name,
               SEQ_IN_INDEX as seq_in_index
-            FROM INFORMATION_SCHEMA.STATISTICS 
+            FROM INFORMATION_SCHEMA.STATISTICS
             WHERE TABLE_SCHEMA = ? AND TABLE_NAME = ?
             ORDER BY INDEX_NAME, SEQ_IN_INDEX
           `;
-          
+
           const [indexResults] = await connection.query(indexQuery, [connectionInfo.database, tableName]);
-          
+
           if (Array.isArray(indexResults)) {
             // Process indexes to handle composite indexes properly
             const indexMap = new Map<string, { name: string; algorithm?: string; is_unique: boolean; columns: string[] }>();
-            
+
             indexResults.forEach((row: any) => {
               const indexName = row.name;
               if (!indexMap.has(indexName)) {
@@ -320,7 +369,7 @@ class DatabaseService {
               }
               indexMap.get(indexName)!.columns.push(row.column_name);
             });
-            
+
             // Convert to flat structure for table display
             indexes = [];
             indexMap.forEach((index) => {
@@ -362,7 +411,7 @@ class DatabaseService {
               else resolve(rows);
             });
           });
-          
+
           // Get detailed index info for each index
           for (const index of indexResults) {
             try {
@@ -372,7 +421,7 @@ class DatabaseService {
                   else resolve(rows);
                 });
               });
-              
+
               // Get column names from table info
               for (const indexInfo of indexInfoResults) {
                 const columnName = indexInfo.name;
@@ -414,7 +463,7 @@ class DatabaseService {
 
   async getDatabases(connectionId: string): Promise<Array<{ name: string; tableCount?: number }>> {
     const connection = this.connections.get(connectionId);
-    
+
     if (!connection) {
       console.warn(`No active connection found for ID: ${connectionId}`);
       return []; // Return empty array instead of throwing error
@@ -423,10 +472,45 @@ class DatabaseService {
     try {
       let databases: Array<{ name: string; tableCount?: number }> = [];
 
-      if (connection.query) {
-        // MySQL/PostgreSQL - use SHOW DATABASES
+      if (connection instanceof Pool) {
+        // PostgreSQL
+        const result = await connection.query(`
+          SELECT datname as name
+          FROM pg_database
+          WHERE datistemplate = false
+          ORDER BY datname
+        `);
+
+        databases = await Promise.all(
+          result.rows.map(async (row: any) => {
+            const dbName = row.name;
+            try {
+              // Get table count for each database
+              const countResult = await connection.query(`
+                SELECT COUNT(*) as count
+                FROM information_schema.tables
+                WHERE table_schema = 'public' AND table_catalog = $1
+              `, [dbName]);
+
+              const tableCount = parseInt(countResult.rows[0]?.count || '0', 10);
+
+              return {
+                name: dbName,
+                tableCount: tableCount
+              };
+            } catch (err) {
+              console.warn(`Could not get table count for database ${dbName}:`, err);
+              return {
+                name: dbName,
+                tableCount: 0
+              };
+            }
+          })
+        );
+      } else if (connection.query && typeof connection.query === 'function') {
+        // MySQL - use SHOW DATABASES
         const [results] = await connection.query('SHOW DATABASES');
-        
+
         // Convert to our format and get table counts
         databases = await Promise.all(
           (results as Array<{ Database: string }>).map(async (row) => {
@@ -434,13 +518,13 @@ class DatabaseService {
             try {
               // Get table count for each database
               const [tableCountResult] = await connection.query(`
-                SELECT COUNT(*) as count 
-                FROM INFORMATION_SCHEMA.TABLES 
+                SELECT COUNT(*) as count
+                FROM INFORMATION_SCHEMA.TABLES
                 WHERE TABLE_SCHEMA = ?
               `, [dbName]);
-              
+
               const tableCount = (tableCountResult as Array<{ count: number }>)[0]?.count || 0;
-              
+
               return {
                 name: dbName,
                 tableCount: tableCount
@@ -461,15 +545,15 @@ class DatabaseService {
           // Get table count for current database
           const tableCount = await new Promise<number>((resolve, reject) => {
             connection.all(`
-              SELECT COUNT(*) as count 
-              FROM sqlite_master 
+              SELECT COUNT(*) as count
+              FROM sqlite_master
               WHERE type IN ('table', 'view')
             `, (err: Error | null, rows: any[]) => {
               if (err) reject(err);
               else resolve(rows[0]?.count || 0);
             });
           });
-          
+
           databases = [{
             name: connectionInfo.database,
             tableCount: tableCount
@@ -486,7 +570,7 @@ class DatabaseService {
 
   async executeQuery(connectionId: string, query: string): Promise<QueryResult> {
     const connection = this.connections.get(connectionId);
-    
+
     if (!connection) {
       throw new Error(`No active connection found for ID: ${connectionId}`);
     }
@@ -494,19 +578,33 @@ class DatabaseService {
     try {
       let result: QueryResult;
 
-      if (connection.query) {
-        // MySQL/PostgreSQL
-        const [rows, fields] = await connection.query(query);
-        
+      if (connection instanceof Pool) {
+        // PostgreSQL
+        const queryResult = await connection.query(query);
+
         result = {
-          rows: rows as any[],
-          fields: fields?.map(field => ({
+          success: true,
+          data: queryResult.rows,
+          fields: queryResult.fields?.map((field: any) => ({
+            name: field.name,
+            type: field.dataTypeID,
+            length: field.dataTypeSize
+          })) || [],
+          rowCount: queryResult.rowCount || 0
+        };
+      } else if (connection.query && typeof connection.query === 'function') {
+        // MySQL
+        const [rows, fields] = await connection.query(query);
+
+        result = {
+          success: true,
+          data: rows as any[],
+          fields: fields?.map((field: any) => ({
             name: field.name,
             type: field.type,
             length: field.length
           })) || [],
-          affectedRows: (rows as any).affectedRows || 0,
-          insertId: (rows as any).insertId || null
+          rowCount: Array.isArray(rows) ? rows.length : ((rows as any).affectedRows || 0)
         };
       } else if (connection.all) {
         // SQLite
@@ -516,12 +614,12 @@ class DatabaseService {
             else resolve(rows || []);
           });
         });
-        
+
         result = {
-          rows: rows,
+          success: true,
+          data: rows,
           fields: [], // SQLite doesn't provide field info easily
-          affectedRows: 0, // SQLite doesn't provide this easily
-          insertId: null
+          rowCount: rows.length
         };
       } else {
         throw new Error('Unsupported database connection type');
@@ -535,4 +633,4 @@ class DatabaseService {
   }
 }
 
-export const databaseService = new DatabaseService(); 
+export const databaseService = new DatabaseService();
