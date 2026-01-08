@@ -67,6 +67,83 @@
         />
         <div class="field-hint">Leave empty to connect without selecting a database</div>
       </el-form-item>
+
+      <!-- SSH Tunnel Section -->
+      <template v-if="form.type !== 'sqlite'">
+        <el-divider content-position="left">
+          <span style="font-size: 14px; font-weight: 500;">SSH Tunnel (Optional)</span>
+        </el-divider>
+
+        <el-form-item>
+          <el-checkbox v-model="form.ssh!.enabled">
+            Enable SSH Tunnel
+          </el-checkbox>
+          <div class="field-hint">Use SSH tunnel to connect through a jump server</div>
+        </el-form-item>
+
+        <template v-if="form.ssh && form.ssh.enabled">
+          <el-form-item label="SSH Host" prop="ssh.host">
+            <el-input
+              v-model="form.ssh.host"
+              placeholder="ssh.example.com"
+            />
+          </el-form-item>
+
+          <el-form-item label="SSH Port" prop="ssh.port">
+            <el-input-number
+              v-model="form.ssh.port"
+              :min="1"
+              :max="65535"
+              style="width: 100%"
+            />
+            <div class="field-hint">Default: 22</div>
+          </el-form-item>
+
+          <el-form-item label="SSH Username" prop="ssh.username">
+            <el-input
+              v-model="form.ssh.username"
+              placeholder="Enter SSH username"
+            />
+          </el-form-item>
+
+          <el-form-item label="SSH Authentication">
+            <el-radio-group v-model="sshAuthMethod">
+              <el-radio label="password">Password</el-radio>
+              <el-radio label="key">Private Key</el-radio>
+            </el-radio-group>
+          </el-form-item>
+
+          <el-form-item v-if="sshAuthMethod === 'password'" label="SSH Password" prop="ssh.password">
+            <el-input
+              v-model="form.ssh.password"
+              type="password"
+              placeholder="Enter SSH password"
+              show-password
+            />
+          </el-form-item>
+
+          <template v-if="sshAuthMethod === 'key'">
+            <el-form-item label="SSH Private Key" prop="ssh.privateKey">
+              <el-input
+                v-model="form.ssh.privateKey"
+                type="textarea"
+                :rows="4"
+                placeholder="Paste your SSH private key here (OpenSSH format)"
+              />
+              <div class="field-hint">Paste your private key content (starting with -----BEGIN...)</div>
+            </el-form-item>
+
+            <el-form-item label="Key Passphrase" prop="ssh.passphrase">
+              <el-input
+                v-model="form.ssh.passphrase"
+                type="password"
+                placeholder="Enter passphrase if key is encrypted (optional)"
+                show-password
+              />
+            </el-form-item>
+          </template>
+        </template>
+      </template>
     </el-form>
 
     <div v-if="error" class="error-message">
@@ -143,13 +220,48 @@ const form = reactive<DatabaseConnection & { name?: string }>({
   password: '',
   database: '',
   name: '',
+  ssh: {
+    enabled: false,
+    host: '',
+    port: 22,
+    username: '',
+    password: '',
+    privateKey: '',
+    passphrase: '',
+  },
 });
+
+const sshAuthMethod = ref<'password' | 'key'>('password');
 
 const rules = {
   type: [{ required: true, message: 'Please select database type', trigger: 'change' }],
   host: [{ required: true, message: 'Please enter host', trigger: 'blur' }],
   port: [{ required: true, message: 'Please enter port', trigger: 'blur' }],
   username: [{ required: true, message: 'Please enter username', trigger: 'blur' }],
+  'ssh.host': [
+    {
+      validator: (rule: any, value: any, callback: any) => {
+        if (form.ssh?.enabled && !value) {
+          callback(new Error('Please enter SSH host'));
+        } else {
+          callback();
+        }
+      },
+      trigger: 'blur'
+    }
+  ],
+  'ssh.username': [
+    {
+      validator: (rule: any, value: any, callback: any) => {
+        if (form.ssh?.enabled && !value) {
+          callback(new Error('Please enter SSH username'));
+        } else {
+          callback();
+        }
+      },
+      trigger: 'blur'
+    }
+  ],
 };
 
 // Reset form when modal opens or connectionToEdit changes
@@ -212,6 +324,32 @@ const loadConnectionForEdit = async (savedConnection: SavedConnection) => {
     form.database = decryptedConnection.database || '';
     form.name = savedConnection.name;
 
+    // Load SSH config if exists
+    if (decryptedConnection.ssh && decryptedConnection.ssh.enabled) {
+      form.ssh = {
+        enabled: true,
+        host: decryptedConnection.ssh.host || '',
+        port: decryptedConnection.ssh.port || 22,
+        username: decryptedConnection.ssh.username || '',
+        password: decryptedConnection.ssh.password || '',
+        privateKey: decryptedConnection.ssh.privateKey || '',
+        passphrase: decryptedConnection.ssh.passphrase || '',
+      };
+      sshAuthMethod.value = decryptedConnection.ssh.privateKey ? 'key' : 'password';
+      console.log('Loaded SSH config:', form.ssh);
+    } else {
+      form.ssh = {
+        enabled: false,
+        host: '',
+        port: 22,
+        username: '',
+        password: '',
+        privateKey: '',
+        passphrase: '',
+      };
+      sshAuthMethod.value = 'password';
+    }
+
     isEditing.value = true;
     editingConnectionId.value = savedConnection.id;
     error.value = null;
@@ -233,6 +371,16 @@ const resetForm = () => {
   form.password = '';
   form.database = '';
   form.name = '';
+  form.ssh = {
+    enabled: false,
+    host: '',
+    port: 22,
+    username: '',
+    password: '',
+    privateKey: '',
+    passphrase: '',
+  };
+  sshAuthMethod.value = 'password';
   error.value = null;
   nameError.value = '';
   isEditing.value = false;
@@ -270,7 +418,18 @@ const handleSave = async () => {
       username: form.username,
       password: form.password,
       database: form.database,
+      ssh: form.ssh?.enabled ? {
+        enabled: true,
+        host: form.ssh.host || '',
+        port: form.ssh.port || 22,
+        username: form.ssh.username || '',
+        password: sshAuthMethod.value === 'password' ? (form.ssh.password || '') : undefined,
+        privateKey: sshAuthMethod.value === 'key' ? (form.ssh.privateKey || '') : undefined,
+        passphrase: sshAuthMethod.value === 'key' ? (form.ssh.passphrase || '') : undefined,
+      } : undefined,
     };
+
+    console.log('Saving connection with SSH config:', cleanConnection.ssh);
 
     // Save or update connection
     await connectionStore.saveConnection(cleanConnection, form.name!.trim());
@@ -309,6 +468,15 @@ const handleConnect = async () => {
       username: form.username,
       password: form.password,
       database: form.database,
+      ssh: form.ssh?.enabled ? {
+        enabled: true,
+        host: form.ssh.host || '',
+        port: form.ssh.port || 22,
+        username: form.ssh.username || '',
+        password: sshAuthMethod.value === 'password' ? (form.ssh.password || '') : undefined,
+        privateKey: sshAuthMethod.value === 'key' ? (form.ssh.privateKey || '') : undefined,
+        passphrase: sshAuthMethod.value === 'key' ? (form.ssh.passphrase || '') : undefined,
+      } : undefined,
     };
 
     // Connect to database

@@ -10,10 +10,18 @@ export default defineConfig({
   },
   build: {
     rollupOptions: {
-      external: ['pg-native'], // Externalize pg-native
+      // Externalize native / problematic modules so that Electron can load them via Node at runtime
+      external: [
+        'pg-native',
+        'ssh2',
+      ],
     },
   },
   optimizeDeps: {
-    exclude: ['pg-native'], // Exclude from dependency optimization
+    // Exclude from dependency optimization so Vite doesn't try to pre-bundle these
+    exclude: [
+      'pg-native',
+      'ssh2',
+    ],
   },
 });

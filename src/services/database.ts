@@ -1,20 +1,130 @@
 import type { DatabaseConnection } from '@/types/connection';
 import type { QueryResult } from '@/types/query';
 import mysql from 'mysql2/promise';
+import * as net from 'net';
 import { Pool } from 'pg';
+import { Client as SshClient } from 'ssh2';
 
 class DatabaseService {
   private connections: Map<string, any> = new Map();
   private connectionInfo: Map<string, DatabaseConnection> = new Map();
+  private sshTunnels: Map<string, { sshClient: SshClient; server: net.Server }> = new Map();
+
+  private async createSshTunnel(connection: DatabaseConnection): Promise<number> {
+    return new Promise((resolve, reject) => {
+      if (!connection.ssh?.enabled) {
+        reject(new Error('SSH tunnel not enabled'));
+        return;
+      }
+
+      const sshConfig = connection.ssh;
+      const sshClient = new SshClient();
+
+      // SSH connection config
+      const sshConnectionConfig: any = {
+        host: sshConfig.host,
+        port: sshConfig.port || 22,
+        username: sshConfig.username,
+      };
+
+      // Authentication method
+      if (sshConfig.privateKey) {
+        sshConnectionConfig.privateKey = sshConfig.privateKey;
+        if (sshConfig.passphrase) {
+          sshConnectionConfig.passphrase = sshConfig.passphrase;
+        }
+      } else if (sshConfig.password) {
+        sshConnectionConfig.password = sshConfig.password;
+      } else {
+        reject(new Error('SSH authentication method not provided (password or private key required)'));
+        return;
+      }
+
+      sshClient.on('ready', () => {
+        console.log('SSH Client ready');
+
+        // Create local server that forwards to remote database
+        const server = net.createServer((localSocket) => {
+          sshClient.forwardOut(
+            localSocket.remoteAddress || '127.0.0.1',
+            localSocket.remotePort || 0,
+            connection.host,
+            connection.port,
+            (err, remoteSocket) => {
+              if (err) {
+                console.error('SSH forward error:', err);
+                localSocket.end();
+                return;
+              }
+
+              localSocket.pipe(remoteSocket);
+              remoteSocket.pipe(localSocket);
+            }
+          );
+        });
+
+        // Find available port
+        server.listen(0, '127.0.0.1', () => {
+          const localPort = (server.address() as net.AddressInfo).port;
+          console.log(`SSH tunnel established: localhost:${localPort} -> ${connection.host}:${connection.port} via ${sshConfig.host}`);
+
+          // Store tunnel for cleanup
+          this.sshTunnels.set(connection.id, { sshClient, server });
+
+          resolve(localPort);
+        });
+
+        server.on('error', (err) => {
+          console.error('SSH tunnel server error:', err);
+          reject(err);
+        });
+      });
+
+      sshClient.on('error', (err) => {
+        console.error('SSH Client error:', err);
+        reject(err);
+      });
+
+      sshClient.connect(sshConnectionConfig);
+    });
+  }
 
   async connect(connection: DatabaseConnection): Promise<boolean> {
     try {
-      console.log('Connecting to database:', connection);
+      console.log('Connecting to database:', {
+        ...connection,
+        password: connection.password ? '***' : undefined,
+        ssh: connection.ssh ? {
+          ...connection.ssh,
+          password: connection.ssh.password ? '***' : undefined,
+          privateKey: connection.ssh.privateKey ? '***' : undefined,
+          passphrase: connection.ssh.passphrase ? '***' : undefined,
+        } : undefined,
+      });
+
+      let dbHost = connection.host;
+      let dbPort = connection.port;
+
+      // Create SSH tunnel if enabled
+      if (connection.ssh?.enabled) {
+        console.log('Creating SSH tunnel...', {
+          sshHost: connection.ssh.host,
+          sshPort: connection.ssh.port,
+          sshUsername: connection.ssh.username,
+          dbHost: connection.host,
+          dbPort: connection.port,
+        });
+        const localPort = await this.createSshTunnel(connection);
+        dbHost = '127.0.0.1';
+        dbPort = localPort;
+        console.log(`Using SSH tunnel: ${dbHost}:${dbPort} -> ${connection.host}:${connection.port}`);
+      }
+
       switch (connection.type) {
         case 'mysql':
           const mysqlConnection = await mysql.createConnection({
-            host: connection.host,
-            port: connection.port,
+            host: dbHost,
+            port: dbPort,
             user: connection.username,
             password: connection.password,
             database: connection.database,
@@ -27,10 +137,10 @@ class DatabaseService {
         case 'postgresql':
           // PostgreSQL connection config
           const pgConfig: any = {
-            host: connection.host,
-            port: connection.port,
-            user: connection.username,
-            password: connection.password,
+            host: dbHost,
+            port: dbPort,
+            user: connection.username, // Database username, not SSH username
+            password: connection.password, // Database password, not SSH password
           };
 
           // Only add database if it's provided and not empty
@@ -40,6 +150,14 @@ class DatabaseService {
 
           // Add connection timeout
           pgConfig.connectionTimeoutMillis = 10000; // 10 seconds
+
+          console.log('PostgreSQL config:', {
+            host: pgConfig.host,
+            port: pgConfig.port,
+            user: pgConfig.user,
+            database: pgConfig.database,
+            hasPassword: !!pgConfig.password,
+          });
 
           const pgPool = new Pool(pgConfig);
 
@@ -71,7 +189,27 @@ class DatabaseService {
       console.error('Database connection error:', error);
       const errorMessage = error instanceof Error ? error.message : 'Unknown database connection error';
       console.error('Error details:', errorMessage);
+
+      // Clean up SSH tunnel if connection failed
+      if (connection.ssh?.enabled) {
+        await this.closeSshTunnel(connection.id);
+      }
+
       throw new Error(errorMessage);
+    }
+  }
+
+  private async closeSshTunnel(connectionId: string): Promise<void> {
+    const tunnel = this.sshTunnels.get(connectionId);
+    if (tunnel) {
+      try {
+        tunnel.server.close();
+        tunnel.sshClient.end();
+        console.log(`SSH tunnel closed for connection ${connectionId}`);
+      } catch (err) {
+        console.error('Error closing SSH tunnel:', err);
+      }
+      this.sshTunnels.delete(connectionId);
     }
   }
 
@@ -86,6 +224,9 @@ class DatabaseService {
       this.connections.delete(connectionId);
       this.connectionInfo.delete(connectionId);
     }
+
+    // Close SSH tunnel if exists
+    await this.closeSshTunnel(connectionId);
   }
 
   async disconnectAll(): Promise<void> {
@@ -97,6 +238,12 @@ class DatabaseService {
       console.log(`Disconnected ${connectionIds.length} active connections`);
     } catch (error) {
       console.error('Error disconnecting all connections:', error);
+    }
+
+    // Close all SSH tunnels
+    const tunnelIds = Array.from(this.sshTunnels.keys());
+    for (const tunnelId of tunnelIds) {
+      await this.closeSshTunnel(tunnelId);
     }
   }
 

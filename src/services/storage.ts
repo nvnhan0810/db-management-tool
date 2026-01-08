@@ -1,8 +1,17 @@
 import type { DatabaseConnection } from '@/types/connection';
 
-export interface SavedConnection extends Omit<DatabaseConnection, 'password'> {
+export interface SavedConnection extends Omit<DatabaseConnection, 'password' | 'ssh'> {
   name: string;
   encryptedPassword: string;
+  ssh?: {
+    enabled: boolean;
+    host: string;
+    port: number;
+    username: string;
+    encryptedPassword?: string;
+    encryptedPrivateKey?: string;
+    encryptedPassphrase?: string;
+  };
   createdAt: string;
   lastUsed?: string;
 }
@@ -51,6 +60,31 @@ class StorageService {
         lastUsed: new Date().toISOString(),
       };
 
+      // Handle SSH config if enabled
+      if (connection.ssh?.enabled) {
+        savedConnection.ssh = {
+          enabled: true,
+          host: connection.ssh.host,
+          port: connection.ssh.port || 22,
+          username: connection.ssh.username,
+        };
+
+        // Encrypt SSH password if provided
+        if (connection.ssh.password) {
+          savedConnection.ssh.encryptedPassword = await this.encryptPassword(connection.ssh.password);
+        }
+
+        // Encrypt SSH private key if provided
+        if (connection.ssh.privateKey) {
+          savedConnection.ssh.encryptedPrivateKey = await this.encryptPassword(connection.ssh.privateKey);
+        }
+
+        // Encrypt SSH passphrase if provided
+        if (connection.ssh.passphrase) {
+          savedConnection.ssh.encryptedPassphrase = await this.encryptPassword(connection.ssh.passphrase);
+        }
+      }
+
       // Check if connection with same id already exists
       const existingIndex = existingConnections.findIndex(c => c.id === connection.id);
       if (existingIndex >= 0) {
@@ -97,7 +131,7 @@ class StorageService {
     try {
       const decryptedPassword = await this.decryptPassword(savedConnection.encryptedPassword);
 
-      return {
+      const decrypted: DatabaseConnection & { name?: string } = {
         id: savedConnection.id,
         type: savedConnection.type,
         host: savedConnection.host,
@@ -107,6 +141,52 @@ class StorageService {
         password: decryptedPassword,
         name: savedConnection.name,
       };
+
+      // Decrypt SSH config if exists
+      if (savedConnection.ssh && savedConnection.ssh.enabled) {
+        decrypted.ssh = {
+          enabled: true,
+          host: savedConnection.ssh.host || '',
+          port: savedConnection.ssh.port || 22,
+          username: savedConnection.ssh.username || '',
+        };
+
+        // Decrypt SSH password if exists
+        if (savedConnection.ssh.encryptedPassword) {
+          try {
+            decrypted.ssh.password = await this.decryptPassword(savedConnection.ssh.encryptedPassword);
+          } catch (err) {
+            console.error('Failed to decrypt SSH password:', err);
+          }
+        }
+
+        // Decrypt SSH private key if exists
+        if (savedConnection.ssh.encryptedPrivateKey) {
+          try {
+            decrypted.ssh.privateKey = await this.decryptPassword(savedConnection.ssh.encryptedPrivateKey);
+          } catch (err) {
+            console.error('Failed to decrypt SSH private key:', err);
+          }
+        }
+
+        // Decrypt SSH passphrase if exists
+        if (savedConnection.ssh.encryptedPassphrase) {
+          try {
+            decrypted.ssh.passphrase = await this.decryptPassword(savedConnection.ssh.encryptedPassphrase);
+          } catch (err) {
+            console.error('Failed to decrypt SSH passphrase:', err);
+          }
+        }
+
+        console.log('Decrypted SSH config:', {
+          ...decrypted.ssh,
+          password: decrypted.ssh.password ? '***' : undefined,
+          privateKey: decrypted.ssh.privateKey ? '***' : undefined,
+          passphrase: decrypted.ssh.passphrase ? '***' : undefined,
+        });
+      }
+
+      return decrypted;
     } catch (error) {
       console.error('Error decrypting connection:', error);
       throw new Error('Failed to decrypt connection');
