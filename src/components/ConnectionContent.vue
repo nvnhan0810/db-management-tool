@@ -103,32 +103,43 @@
               <div class="tab-content-wrapper">
                 <!-- Main Content Area -->
                 <div class="tab-main-content">
-                  <!-- Structure View -->
-                  <TableStructureView
-                    v-if="tab.viewMode === 'structure'"
-                    :structure="tab.structure"
-                    :is-loading="tab.isLoadingStructure === true"
-                    :error="tab.structureError || null"
-                  />
-
-                  <!-- Data View -->
-                  <TableDataView
-                    v-else-if="tab.viewMode === 'data'"
-                    :data="tab.data"
-                    :is-loading="tab.isLoadingData === true"
-                    :error="tab.dataError || null"
+                  <!-- Query Editor Tab -->
+                  <QueryEditorTab
+                    v-if="tab.tabType === 'query'"
+                    :connection-id="connection?.id"
                     :db-type="connection?.type || 'postgresql'"
-                    @filter-apply="(whereClause: string | null) => handleFilterApply(tab, whereClause)"
                   />
 
-                  <!-- Fallback if no view mode -->
-                  <div v-else class="no-view-mode">
-                    <el-empty description="No view mode selected" />
-                  </div>
+                  <!-- Table Tabs -->
+                  <template v-else>
+                    <!-- Structure View -->
+                    <TableStructureView
+                      v-if="tab.viewMode === 'structure'"
+                      :structure="tab.structure"
+                      :is-loading="tab.isLoadingStructure === true"
+                      :error="tab.structureError || null"
+                    />
+
+                    <!-- Data View -->
+                    <TableDataView
+                      v-else-if="tab.viewMode === 'data'"
+                      :data="tab.data"
+                      :is-loading="tab.isLoadingData === true"
+                      :error="tab.dataError || null"
+                      :db-type="connection?.type || 'postgresql'"
+                      @filter-apply="(whereClause: string | null) => handleFilterApply(tab, whereClause)"
+                    />
+
+                    <!-- Fallback if no view mode -->
+                    <div v-else class="no-view-mode">
+                      <el-empty description="No view mode selected" />
+                    </div>
+                  </template>
                 </div>
 
-                <!-- Footer -->
+                <!-- Footer (only for table tabs) -->
                 <TableViewFooter
+                  v-if="tab.tabType !== 'query'"
                   :view-mode="tab.viewMode || 'data'"
                   :data="tab.data"
                   @update:view-mode="(val: 'structure' | 'data') => switchViewMode(tab, val)"
@@ -161,8 +172,10 @@
 import { useDatabase } from '@/composables/useDatabase';
 import { useConnectionsStore } from '@/stores/connectionsStore';
 import { Connection, Document, Folder } from '@element-plus/icons-vue';
+import { ElMessage } from 'element-plus';
 import { computed, nextTick, onMounted, ref, watch } from 'vue';
 import DatabaseSelectModal from './DatabaseSelectModal.vue';
+import QueryEditorTab from './QueryEditorTab.vue';
 import TableDataView from './TableDataView.vue';
 import TableStructureView from './TableStructureView.vue';
 import TableViewFooter from './TableViewFooter.vue';
@@ -176,6 +189,7 @@ interface Tab {
   id: string;
   tableName: string;
   tableType?: string;
+  tabType?: 'table' | 'query'; // 'table' for table tabs, 'query' for query editor tabs
   viewMode?: 'structure' | 'data';
   isLoadingStructure?: boolean;
   isLoadingData?: boolean;
@@ -590,6 +604,43 @@ const handleFilterApply = async (tab: Tab, whereClause: string | null) => {
 
   await loadTableData(targetTab, page, perPage);
 };
+
+// Handle add new query tab
+const handleAddQuery = () => {
+  console.log('ConnectionContent: handleAddQuery called', {
+    hasConnection: !!connection.value,
+    connectionId: connection.value?.id
+  });
+
+  if (!connection.value?.id) {
+    ElMessage.warning('Please connect to a database first');
+    return;
+  }
+
+  // Count existing query tabs to generate name
+  const queryTabs = tabs.value.filter(t => t.tabType === 'query');
+  let queryName = 'New Query';
+  if (queryTabs.length > 0) {
+    queryName = `New Query ${queryTabs.length}`;
+  }
+
+  // Create new query tab
+  const newQueryTab: Tab = {
+    id: `query-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+    tableName: queryName,
+    tabType: 'query',
+  };
+
+  tabs.value.push(newQueryTab);
+  activeTabId.value = newQueryTab.id;
+
+  console.log('ConnectionContent: New query tab created', newQueryTab);
+};
+
+// Expose method for parent components
+defineExpose({
+  handleAddQuery
+});
 
 // Get column names from data rows
 

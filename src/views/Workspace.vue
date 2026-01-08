@@ -5,7 +5,7 @@
       <ConnectionSidebar v-if="showSidebar" />
 
       <!-- Main Content -->
-      <ConnectionContent />
+      <ConnectionContent ref="connectionContentRef" />
     </div>
   </div>
 </template>
@@ -14,13 +14,27 @@
 import ConnectionContent from '@/components/ConnectionContent.vue';
 import ConnectionSidebar from '@/components/ConnectionSidebar.vue';
 import { useConnectionsStore } from '@/stores/connectionsStore';
-import { computed } from 'vue';
+import { computed, ref } from 'vue';
 
 const connectionsStore = useConnectionsStore();
 const { activeConnections } = connectionsStore;
+const connectionContentRef = ref<InstanceType<typeof ConnectionContent> | null>(null);
 
 // Show sidebar only if there's more than 1 connection
 const showSidebar = computed(() => activeConnections.length > 1);
+
+// Expose method to parent (DefaultLayout)
+defineExpose({
+  handleAddQuery: () => {
+    console.log('Workspace: handleAddQuery called');
+    if (connectionContentRef.value && typeof connectionContentRef.value.handleAddQuery === 'function') {
+      console.log('Workspace: Calling ConnectionContent handleAddQuery');
+      connectionContentRef.value.handleAddQuery();
+    } else {
+      console.warn('Workspace: connectionContentRef.value.handleAddQuery is not a function', connectionContentRef.value);
+    }
+  }
+});
 </script>
 
 <style scoped lang="scss">
