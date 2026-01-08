@@ -14,6 +14,7 @@ export default defineConfig({
       external: [
         'pg-native',
         'ssh2',
+        'keytar',
       ],
     },
   },
@@ -22,6 +23,7 @@ export default defineConfig({
     exclude: [
       'pg-native',
       'ssh2',
+      'keytar',
     ],
   },
 });

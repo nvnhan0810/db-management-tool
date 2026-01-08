@@ -1,16 +1,18 @@
 import type { DatabaseConnection } from '@/types/connection';
 
+// Saved connection metadata (no raw secrets stored here)
 export interface SavedConnection extends Omit<DatabaseConnection, 'password' | 'ssh'> {
   name: string;
-  encryptedPassword: string;
+  // IDs used to look up secrets in keychain via IPC
+  passwordId: string;
   ssh?: {
     enabled: boolean;
     host: string;
     port: number;
     username: string;
-    encryptedPassword?: string;
-    encryptedPrivateKey?: string;
-    encryptedPassphrase?: string;
+    passwordId?: string;
+    privateKeyId?: string;
+    passphraseId?: string;
   };
   createdAt: string;
   lastUsed?: string;
@@ -44,8 +46,8 @@ class StorageService {
     try {
       const existingConnections = await this.getSavedConnections();
 
-      // Encrypt password before saving
-      const encryptedPassword = await this.encryptPassword(connection.password);
+      // Create IDs for secrets (per-connection)
+      const passwordId = `conn:${connection.id}:dbPassword`;
 
       const savedConnection: SavedConnection = {
         id: connection.id,
@@ -55,33 +57,52 @@ class StorageService {
         port: connection.port,
         database: connection.database,
         username: connection.username,
-        encryptedPassword,
+        passwordId,
         createdAt: new Date().toISOString(),
         lastUsed: new Date().toISOString(),
       };
 
       // Handle SSH config if enabled
       if (connection.ssh?.enabled) {
+        const sshPasswordId = connection.ssh.password ? `conn:${connection.id}:sshPassword` : undefined;
+        const sshPrivateKeyId = connection.ssh.privateKey ? `conn:${connection.id}:sshPrivateKey` : undefined;
+        const sshPassphraseId = connection.ssh.passphrase ? `conn:${connection.id}:sshPassphrase` : undefined;
+
         savedConnection.ssh = {
           enabled: true,
           host: connection.ssh.host,
           port: connection.ssh.port || 22,
           username: connection.ssh.username,
+          passwordId: sshPasswordId,
+          privateKeyId: sshPrivateKeyId,
+          passphraseId: sshPassphraseId,
         };
+      }
 
-        // Encrypt SSH password if provided
-        if (connection.ssh.password) {
-          savedConnection.ssh.encryptedPassword = await this.encryptPassword(connection.ssh.password);
+      // Persist secrets in OS keychain via IPC
+      await window.electron.invoke('secrets:save', {
+        id: passwordId,
+        value: connection.password,
+      });
+
+      if (connection.ssh?.enabled) {
+        if (connection.ssh.password && savedConnection.ssh?.passwordId) {
+          await window.electron.invoke('secrets:save', {
+            id: savedConnection.ssh.passwordId,
+            value: connection.ssh.password,
+          });
         }
-
-        // Encrypt SSH private key if provided
-        if (connection.ssh.privateKey) {
-          savedConnection.ssh.encryptedPrivateKey = await this.encryptPassword(connection.ssh.privateKey);
+        if (connection.ssh.privateKey && savedConnection.ssh?.privateKeyId) {
+          await window.electron.invoke('secrets:save', {
+            id: savedConnection.ssh.privateKeyId,
+            value: connection.ssh.privateKey,
+          });
         }
-
-        // Encrypt SSH passphrase if provided
-        if (connection.ssh.passphrase) {
-          savedConnection.ssh.encryptedPassphrase = await this.encryptPassword(connection.ssh.passphrase);
+        if (connection.ssh.passphrase && savedConnection.ssh?.passphraseId) {
+          await window.electron.invoke('secrets:save', {
+            id: savedConnection.ssh.passphraseId,
+            value: connection.ssh.passphrase,
+          });
         }
       }
 
@@ -118,8 +139,24 @@ class StorageService {
   async deleteConnection(connectionId: string): Promise<void> {
     try {
       const connections = await this.getSavedConnections();
+      const connection = connections.find(c => c.id === connectionId);
       const filteredConnections = connections.filter(c => c.id !== connectionId);
       localStorage.setItem(this.STORAGE_KEY, JSON.stringify(filteredConnections));
+
+      // Also delete secrets from keychain
+      if (connection) {
+        await window.electron.invoke('secrets:delete', { id: connection.passwordId });
+
+        if (connection.ssh?.passwordId) {
+          await window.electron.invoke('secrets:delete', { id: connection.ssh.passwordId });
+        }
+        if (connection.ssh?.privateKeyId) {
+          await window.electron.invoke('secrets:delete', { id: connection.ssh.privateKeyId });
+        }
+        if (connection.ssh?.passphraseId) {
+          await window.electron.invoke('secrets:delete', { id: connection.ssh.passphraseId });
+        }
+      }
     } catch (error) {
       console.error('Error deleting connection:', error);
       throw new Error('Failed to delete connection');
@@ -129,7 +166,8 @@ class StorageService {
   // Decrypt password for a saved connection
   async getDecryptedConnection(savedConnection: SavedConnection): Promise<DatabaseConnection & { name?: string }> {
     try {
-      const decryptedPassword = await this.decryptPassword(savedConnection.encryptedPassword);
+      // Load secrets from keychain via IPC
+      const decryptedPassword = await window.electron.invoke('secrets:get', { id: savedConnection.passwordId }) as string | null;
 
       const decrypted: DatabaseConnection & { name?: string } = {
         id: savedConnection.id,
@@ -138,7 +176,7 @@ class StorageService {
         port: savedConnection.port,
         database: savedConnection.database,
         username: savedConnection.username,
-        password: decryptedPassword,
+        password: decryptedPassword || '',
         name: savedConnection.name,
       };
 
@@ -151,39 +189,33 @@ class StorageService {
           username: savedConnection.ssh.username || '',
         };
 
-        // Decrypt SSH password if exists
-        if (savedConnection.ssh.encryptedPassword) {
+        // Load SSH secrets if IDs exist
+        if (savedConnection.ssh.passwordId) {
           try {
-            decrypted.ssh.password = await this.decryptPassword(savedConnection.ssh.encryptedPassword);
+            const sshPassword = await window.electron.invoke('secrets:get', { id: savedConnection.ssh.passwordId }) as string | null;
+            if (sshPassword) decrypted.ssh.password = sshPassword;
           } catch (err) {
-            console.error('Failed to decrypt SSH password:', err);
+            console.error('Failed to load SSH password from keychain:', err);
           }
         }
 
-        // Decrypt SSH private key if exists
-        if (savedConnection.ssh.encryptedPrivateKey) {
+        if (savedConnection.ssh.privateKeyId) {
           try {
-            decrypted.ssh.privateKey = await this.decryptPassword(savedConnection.ssh.encryptedPrivateKey);
+            const sshPrivateKey = await window.electron.invoke('secrets:get', { id: savedConnection.ssh.privateKeyId }) as string | null;
+            if (sshPrivateKey) decrypted.ssh.privateKey = sshPrivateKey;
           } catch (err) {
-            console.error('Failed to decrypt SSH private key:', err);
+            console.error('Failed to load SSH private key from keychain:', err);
           }
         }
 
-        // Decrypt SSH passphrase if exists
-        if (savedConnection.ssh.encryptedPassphrase) {
+        if (savedConnection.ssh.passphraseId) {
           try {
-            decrypted.ssh.passphrase = await this.decryptPassword(savedConnection.ssh.encryptedPassphrase);
+            const sshPassphrase = await window.electron.invoke('secrets:get', { id: savedConnection.ssh.passphraseId }) as string | null;
+            if (sshPassphrase) decrypted.ssh.passphrase = sshPassphrase;
           } catch (err) {
-            console.error('Failed to decrypt SSH passphrase:', err);
+            console.error('Failed to load SSH passphrase from keychain:', err);
           }
         }
-
-        console.log('Decrypted SSH config:', {
-          ...decrypted.ssh,
-          password: decrypted.ssh.password ? '***' : undefined,
-          privateKey: decrypted.ssh.privateKey ? '***' : undefined,
-          passphrase: decrypted.ssh.passphrase ? '***' : undefined,
-        });
       }
 
       return decrypted;
@@ -193,109 +225,7 @@ class StorageService {
     }
   }
 
-  // Simple encryption using Web Crypto API
-  private async encryptPassword(password: string): Promise<string> {
-    try {
-      const encoder = new TextEncoder();
-      const data = encoder.encode(password);
-
-      // Create a proper key using PBKDF2 to derive a 256-bit key
-      const salt = encoder.encode('db-client-salt');
-      const keyMaterial = await crypto.subtle.importKey(
-        'raw',
-        encoder.encode(this.ENCRYPTION_KEY),
-        { name: 'PBKDF2' },
-        false,
-        ['deriveBits', 'deriveKey']
-      );
-
-      const key = await crypto.subtle.deriveKey(
-        {
-          name: 'PBKDF2',
-          salt: salt,
-          iterations: 100000,
-          hash: 'SHA-256'
-        },
-        keyMaterial,
-        { name: 'AES-GCM', length: 256 },
-        false,
-        ['encrypt']
-      );
-
-      // Generate IV
-      const iv = crypto.getRandomValues(new Uint8Array(12));
-
-      // Encrypt
-      const encrypted = await crypto.subtle.encrypt(
-        { name: 'AES-GCM', iv },
-        key,
-        data
-      );
-
-      // Combine IV and encrypted data
-      const combined = new Uint8Array(iv.length + encrypted.byteLength);
-      combined.set(iv);
-      combined.set(new Uint8Array(encrypted), iv.length);
-
-      // Convert to base64
-      return btoa(String.fromCharCode(...combined));
-    } catch (error) {
-      console.error('Encryption error:', error);
-      throw new Error('Failed to encrypt password');
-    }
-  }
-
-  // Simple decryption using Web Crypto API
-  private async decryptPassword(encryptedPassword: string): Promise<string> {
-    try {
-      // Convert from base64
-      const combined = new Uint8Array(
-        atob(encryptedPassword).split('').map(char => char.charCodeAt(0))
-      );
-
-      // Extract IV and encrypted data
-      const iv = combined.slice(0, 12);
-      const encrypted = combined.slice(12);
-
-      // Create a proper key using PBKDF2 to derive a 256-bit key
-      const encoder = new TextEncoder();
-      const salt = encoder.encode('db-client-salt');
-      const keyMaterial = await crypto.subtle.importKey(
-        'raw',
-        encoder.encode(this.ENCRYPTION_KEY),
-        { name: 'PBKDF2' },
-        false,
-        ['deriveBits', 'deriveKey']
-      );
-
-      const key = await crypto.subtle.deriveKey(
-        {
-          name: 'PBKDF2',
-          salt: salt,
-          iterations: 100000,
-          hash: 'SHA-256'
-        },
-        keyMaterial,
-        { name: 'AES-GCM', length: 256 },
-        false,
-        ['decrypt']
-      );
-
-      // Decrypt
-      const decrypted = await crypto.subtle.decrypt(
-        { name: 'AES-GCM', iv },
-        key,
-        encrypted
-      );
-
-      // Convert to string
-      const decoder = new TextDecoder();
-      return decoder.decode(decrypted);
-    } catch (error) {
-      console.error('Decryption error:', error);
-      throw new Error('Failed to decrypt password');
-    }
-  }
+  // Note: Encryption/decryption is now handled in main process via OS keychain (keytar)
 }
 
 export const storageService = new StorageService();

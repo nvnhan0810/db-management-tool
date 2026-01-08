@@ -1,6 +1,7 @@
 import { app, BrowserWindow, ipcMain } from 'electron';
 import started from 'electron-squirrel-startup';
 import path from 'node:path';
+import { deleteSecret, getSecret, saveSecret } from './main-secrets';
 import { databaseService } from './services/database';
 
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
@@ -46,6 +47,34 @@ const createWindow = () => {
 // initialization and is ready to create browser windows.
 // Some APIs can only be used after this event occurs.
 app.on('ready', createWindow);
+
+// Secrets IPC - store sensitive data in OS keychain via keytar
+ipcMain.handle('secrets:save', async (_event, args: { id: string; value: string }) => {
+  const { id, value } = args;
+  if (!id || typeof value !== 'string') {
+    throw new Error('Invalid arguments for secrets:save');
+  }
+  await saveSecret(id, value);
+  return true;
+});
+
+ipcMain.handle('secrets:get', async (_event, args: { id: string }) => {
+  const { id } = args;
+  if (!id) {
+    throw new Error('Invalid arguments for secrets:get');
+  }
+  const value = await getSecret(id);
+  return value;
+});
+
+ipcMain.handle('secrets:delete', async (_event, args: { id: string }) => {
+  const { id } = args;
+  if (!id) {
+    throw new Error('Invalid arguments for secrets:delete');
+  }
+  await deleteSecret(id);
+  return true;
+});
 
 // Disconnect all database connections before app quits
 app.on('before-quit', async (event) => {

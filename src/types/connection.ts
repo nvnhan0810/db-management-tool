@@ -22,9 +22,5 @@ export type DatabaseConnection = {
     saved?: boolean;
   }
 
-export type SavedConnection = Omit<DatabaseConnection, 'password' | 'name'> & {
-  name: string;
-  encryptedPassword: string;
-  createdAt: string;
-  lastUsed?: string;
-}
+// NOTE: The app now uses keychain-backed secrets via src/services/storage.ts.
+// Prefer importing SavedConnection from '@/services/storage' instead of this type.

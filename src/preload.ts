@@ -3,8 +3,23 @@
 import { contextBridge, ipcRenderer } from 'electron';
 
 const invokeChannels = [
-  'database:connect', 'database:disconnect', 'database:disconnectAll', 'database:hasActiveConnections', 'database:query', 'database:getTables', 'database:getTableStructure', 'database:getDatabases', 'database:executeQuery', 'reload:prevent',
-  'window:minimize', 'window:maximize', 'window:close'
+  'database:connect',
+  'database:disconnect',
+  'database:disconnectAll',
+  'database:hasActiveConnections',
+  'database:query',
+  'database:getTables',
+  'database:getTableStructure',
+  'database:getDatabases',
+  'database:executeQuery',
+  'reload:prevent',
+  'window:minimize',
+  'window:maximize',
+  'window:close',
+  // Secrets (keychain) APIs
+  'secrets:save',
+  'secrets:get',
+  'secrets:delete',
 ];
 
 contextBridge.exposeInMainWorld(
