@@ -4,8 +4,8 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 
-const SERVICE_NAME = 'db-client-app';
-const MASTER_KEY_ACCOUNT = '__master_key__';
+const SERVICE_NAME = 'nvnhan0810.com:db-client-app';
+const MASTER_KEY_ACCOUNT = 'a3c8f9b0e5d14c27aa91f3d6b4827c5f';
 
 function getUserDataPath() {
   return app.getPath('userData');
