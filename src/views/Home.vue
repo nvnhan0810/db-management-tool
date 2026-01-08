@@ -102,6 +102,7 @@
 
 <script setup lang="ts">
 import type { SavedConnection } from '@/services/storage';
+import { useConnectionsStore } from '@/stores/connectionsStore';
 import { useConnectionStore } from '@/stores/connectionStore';
 import { Connection, Delete, Edit, MoreFilled, Plus } from '@element-plus/icons-vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
@@ -113,6 +114,7 @@ import { useDatabase } from '../composables/useDatabase';
 const router = useRouter();
 const connectionStore = useConnectionStore();
 const { connect } = useDatabase();
+const connectionsStore = useConnectionsStore();
 
 // Use store state and actions
 const savedConnections = computed(() => connectionStore.connections);
@@ -169,13 +171,21 @@ const handleLoadConnection = async (connection: SavedConnection) => {
       await updateLastUsed(connection.id);
 
       // Set as active connection in store
-      connectionStore.setActiveConnection({
+      const connectionWithName = {
         ...decryptedConnection,
         name: connection.name,
-      });
+      };
+      connectionStore.setActiveConnection(connectionWithName);
+
+      // Add to useConnections for multiple connections support
+      const tabId = await connectionsStore.addConnection(connectionWithName, connection.name);
+      console.log('Added connection with tabId:', tabId);
 
       loadingMessage.close();
       ElMessage.success(`Connected to ${connection.name}`);
+
+      // Small delay to ensure state is updated before navigation
+      await new Promise(resolve => setTimeout(resolve, 100));
 
       // Navigate to workspace
       router.push({ name: 'workspace' });

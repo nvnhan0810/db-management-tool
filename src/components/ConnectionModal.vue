@@ -98,6 +98,7 @@
 <script setup lang="ts">
 import { useDatabase } from '@/composables/useDatabase';
 import type { SavedConnection } from '@/services/storage';
+import { useConnectionsStore } from '@/stores/connectionsStore';
 import { useConnectionStore } from '@/stores/connectionStore';
 import type { DatabaseConnection } from '@/types/connection';
 import { ElMessage } from 'element-plus';
@@ -118,6 +119,7 @@ const emit = defineEmits<{
 const router = useRouter();
 const connectionStore = useConnectionStore();
 const { connect } = useDatabase();
+const connectionsStore = useConnectionsStore();
 
 const visible = computed({
   get: () => props.modelValue,
@@ -315,10 +317,15 @@ const handleConnect = async () => {
     if (success) {
       // Set as active connection in store
       const connectionName = form.name || `${form.type} - ${form.host}`;
-      connectionStore.setActiveConnection({
+      const connectionWithName = {
         ...cleanConnection,
         name: connectionName,
-      });
+      };
+      connectionStore.setActiveConnection(connectionWithName);
+
+      // Add to useConnections for multiple connections support
+      const tabId = await connectionsStore.addConnection(connectionWithName, connectionName);
+      console.log('Added connection with tabId:', tabId);
 
       // If name provided, also save the connection
       if (form.name && form.name.trim()) {
@@ -335,6 +342,9 @@ const handleConnect = async () => {
       // Close modal and navigate to workspace
       visible.value = false;
       emit('connected');
+
+      // Small delay to ensure state is updated before navigation
+      await new Promise(resolve => setTimeout(resolve, 100));
 
       // Navigate to workspace page
       router.push({ name: 'workspace' });

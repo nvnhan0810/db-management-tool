@@ -1,5 +1,6 @@
+import type { DatabaseConnection } from '@/types/connection';
+import { defineStore } from 'pinia';
 import { computed, ref, watch } from 'vue';
-import type { DatabaseConnection } from '../types/connection';
 
 export interface ActiveConnection extends Omit<DatabaseConnection, 'id'> {
   id: string;
@@ -10,15 +11,13 @@ export interface ActiveConnection extends Omit<DatabaseConnection, 'id'> {
   selectedDatabase?: string; // Currently selected database
 }
 
-// Singleton state - shared across all instances
-const activeConnections = ref<ActiveConnection[]>([]);
-const currentTabId = ref<string | null>(null);
-const nextTabId = ref(1);
+export const useConnectionsStore = defineStore('activeConnections', () => {
+  // State
+  const activeConnections = ref<ActiveConnection[]>([]);
+  const currentTabId = ref<string | null>(null);
+  const nextTabId = ref(1);
+  let stateLoaded = false;
 
-// Initialize state loading once
-let stateLoaded = false;
-
-export function useConnections() {
   // Check if this is a fresh app start
   const isFreshStart = () => {
     const lastQuitTime = localStorage.getItem('lastQuitTime');
@@ -113,19 +112,27 @@ export function useConnections() {
     saveState();
   }, { deep: true });
 
-  // Load state only once on first call
+  // Load state only once on first initialization
   if (!stateLoaded) {
     loadState();
     stateLoaded = true;
   }
 
-  // Get current active connection
+  // Computed
   const currentConnection = computed(() => {
     if (!currentTabId.value) return null;
     return activeConnections.value.find(conn => conn.tabId === currentTabId.value);
   });
 
-  // Add new connection tab
+  const sortedConnections = computed(() => {
+    return [...activeConnections.value].sort((a, b) =>
+      b.lastActivity.getTime() - a.lastActivity.getTime()
+    );
+  });
+
+  const hasConnections = computed(() => activeConnections.value.length > 0);
+
+  // Actions
   const addConnection = async (connection: DatabaseConnection, name: string): Promise<string> => {
     const tabId = `tab-${nextTabId.value++}`;
 
@@ -180,7 +187,6 @@ export function useConnections() {
     return tabId;
   };
 
-  // Remove connection tab
   const removeConnection = async (tabId: string) => {
     const index = activeConnections.value.findIndex(conn => conn.tabId === tabId);
     if (index > -1) {
@@ -210,7 +216,6 @@ export function useConnections() {
     }
   };
 
-  // Switch to a specific connection tab
   const switchToConnection = (tabId: string) => {
     const connection = activeConnections.value.find(conn => conn.tabId === tabId);
     if (connection) {
@@ -226,7 +231,6 @@ export function useConnections() {
     }
   };
 
-  // Update connection status
   const updateConnectionStatus = (tabId: string, isConnected: boolean) => {
     const connection = activeConnections.value.find(conn => conn.tabId === tabId);
     if (connection) {
@@ -235,7 +239,6 @@ export function useConnections() {
     }
   };
 
-  // Refresh connection status for all connections
   const refreshConnectionStatus = async () => {
     try {
       if (window.electron) {
@@ -253,22 +256,10 @@ export function useConnections() {
     }
   };
 
-  // Get sorted connections (most recent first)
-  const sortedConnections = computed(() => {
-    return [...activeConnections.value].sort((a, b) =>
-      b.lastActivity.getTime() - a.lastActivity.getTime()
-    );
-  });
-
-  // Check if we have any connections
-  const hasConnections = computed(() => activeConnections.value.length > 0);
-
-  // Get connection by tab ID
   const getConnectionByTabId = (tabId: string) => {
     return activeConnections.value.find(conn => conn.tabId === tabId);
   };
 
-  // Clear all active connections
   const clearAllConnections = async () => {
     // Disconnect all database connections first
     try {
@@ -297,7 +288,6 @@ export function useConnections() {
     }
   };
 
-  // Select database for current connection
   const selectDatabase = async (databaseName: string) => {
     if (!currentTabId.value) {
       return false;
@@ -352,7 +342,6 @@ export function useConnections() {
     return false;
   };
 
-  // Test method to simulate app restart
   const testRestartDetection = () => {
     console.log('Testing restart detection...');
     console.log('isFreshStart():', isFreshStart());
@@ -388,4 +377,5 @@ export function useConnections() {
     isFreshStart,
     testRestartDetection,
   };
-}
+});
+

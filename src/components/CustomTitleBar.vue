@@ -15,7 +15,7 @@
       </div>
 
       <!-- Left side - Navigation tabs -->
-      <div class="title-bar-left" v-if="connectionStore.activeConnection">
+      <div class="title-bar-left" v-if="hasActiveConnection">
         <div class="nav-tabs">
           <el-tooltip content="New Connection" placement="bottom">
             <div class="nav-tab" @click="$emit('new-connection')">
@@ -26,7 +26,7 @@
           </el-tooltip>
 
           <el-tooltip content="Disconnect" placement="bottom">
-            <div class="nav-tab" @click="$emit('disconnect')">
+            <div class="nav-tab" @click="handleDisconnect">
               <el-icon>
                 <SwitchButton />
               </el-icon>
@@ -65,8 +65,8 @@
           </el-icon>
         </div>
         <div class="app-info">
-          <span v-if="connectionStore.activeConnection" class="connection-info">
-            {{ connectionStore.activeConnection.name || connectionStore.activeConnection.host }}
+          <span v-if="currentConnectionName" class="connection-info">
+            {{ currentConnectionName }}
           </span>
           <span v-else class="app-name">Database Client</span>
         </div>
@@ -112,6 +112,9 @@
 </template>
 
 <script setup lang="ts">
+import { useDatabase } from '@/composables/useDatabase';
+import { useConnectionStore } from '@/stores/connectionStore';
+import { useConnectionsStore } from '@/stores/connectionsStore';
 import {
   Close,
   Edit,
@@ -122,33 +125,53 @@ import {
   Monitor,
   SwitchButton
 } from '@element-plus/icons-vue';
-import { onMounted, ref } from 'vue';
+import { ElMessage } from 'element-plus';
+import { computed, onMounted, ref, watch } from 'vue';
+import { useRouter } from 'vue-router';
 import { useTheme } from '../composables/useTheme';
-import { useConnectionStore } from '@/stores/connectionStore';
 
 const connectionStore = useConnectionStore();
+const connectionsStore = useConnectionsStore();
+const { disconnect } = useDatabase();
+const router = useRouter();
 
 
-// const props = defineProps<{
-//   currentConnection: ActiveConnection | null;
-//   activeTab?: string;
-//   sidebarVisible?: boolean;
-// }>();
-
-// const emit = defineEmits<{
-//   'tab-change': [tabId: string];
-//   'add-query': [];
-//   'new-connection': [];
-//   'disconnect': [];
-//   'select-database': [];
-//   'toggle-sidebar': [];
-// }>();
+// Emit events for backward compatibility
+const emit = defineEmits<{
+  'tab-change': [tabId: string];
+  'add-query': [];
+  'new-connection': [];
+  'disconnect': [];
+  'select-database': [];
+  'toggle-sidebar': [];
+}>();
 
 // Platform detection
 const isMacOS = ref(false);
 
 // Use global theme composable
 const { isDarkMode, toggleTheme } = useTheme();
+
+// Computed properties
+const hasActiveConnection = computed(() => {
+  // Check connectionStore first
+  if (connectionStore.activeConnection) {
+    return true;
+  }
+
+  // Check connectionsStore - if there are any active connections, show buttons
+  return connectionsStore.activeConnections.length > 0;
+});
+
+const currentConnectionName = computed(() => {
+  if (connectionStore.activeConnection) {
+    return connectionStore.activeConnection.name || connectionStore.activeConnection.host;
+  }
+  if (connectionsStore.currentConnection) {
+    return connectionsStore.currentConnection.name || connectionsStore.currentConnection.host;
+  }
+  return null;
+});
 
 onMounted(() => {
   isMacOS.value = navigator.platform.toLowerCase().includes('mac');
@@ -157,6 +180,61 @@ onMounted(() => {
 const handleThemeToggle = () => {
   toggleTheme();
 };
+
+// Handle disconnect
+const handleDisconnect = async () => {
+  try {
+    // Check if we should disconnect from connectionStore or connectionsStore
+    if (connectionStore.activeConnection) {
+      // Disconnect from connectionStore
+      const activeConnectionId = connectionStore.activeConnection.id;
+
+      await disconnect();
+      connectionStore.setActiveConnection(null);
+      connectionStore.setConnectionStatus(false);
+
+      // Also remove from connectionsStore if it exists there
+      const connectionInStore = connectionsStore.activeConnections.find(
+        conn => conn.id === activeConnectionId
+      );
+      if (connectionInStore?.tabId) {
+        await connectionsStore.removeConnection(connectionInStore.tabId);
+      }
+
+      ElMessage.success('Disconnected successfully');
+
+      // Navigate to home if we're in workspace
+      if (router.currentRoute.value.name === 'workspace') {
+        router.push({ name: 'home' });
+      }
+    } else if (connectionsStore.currentConnection) {
+      // Disconnect from connectionsStore (workspace)
+      const currentConnection = connectionsStore.currentConnection;
+      if (currentConnection.tabId) {
+        await connectionsStore.removeConnection(currentConnection.tabId);
+        ElMessage.success('Disconnected successfully');
+        // Navigation will be handled by watch() below
+      }
+    }
+
+    // Also emit event for backward compatibility
+    emit('disconnect');
+  } catch (error) {
+    console.error('Error disconnecting:', error);
+    ElMessage.error('Failed to disconnect');
+  }
+};
+
+// Watch for when all connections are removed and navigate to home
+watch(
+  () => connectionsStore.activeConnections.length,
+  (newLength: number, oldLength: number) => {
+    // Only navigate if we're in workspace and all connections are gone
+    if (newLength === 0 && oldLength > 0 && router.currentRoute.value.name === 'workspace') {
+      router.push({ name: 'home' });
+    }
+  }
+);
 
 // const handleSidebarToggle = () => {
 //   emit('toggle-sidebar');

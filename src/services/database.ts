@@ -158,6 +158,19 @@ class DatabaseService {
     const connection = this.connections.get(connectionId);
     const connectionInfo = this.connectionInfo.get(connectionId);
 
+    console.log('getTables called:', {
+      connectionId,
+      hasConnection: !!connection,
+      hasConnectionInfo: !!connectionInfo,
+      connectionInfo: connectionInfo ? {
+        type: connectionInfo.type,
+        database: connectionInfo.database,
+        databaseType: typeof connectionInfo.database,
+        databaseLength: connectionInfo.database?.length,
+        host: connectionInfo.host
+      } : null
+    });
+
     if (!connection) {
       console.warn(`No active connection found for ID: ${connectionId}`);
       return []; // Return empty array instead of throwing error
@@ -173,13 +186,25 @@ class DatabaseService {
 
       if (connection instanceof Pool) {
         // PostgreSQL
-        const query = connectionInfo.database
-          ? `SELECT table_name as name, table_type as type FROM information_schema.tables WHERE table_schema = 'public' AND table_catalog = $1 ORDER BY table_name`
-          : `SELECT table_name as name, table_type as type FROM information_schema.tables WHERE table_schema = 'public' ORDER BY table_name`;
+        console.log('PostgreSQL getTables - database:', connectionInfo.database);
+        // When connected to a specific database, query tables from public schema
+        // If database is not specified, query from current database
+        const query = `
+          SELECT
+            table_name as name,
+            table_type as type
+          FROM information_schema.tables
+          WHERE table_schema = 'public'
+            AND table_type IN ('BASE TABLE', 'VIEW')
+          ORDER BY table_name
+        `;
 
-        const result = connectionInfo.database
-          ? await connection.query(query, [connectionInfo.database])
-          : await connection.query(query);
+        const result = await connection.query(query);
+
+        console.log('PostgreSQL query result:', {
+          rowCount: result.rowCount,
+          rows: result.rows
+        });
 
         tables = result.rows.map((row: any) => ({
           name: row.name,
@@ -187,16 +212,47 @@ class DatabaseService {
         }));
       } else if (connection.query && typeof connection.query === 'function') {
         // MySQL
+        console.log('MySQL getTables - database:', connectionInfo.database);
+
+        let databaseName = connectionInfo.database?.trim();
+
+        // If database name is not set, try to get current database
+        if (!databaseName || databaseName === '') {
+          try {
+            const [dbResult] = await connection.query('SELECT DATABASE() as current_db');
+            databaseName = (dbResult as Array<{ current_db: string }>)[0]?.current_db;
+            console.log('MySQL current database:', databaseName);
+
+            if (!databaseName || databaseName === '') {
+              console.warn('MySQL database name is empty and no current database, cannot get tables');
+              return [];
+            }
+          } catch (dbError) {
+            console.warn('Could not get current database:', dbError);
+            return [];
+          }
+        }
+
         const [results] = await connection.query(`
           SELECT
             TABLE_NAME as name,
             TABLE_TYPE as type
           FROM INFORMATION_SCHEMA.TABLES
           WHERE TABLE_SCHEMA = ?
+            AND TABLE_TYPE IN ('BASE TABLE', 'VIEW')
           ORDER BY TABLE_NAME
-        `, [connectionInfo.database]);
+        `, [databaseName]);
 
-        tables = results as Array<{ name: string; type?: string }>;
+        console.log('MySQL query result:', {
+          count: Array.isArray(results) ? results.length : 0,
+          results: results,
+          databaseUsed: databaseName
+        });
+
+        tables = (results as Array<{ name: string; type?: string }>).map((row: any) => ({
+          name: row.name,
+          type: row.type === 'BASE TABLE' ? 'table' : row.type === 'VIEW' ? 'view' : row.type
+        }));
       } else if (connection.all) {
         // SQLite
         const results = await new Promise<Array<{ name: string; type?: string }>>((resolve, reject) => {
@@ -214,6 +270,11 @@ class DatabaseService {
         });
         tables = results;
       }
+
+      console.log('getTables returning:', {
+        count: tables.length,
+        tables: tables
+      });
 
       return tables;
     } catch (error) {
@@ -269,8 +330,92 @@ class DatabaseService {
       let rows: number | undefined;
       let indexes: Array<{ name: string; algorithm?: string; is_unique: boolean; column_name: string }> = [];
 
-      if (connection.query) {
-        // MySQL/PostgreSQL
+      if (connection instanceof Pool) {
+        // PostgreSQL
+        const query = `
+          SELECT
+            ordinal_position,
+            column_name as name,
+            CASE
+              WHEN character_maximum_length IS NOT NULL
+                THEN data_type || '(' || character_maximum_length || ')'
+              WHEN numeric_precision IS NOT NULL AND numeric_scale IS NOT NULL
+                THEN data_type || '(' || numeric_precision || ',' || numeric_scale || ')'
+              WHEN numeric_precision IS NOT NULL
+                THEN data_type || '(' || numeric_precision || ')'
+              ELSE data_type
+            END as type,
+            (is_nullable = 'YES')::boolean as nullable,
+            character_set_name as character_set,
+            collation_name as collation,
+            column_default as default_value,
+            ''::text as extra,
+            ''::text as comment
+          FROM information_schema.columns
+          WHERE table_schema = 'public' AND table_name = $1
+          ORDER BY ordinal_position
+        `;
+
+        const result = await connection.query(query, [tableName]);
+        const columnResults = result.rows;
+
+        if (Array.isArray(columnResults) && columnResults.length > 0) {
+          columns = columnResults.map((row: any) => ({
+            name: row.name,
+            type: row.type,
+            nullable: Boolean(row.nullable),
+            ordinal_position: row.ordinal_position,
+            character_set: row.character_set || null,
+            collation: row.collation || null,
+            default_value: row.default_value || null,
+            extra: row.extra || null,
+            comment: row.comment || null
+          }));
+        } else {
+          columns = [];
+        }
+
+        // Get row count for PostgreSQL
+        try {
+          const countResult = await connection.query(`SELECT COUNT(*) as count FROM "${tableName}"`);
+          rows = parseInt(countResult.rows[0]?.count || '0', 10);
+        } catch (countError) {
+          console.warn('Could not get row count for table:', tableName, countError);
+        }
+
+        // Get indexes for PostgreSQL
+        try {
+          const indexQuery = `
+            SELECT
+              i.relname as name,
+              a.attname as column_name,
+              ix.indisunique as is_unique,
+              COALESCE(am.amname, 'btree') as algorithm,
+              a.attnum
+            FROM pg_class t
+            JOIN pg_index ix ON t.oid = ix.indrelid
+            JOIN pg_class i ON i.oid = ix.indexrelid
+            LEFT JOIN pg_am am ON i.relam = am.oid
+            JOIN pg_attribute a ON a.attrelid = t.oid AND a.attnum = ANY(ix.indkey)
+            WHERE t.relkind = 'r' AND t.relname = $1
+            GROUP BY i.relname, a.attname, ix.indisunique, am.amname, a.attnum
+            ORDER BY i.relname, a.attnum
+          `;
+          const indexResult = await connection.query(indexQuery, [tableName]);
+
+          if (Array.isArray(indexResult.rows)) {
+            indexes = indexResult.rows.map((row: any) => ({
+              name: row.name,
+              column_name: row.column_name,
+              is_unique: Boolean(row.is_unique),
+              algorithm: row.algorithm || 'BTREE'
+            }));
+          }
+        } catch (indexError) {
+          console.warn('Could not get indexes for table:', tableName, indexError);
+        }
+      } else if (connection.query && typeof connection.query === 'function') {
+        // MySQL
         const query = `
           SELECT
             ORDINAL_POSITION as ordinal_position,
@@ -315,7 +460,7 @@ class DatabaseService {
         // If no columns found, try alternative query
         if (columns.length === 0) {
           try {
-            const [altResults] = await connection.query(`DESCRIBE ${tableName}`);
+            const [altResults] = await connection.query(`DESCRIBE \`${tableName}\``);
             if (Array.isArray(altResults)) {
               columns = altResults.map((row: any) => ({
                 name: row.Field || row.field,
@@ -330,14 +475,13 @@ class DatabaseService {
 
         // Get row count
         try {
-          const [countResults] = await connection.query(`SELECT COUNT(*) as count FROM ${tableName}`);
+          const [countResults] = await connection.query(`SELECT COUNT(*) as count FROM \`${tableName}\``);
           rows = (countResults as any[])[0]?.count;
         } catch (countError) {
           console.warn('Could not get row count for table:', tableName, countError);
         }
 
         // Get indexes
-        let indexes: Array<{ name: string; algorithm?: string; is_unique: boolean; column_name: string }> = [];
         try {
           const indexQuery = `
             SELECT
