@@ -3,13 +3,13 @@
     <div class="left-custom-title-bar">
       <!-- macOS Traffic Light Buttons (left side) -->
       <div v-if="isMacOS" class="macos-traffic-lights">
-        <div class="traffic-light close" @click="closeWindow">
+        <div class="traffic-light close" @click.stop="closeWindow">
           <div class="traffic-light-button"></div>
         </div>
-        <div class="traffic-light minimize" @click="minimizeWindow">
+        <div class="traffic-light minimize" @click.stop="minimizeWindow">
           <div class="traffic-light-button"></div>
         </div>
-        <div class="traffic-light maximize" @click="maximizeWindow">
+        <div class="traffic-light maximize" @click.stop="maximizeWindow">
           <div class="traffic-light-button"></div>
         </div>
       </div>
@@ -91,17 +91,17 @@
 
       <!-- Windows-style Window controls (hidden on macOS) -->
       <div v-if="!isMacOS" class="window-controls">
-        <el-button size="small" class="control-btn minimize" @click="minimizeWindow">
+        <el-button size="small" class="control-btn minimize" @click.stop="minimizeWindow">
           <el-icon>
             <Minus />
           </el-icon>
         </el-button>
-        <el-button size="small" class="control-btn maximize" @click="maximizeWindow">
+        <el-button size="small" class="control-btn maximize" @click.stop="maximizeWindow">
           <el-icon>
             <FullScreen />
           </el-icon>
         </el-button>
-        <el-button size="small" class="control-btn close" @click="closeWindow">
+        <el-button size="small" class="control-btn close" @click.stop="closeWindow">
           <el-icon>
             <Close />
           </el-icon>
@@ -243,21 +243,46 @@ watch(
 
 
 // Window control methods
-const minimizeWindow = () => {
-  if (window.electron) {
-    window.electron.invoke('window:minimize', {});
+const minimizeWindow = async () => {
+  try {
+    if (window.electron) {
+      await window.electron.invoke('window:minimize', {});
+    } else {
+      console.error('window.electron is not available');
+    }
+  } catch (error) {
+    console.error('Error minimizing window:', error);
   }
 };
 
-const maximizeWindow = () => {
-  if (window.electron) {
-    window.electron.invoke('window:maximize', {});
+const maximizeWindow = async () => {
+  try {
+    if (window.electron) {
+      await window.electron.invoke('window:maximize', {});
+    } else {
+      console.error('window.electron is not available');
+    }
+  } catch (error) {
+    console.error('Error maximizing window:', error);
   }
 };
 
-const closeWindow = () => {
-  if (window.electron) {
-    window.electron.invoke('window:close', {});
+const closeWindow = async (event?: Event) => {
+  try {
+    // Prevent any default behavior
+    if (event) {
+      event.preventDefault();
+      event.stopPropagation();
+    }
+
+    if (window.electron) {
+      const result = await window.electron.invoke('window:close', {});
+      console.log('Close window result:', result);
+    } else {
+      console.error('window.electron is not available');
+    }
+  } catch (error) {
+    console.error('Error closing window:', error);
   }
 };
 </script>

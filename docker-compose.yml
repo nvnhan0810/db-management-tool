@@ -1,0 +1,31 @@
+services:
+  mysql:
+    image: mysql:8.0
+    ports:
+      - 3306:3306
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: gl_db
+      MYSQL_USER: gl_user
+      MYSQL_PASSWORD: gl_password
+    volumes:
+      - ./db-data/mysql:/var/lib/mysql
+    networks:
+      - gl-network
+
+  pgsql:
+    image: postgres:16
+    ports:
+      - 5432:5432
+    environment:
+      POSTGRES_USER: gl_user
+      POSTGRES_PASSWORD: gl_password
+      POSTGRES_DB: gl_db
+    volumes:
+      - ./db-data/pgsql:/var/lib/postgresql/data
+    networks:
+      - gl-network
+
+networks:
+  gl-network:
+    driver: bridge

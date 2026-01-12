@@ -1,11 +1,22 @@
+import { getKeytar } from '@/utils/native-modules';
 import { app } from 'electron';
-import keytar from 'keytar';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 
-const SERVICE_NAME = 'nvnhan0810.com:db-client-app';
-const MASTER_KEY_ACCOUNT = 'a3c8f9b0e5d14c27aa91f3d6b4827c5f';
+// Get environment variables with fallback defaults
+// These are injected by Vite during build via vite.main.config.ts
+const SERVICE_NAME = (process.env.SERVICE_NAME as string) || 'db-client-app';
+const MASTER_KEY_ACCOUNT = (process.env.MASTER_KEY_ACCOUNT as string) || 'master-key';
+
+// Log environment info (without sensitive data) for debugging
+if (process.env.NODE_ENV === 'development') {
+  console.log('Secrets Service Config:', {
+    serviceName: SERVICE_NAME,
+    masterKeyAccount: MASTER_KEY_ACCOUNT,
+    nodeEnv: process.env.NODE_ENV,
+  });
+}
 
 function getUserDataPath() {
   return app.getPath('userData');
@@ -46,6 +57,7 @@ async function getOrCreateMasterKey(): Promise<Buffer> {
   if (cachedMasterKey) return cachedMasterKey;
 
   const masterKeyId = getOrCreateMasterKeyId();
+  const keytar = getKeytar();
 
   // Try to load from keytar
   const existing = await keytar.getPassword(SERVICE_NAME, MASTER_KEY_ACCOUNT);
@@ -70,10 +82,12 @@ export async function saveSecret(id: string, value: string): Promise<void> {
 
   const payload = Buffer.concat([iv, tag, encrypted]).toString('base64');
 
+  const keytar = getKeytar();
   await keytar.setPassword(SERVICE_NAME, id, payload);
 }
 
 export async function getSecret(id: string): Promise<string | null> {
+  const keytar = getKeytar();
   const payload = await keytar.getPassword(SERVICE_NAME, id);
   if (!payload) return null;
 
@@ -91,6 +105,7 @@ export async function getSecret(id: string): Promise<string | null> {
 }
 
 export async function deleteSecret(id: string): Promise<void> {
+  const keytar = getKeytar();
   await keytar.deletePassword(SERVICE_NAME, id);
 }
 

@@ -971,7 +971,6 @@ const formatDate = (date: Date | string) => {
       .tab-main-content {
         flex: 1;
         overflow-y: auto;
-        padding: 20px;
         background-color: var(--el-bg-color);
       }
     }

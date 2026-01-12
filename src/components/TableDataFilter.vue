@@ -45,6 +45,7 @@
             placeholder="Select Column"
             style="width: 200px; margin-right: 10px;"
             filterable
+            :disabled="filter.operator === 'RAW SQL'"
           >
             <el-option
               v-for="col in availableColumns"
@@ -72,6 +73,7 @@
             <el-option label="NOT IN" value="NOT IN" />
             <el-option label="IS NULL" value="IS NULL" />
             <el-option label="IS NOT NULL" value="IS NOT NULL" />
+            <el-option label="RAW SQL" value="RAW SQL" />
           </el-select>
 
           <el-input

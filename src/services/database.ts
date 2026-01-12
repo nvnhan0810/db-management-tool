@@ -1,14 +1,14 @@
 import type { DatabaseConnection } from '@/types/connection';
 import type { QueryResult } from '@/types/query';
+import { getSsh2Client } from '@/utils/native-modules';
 import mysql from 'mysql2/promise';
 import * as net from 'net';
 import { Pool } from 'pg';
-import { Client as SshClient } from 'ssh2';
 
 class DatabaseService {
   private connections: Map<string, any> = new Map();
   private connectionInfo: Map<string, DatabaseConnection> = new Map();
-  private sshTunnels: Map<string, { sshClient: SshClient; server: net.Server }> = new Map();
+  private sshTunnels: Map<string, { sshClient: import('ssh2').Client; server: net.Server }> = new Map();
 
   private async createSshTunnel(connection: DatabaseConnection): Promise<number> {
     return new Promise((resolve, reject) => {
@@ -18,6 +18,7 @@ class DatabaseService {
       }
 
       const sshConfig = connection.ssh;
+      const SshClient = getSsh2Client();
       const sshClient = new SshClient();
 
       // SSH connection config

@@ -14,13 +14,8 @@ const createWindow = () => {
   const mainWindow = new BrowserWindow({
     width: 1200,
     height: 800,
-    frame: false, // Disable default title bar
-    titleBarStyle: process.platform === 'darwin' ? 'hiddenInset' : 'hidden',
-    titleBarOverlay: process.platform === 'darwin' ? {
-      color: '#f8f9fa',
-      symbolColor: '#212529',
-      height: 32
-    } : false,
+    frame: false, // Completely disable default frame and title bar
+    // Don't use titleBarStyle when frame is false - it can cause conflicts
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       nodeIntegration: false,
@@ -220,13 +215,17 @@ ipcMain.handle('database:executeQuery', async (event, { connectionId, query }) =
 
 // Window control handlers
 ipcMain.handle('window:minimize', () => {
+  console.log('IPC: window:minimize called');
   const window = BrowserWindow.getFocusedWindow();
   if (window) {
     window.minimize();
+    return { success: true };
   }
+  return { success: false, error: 'No focused window' };
 });
 
 ipcMain.handle('window:maximize', () => {
+  console.log('IPC: window:maximize called');
   const window = BrowserWindow.getFocusedWindow();
   if (window) {
     if (window.isMaximized()) {
@@ -234,14 +233,22 @@ ipcMain.handle('window:maximize', () => {
     } else {
       window.maximize();
     }
+    return { success: true };
   }
+  return { success: false, error: 'No focused window' };
 });
 
 ipcMain.handle('window:close', () => {
-  const window = BrowserWindow.getFocusedWindow();
+  console.log('IPC: window:close called');
+  const window = BrowserWindow.getFocusedWindow() || BrowserWindow.getAllWindows()[0];
   if (window) {
-    window.close();
+    // Use destroy() instead of close() to force close
+    // close() might be prevented by before-quit handlers
+    window.destroy();
+    return { success: true };
   }
+  console.error('No window found to close');
+  return { success: false, error: 'No window found' };
 });
 
 ipcMain.handle('app:quit', () => {
