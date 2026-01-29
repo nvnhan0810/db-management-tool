@@ -25,18 +25,38 @@
         </div>
 
         <!-- Tables List -->
-        <div v-else-if="tables.length > 0" class="tables-list">
-          <div
-            v-for="table in tables"
-            :key="table.name"
-            class="table-item"
-            :class="{ active: activeTableName === table.name }"
-            @click="handleSelectTable(table)"
-          >
-            <el-icon class="table-icon">
-              <Document />
-            </el-icon>
-            <span class="table-name">{{ table.name }}</span>
+        <div v-else-if="tables.length > 0" class="tables-list-wrapper">
+          <div class="tables-filter">
+            <el-input
+              v-model="tableNameFilter"
+              placeholder="Filter by table name..."
+              clearable
+              size="small"
+              class="table-filter-input"
+            >
+              <template #prefix>
+                <el-icon><Search /></el-icon>
+              </template>
+            </el-input>
+          </div>
+          <div class="tables-list">
+            <template v-if="filteredTables.length > 0">
+              <div
+                v-for="table in filteredTables"
+                :key="table.name"
+                class="table-item"
+                :class="{ active: activeTableName === table.name }"
+                @click="handleSelectTable(table)"
+              >
+                <el-icon class="table-icon">
+                  <Document />
+                </el-icon>
+                <span class="table-name">{{ table.name }}</span>
+              </div>
+            </template>
+            <div v-else class="no-match">
+              <span>No tables match "{{ tableNameFilter }}"</span>
+            </div>
           </div>
         </div>
 
@@ -171,7 +191,7 @@
 <script setup lang="ts">
 import { useDatabase } from '@/composables/useDatabase';
 import { useConnectionsStore } from '@/stores/connectionsStore';
-import { Connection, Document, Folder } from '@element-plus/icons-vue';
+import { Connection, Document, Folder, Search } from '@element-plus/icons-vue';
 import { ElMessage } from 'element-plus';
 import { computed, nextTick, onMounted, ref, watch } from 'vue';
 import DatabaseSelectModal from './DatabaseSelectModal.vue';
@@ -249,8 +269,15 @@ const connection = computed(() => {
 });
 
 const tables = ref<Table[]>([]);
+const tableNameFilter = ref('');
 const isLoadingTables = ref(false);
 const activeTableName = ref<string>('');
+
+const filteredTables = computed(() => {
+  const q = tableNameFilter.value.trim().toLowerCase();
+  if (!q) return tables.value;
+  return tables.value.filter(t => t.name.toLowerCase().includes(q));
+});
 const tabs = ref<Tab[]>([]);
 const activeTabId = ref<string>('');
 const showDatabaseModal = ref(false);
@@ -764,6 +791,23 @@ const formatDate = (date: Date | string) => {
       padding: 20px;
     }
 
+    .tables-list-wrapper {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+    }
+
+    .tables-filter {
+      flex-shrink: 0;
+      padding: 8px;
+      border-bottom: 1px solid var(--el-border-color-lighter);
+    }
+
+    .table-filter-input {
+      width: 100%;
+    }
+
     .tables-list {
       flex: 1;
       overflow-y: auto;
@@ -815,6 +859,13 @@ const formatDate = (date: Date | string) => {
           color: var(--el-text-color-primary);
         }
       }
+    }
+
+    .no-match {
+      padding: 16px;
+      text-align: center;
+      font-size: 13px;
+      color: var(--el-text-color-secondary);
     }
 
     .no-tables {

@@ -17,7 +17,13 @@ const config: ForgeConfig = {
     // Rebuild native modules for Electron
     force: true,
   },
-  makers: [new MakerSquirrel({}), new MakerZIP({}, ['darwin']), new MakerRpm({}), new MakerDeb({})],
+  makers: [
+    // name không được chứa ":" (Windows path invalid). package.json name "nvnhan0810.com:db-client-app" → override cho Squirrel.
+    new MakerSquirrel({ name: 'nvnhan0810_db_client_app' }),
+    new MakerZIP({}, ['darwin']),
+    new MakerRpm({}),
+    new MakerDeb({}),
+  ],
   plugins: [
     new AutoUnpackNativesPlugin({}),
     new VitePlugin({

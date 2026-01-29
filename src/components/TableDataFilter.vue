@@ -1,103 +1,105 @@
 <template>
   <div class="table-data-filter">
-    <div class="filter-header">
-      <h4>Filters</h4>
-      <div class="filter-actions">
-        <el-button type="primary" size="small" @click="addFilter">
-          <el-icon><Plus /></el-icon>
-          Add Filter
-        </el-button>
-        <el-button type="success" size="small" @click="applyFilters" :disabled="!hasFilters">
-          Apply
-        </el-button>
-        <el-button size="small" @click="clearFilters" :disabled="!hasFilters">
-          Clear
-        </el-button>
-      </div>
+    <!-- Mặc định: chỉ 1 hàng nút Add Filter -->
+    <div v-if="!filterPanelOpen" class="filter-row-single">
+      <el-button type="primary" size="small" @click="openFilterPanel">
+        <el-icon><Plus /></el-icon>
+        Add Filter
+      </el-button>
     </div>
 
-    <div class="filter-content">
-      <!-- RAW SQL Mode -->
-      <div class="raw-filter-section">
-        <el-checkbox v-model="useRawSql" @change="handleRawSqlToggle">
-          Use RAW SQL Query
-        </el-checkbox>
-        <div v-if="useRawSql" class="raw-sql-input">
-          <el-input
-            v-model="rawSqlQuery"
-            type="textarea"
-            :rows="3"
-            placeholder="Enter SQL WHERE clause (e.g., column1 = 'value' AND column2 > 100)"
-            @blur="handleRawSqlChange"
-          />
-        </div>
-      </div>
-
-      <!-- Filter Rows -->
-      <div v-if="!useRawSql" class="filter-rows">
-        <div
-          v-for="(filter, index) in filters"
-          :key="index"
-          class="filter-row"
-        >
-          <el-select
-            v-model="filter.column"
-            placeholder="Select Column"
-            style="width: 200px; margin-right: 10px;"
-            filterable
-            :disabled="filter.operator === 'RAW SQL'"
-          >
-            <el-option
-              v-for="col in availableColumns"
-              :key="col"
-              :label="col"
-              :value="col"
+    <!-- Khi mở: hiện form filter + Apply, Cancel -->
+    <template v-else>
+      <div class="filter-content">
+        <div class="raw-filter-section">
+          <el-checkbox v-model="useRawSql" @change="handleRawSqlToggle">
+            Use RAW SQL Query
+          </el-checkbox>
+          <div v-if="useRawSql" class="raw-sql-input">
+            <el-input
+              v-model="rawSqlQuery"
+              type="textarea"
+              :rows="3"
+              placeholder="Enter SQL WHERE clause (e.g., column1 = 'value' AND column2 > 100)"
+              @blur="handleRawSqlChange"
             />
-          </el-select>
-
-          <el-select
-            v-model="filter.operator"
-            placeholder="Operator"
-            style="width: 150px; margin-right: 10px;"
-            @change="handleOperatorChange(filter)"
-          >
-            <el-option label="=" value="=" />
-            <el-option label="!=" value="!=" />
-            <el-option label=">" value=">" />
-            <el-option label=">=" value=">=" />
-            <el-option label="<" value="<" />
-            <el-option label="<=" value="<=" />
-            <el-option label="LIKE" value="LIKE" />
-            <el-option label="NOT LIKE" value="NOT LIKE" />
-            <el-option label="IN" value="IN" />
-            <el-option label="NOT IN" value="NOT IN" />
-            <el-option label="IS NULL" value="IS NULL" />
-            <el-option label="IS NOT NULL" value="IS NOT NULL" />
-            <el-option label="RAW SQL" value="RAW SQL" />
-          </el-select>
-
-          <el-input
-            v-if="!isNullOperator(filter.operator)"
-            v-model="filter.value"
-            :placeholder="getValuePlaceholder(filter.operator)"
-            style="flex: 1; margin-right: 10px;"
-            @keyup.enter="applyFilters"
-          />
-
-          <el-button
-            type="danger"
-            size="small"
-            :icon="Delete"
-            circle
-            @click="removeFilter(index)"
-          />
+          </div>
         </div>
 
-        <div v-if="filters.length === 0" class="no-filters">
-          <el-empty description="No filters added" :image-size="60" />
+        <div v-if="!useRawSql" class="filter-rows">
+          <div
+            v-for="(filter, index) in filters"
+            :key="index"
+            class="filter-row"
+          >
+            <el-select
+              v-model="filter.column"
+              placeholder="Select Column"
+              style="width: 200px; margin-right: 10px;"
+              filterable
+              :disabled="filter.operator === 'RAW SQL'"
+            >
+              <el-option
+                v-for="col in availableColumns"
+                :key="col"
+                :label="col"
+                :value="col"
+              />
+            </el-select>
+
+            <el-select
+              v-model="filter.operator"
+              placeholder="Operator"
+              style="width: 150px; margin-right: 10px;"
+              @change="handleOperatorChange(filter)"
+            >
+              <el-option label="=" value="=" />
+              <el-option label="!=" value="!=" />
+              <el-option label=">" value=">" />
+              <el-option label=">=" value=">=" />
+              <el-option label="<" value="<" />
+              <el-option label="<=" value="<=" />
+              <el-option label="LIKE" value="LIKE" />
+              <el-option label="NOT LIKE" value="NOT LIKE" />
+              <el-option label="IN" value="IN" />
+              <el-option label="NOT IN" value="NOT IN" />
+              <el-option label="IS NULL" value="IS NULL" />
+              <el-option label="IS NOT NULL" value="IS NOT NULL" />
+              <el-option label="RAW SQL" value="RAW SQL" />
+            </el-select>
+
+            <el-input
+              v-if="!isNullOperator(filter.operator)"
+              v-model="filter.value"
+              :placeholder="getValuePlaceholder(filter.operator)"
+              style="flex: 1; margin-right: 10px;"
+              @keyup.enter="applyFilters"
+            />
+
+            <el-button
+              type="danger"
+              size="small"
+              :icon="Delete"
+              circle
+              @click="removeFilter(index)"
+            />
+          </div>
+        </div>
+
+        <div class="filter-actions">
+          <el-button type="primary" size="small" @click="addFilter">
+            <el-icon><Plus /></el-icon>
+            Add Filter
+          </el-button>
+          <el-button type="success" size="small" @click="onApply">
+            Apply
+          </el-button>
+          <el-button size="small" @click="onCancel">
+            Cancel
+          </el-button>
         </div>
       </div>
-    </div>
+    </template>
   </div>
 </template>
 
@@ -122,6 +124,7 @@ interface Emits {
 const props = defineProps<Props>();
 const emit = defineEmits<Emits>();
 
+const filterPanelOpen = ref(false);
 const filters = ref<Filter[]>([]);
 const useRawSql = ref(false);
 const rawSqlQuery = ref('');
@@ -135,12 +138,35 @@ const hasFilters = computed(() => {
   return filters.value.length > 0;
 });
 
+const openFilterPanel = () => {
+  filterPanelOpen.value = true;
+  if (filters.value.length === 0) {
+    filters.value.push({
+      column: '',
+      operator: '=',
+      value: ''
+    });
+  }
+};
+
 const addFilter = () => {
   filters.value.push({
     column: '',
     operator: '=',
     value: ''
   });
+};
+
+const onApply = () => {
+  applyFilters();
+};
+
+const onCancel = () => {
+  filterPanelOpen.value = false;
+  filters.value = [];
+  rawSqlQuery.value = '';
+  useRawSql.value = false;
+  emit('apply', null, null);
 };
 
 const removeFilter = (index: number) => {
@@ -192,10 +218,10 @@ const applyFilters = () => {
 };
 
 const clearFilters = () => {
+  filterPanelOpen.value = false;
   filters.value = [];
   rawSqlQuery.value = '';
   useRawSql.value = false;
-  // Automatically apply empty filters to reload data without filters
   emit('apply', null, null);
 };
 </script>
@@ -218,32 +244,17 @@ const clearFilters = () => {
     border-color: rgba(226, 232, 240, 0.8);
   }
 
-  .filter-header {
+  .filter-row-single {
     display: flex;
-    justify-content: space-between;
     align-items: center;
-    margin-bottom: 16px;
-    padding-bottom: 12px;
-    border-bottom: 1px solid var(--el-border-color-light);
-
-    h4 {
-      margin: 0;
-      font-size: 16px;
-      font-weight: 600;
-      color: var(--el-text-color-primary);
-
-      .dark & {
-        color: #e2e8f0;
-      }
-    }
-
-    .filter-actions {
-      display: flex;
-      gap: 8px;
-    }
   }
 
   .filter-content {
+    .filter-actions {
+      display: flex;
+      gap: 8px;
+      margin-top: 12px;
+    }
     .raw-filter-section {
       margin-bottom: 16px;
       padding: 12px;
@@ -286,11 +297,6 @@ const clearFilters = () => {
         &:last-child {
           margin-bottom: 0;
         }
-      }
-
-      .no-filters {
-        padding: 20px;
-        text-align: center;
       }
     }
   }
