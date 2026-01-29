@@ -66,7 +66,8 @@ const handlePerPageChange = (perPage: number) => {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 16px 20px;
+  padding: 16px 1px;
+  margin-bottom: 16px;
   border-top: 1px solid var(--el-border-color-light);
   background-color: var(--el-bg-color-page);
   box-shadow: 0 -2px 4px rgba(0, 0, 0, 0.05);
@@ -88,8 +89,13 @@ const handlePerPageChange = (perPage: number) => {
 
     :deep(.el-radio-group) {
       .el-radio-button {
+        &:first-child .el-radio-button__inner {
+          border-radius: 6px 0 0 6px;
+        }
+        &:last-child .el-radio-button__inner {
+          border-radius: 0 6px 6px 0;
+        }
         .el-radio-button__inner {
-          border-radius: 6px;
           padding: 8px 16px;
           transition: all 0.2s ease;
 

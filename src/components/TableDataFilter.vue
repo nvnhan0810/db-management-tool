@@ -229,10 +229,7 @@ const clearFilters = () => {
 <style scoped lang="scss">
 .table-data-filter {
   background-color: var(--el-bg-color-page);
-  border-radius: 8px;
-  padding: 16px;
   margin-bottom: 20px;
-  border: 1px solid var(--el-border-color-light);
 
   .dark & {
     background-color: rgba(26, 32, 44, 0.8);

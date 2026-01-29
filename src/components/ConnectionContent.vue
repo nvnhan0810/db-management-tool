@@ -816,16 +816,32 @@ const formatDate = (date: Date | string) => {
       .table-item {
         display: flex;
         align-items: center;
-        padding: 10px 12px;
-        margin-bottom: 4px;
-        border-radius: 6px;
+        padding: 6px 12px;
         cursor: pointer;
         transition: all 0.2s ease;
         background-color: transparent;
         border: 1px solid transparent;
 
         &:hover {
-          background-color: var(--el-fill-color-light);
+          background-color: rgba(64, 158, 255, 0.1);
+          .table-name,
+          .table-icon {
+            color: #303133;
+          }
+          .dark & {
+            background-color: rgba(64, 158, 255, 0.18);
+            .table-name,
+            .table-icon {
+              color: #e5e7eb;
+            }
+          }
+          [data-theme="light"] & {
+            background-color: rgba(64, 158, 255, 0.08);
+            .table-name,
+            .table-icon {
+              color: #303133;
+            }
+          }
         }
 
         &.active {
@@ -1000,13 +1016,22 @@ const formatDate = (date: Date | string) => {
 
         .el-tabs__content {
           flex: 1;
+          min-height: 0;
           overflow: hidden;
           padding: 0;
 
           .el-tab-pane {
             height: 100%;
-            overflow-y: auto;
-            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            min-height: 0;
+            overflow: hidden;
+            padding: 20px 20px 24px;
+
+            > .tab-content-wrapper {
+              flex: 1;
+              min-height: 0;
+            }
           }
         }
       }
@@ -1014,13 +1039,18 @@ const formatDate = (date: Date | string) => {
       .tab-content-wrapper {
         display: flex;
         flex-direction: column;
-        height: 100%;
+        min-height: 0;
         overflow: hidden;
         background-color: var(--el-bg-color);
+
+        > .tab-footer {
+          flex-shrink: 0;
+        }
       }
 
       .tab-main-content {
         flex: 1;
+        min-height: 0;
         overflow-y: auto;
         background-color: var(--el-bg-color);
       }
