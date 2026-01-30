@@ -111,9 +111,10 @@
           </el-card>
         </div>
 
-        <!-- Tabs View -->
-        <div v-else class="tabs-container">
-          <el-tabs v-model="activeTabId" type="card" closable @tab-remove="handleRemoveTab" @tab-click="handleTabClick">
+        <!-- Tabs View + Data sidebar (inside content-area) -->
+        <div v-else ref="contentAreaInnerRef" class="content-area-inner">
+          <div class="tabs-container">
+            <el-tabs v-model="activeTabId" type="card" closable @tab-remove="handleRemoveTab" @tab-click="handleTabClick">
             <el-tab-pane
               v-for="tab in tabs"
               :key="tab.id"
@@ -147,7 +148,21 @@
                       :is-loading="tab.isLoadingData === true"
                       :error="tab.dataError || null"
                       :db-type="connection?.type || 'postgresql'"
+                      :table-name="tab.tableName"
+                      :connection-id="connection?.id"
+                      :column-types="(tab.structure?.columns) ? Object.fromEntries(tab.structure.columns.map((c: { name: string; type: string }) => [c.name, c.type])) : {}"
+                      :sidebar-panel-open="dataSidebarVisible"
+                      :sidebar-selected-row-index="getDataSidebarState(tab.id).selectedRowIndex"
+                      :sidebar-selected-column="getDataSidebarState(tab.id).selectedColumn"
+                      :sidebar-modified-rows="getDataSidebarState(tab.id).modifiedRows"
+                      :sidebar-deleted-rows="getDataSidebarState(tab.id).deletedRows"
                       @filter-apply="(whereClause: string | null) => handleFilterApply(tab, whereClause)"
+                      @refresh="() => { loadTableData(tab); clearDataSidebarState(tab.id); }"
+                      @cell-select="(e: { rowIndex: number; columnKey: string | null }) => onDataCellSelect(tab.id, e)"
+                      @sidebar-close="onDataSidebarClose(tab.id)"
+                      @update-field="(e: { field: string; value: unknown }) => onDataUpdateField(tab.id, e)"
+                      @mark-deleted="onDataMarkDeleted(tab.id)"
+                      @unmark-deleted="onDataUnmarkDeleted(tab.id)"
                     />
 
                     <!-- Fallback if no view mode -->
@@ -169,6 +184,25 @@
               </div>
             </el-tab-pane>
           </el-tabs>
+          </div>
+          <!-- Data table cell sidebar (inside content-area, full height) -->
+          <div
+            v-if="dataSidebarVisible"
+            class="data-detail-sidebar-wrap"
+          >
+            <TableDataCellSidebar
+              :visible="true"
+              :selected-row="dataSidebarSelectedRow"
+              :selected-column="dataSidebarSelectedColumn"
+              :modified-fields="dataSidebarModifiedFields"
+              :is-deleted="dataSidebarIsDeleted"
+              :column-types="dataSidebarColumnTypes"
+              @close="onDataSidebarClose(activeTabId)"
+              @update-field="(field: string, value: unknown) => onDataUpdateField(activeTabId, { field, value })"
+              @mark-deleted="onDataMarkDeleted(activeTabId)"
+              @unmark-deleted="onDataUnmarkDeleted(activeTabId)"
+            />
+          </div>
         </div>
       </div>
     </div>
@@ -190,12 +224,14 @@
 
 <script setup lang="ts">
 import { useDatabase } from '@/composables/useDatabase';
+import { storeToRefs } from 'pinia';
 import { useConnectionsStore } from '@/stores/connectionsStore';
 import { Connection, Document, Folder, Search } from '@element-plus/icons-vue';
 import { ElMessage } from 'element-plus';
-import { computed, nextTick, onMounted, ref, watch } from 'vue';
+import { computed, nextTick, onMounted, onUnmounted, reactive, ref, watch } from 'vue';
 import DatabaseSelectModal from './DatabaseSelectModal.vue';
 import QueryEditorTab from './QueryEditorTab.vue';
+import TableDataCellSidebar from './TableDataCellSidebar.vue';
 import TableDataView from './TableDataView.vue';
 import TableStructureView from './TableStructureView.vue';
 import TableViewFooter from './TableViewFooter.vue';
@@ -246,6 +282,7 @@ interface Tab {
 }
 
 const connectionsStore = useConnectionsStore();
+const { dataSidebarOpen } = storeToRefs(connectionsStore);
 const { currentConnection, activeConnections, currentTabId, switchToConnection } = connectionsStore;
 const { getTables, getTableStructure, executeQuery } = useDatabase();
 
@@ -281,6 +318,103 @@ const filteredTables = computed(() => {
 const tabs = ref<Tab[]>([]);
 const activeTabId = ref<string>('');
 const showDatabaseModal = ref(false);
+const contentAreaInnerRef = ref<HTMLElement | null>(null);
+
+// Data table cell sidebar state (per tab, inside content-area)
+interface DataSidebarState {
+  selectedRowIndex: number | null;
+  selectedColumn: string | null;
+  modifiedRows: Record<number, Record<string, unknown>>;
+  deletedRows: number[];
+}
+const dataSidebarStateByTab = reactive<Record<string, DataSidebarState>>({});
+function getDataSidebarState(tabId: string): DataSidebarState {
+  if (!dataSidebarStateByTab[tabId]) {
+    dataSidebarStateByTab[tabId] = reactive({
+      selectedRowIndex: null,
+      selectedColumn: null,
+      modifiedRows: {},
+      deletedRows: [],
+    });
+  }
+  return dataSidebarStateByTab[tabId];
+}
+function onDataCellSelect(tabId: string, e: { rowIndex: number; columnKey: string | null }) {
+  const s = getDataSidebarState(tabId);
+  s.selectedRowIndex = e.rowIndex;
+  s.selectedColumn = e.columnKey;
+}
+function onDataSidebarClose(tabId: string) {
+  const s = getDataSidebarState(tabId);
+  s.selectedRowIndex = null;
+  s.selectedColumn = null;
+  connectionsStore.closeDataSidebar();
+}
+function onDataUpdateField(tabId: string, e: { field: string; value: unknown }) {
+  const s = getDataSidebarState(tabId);
+  const idx = s.selectedRowIndex;
+  if (idx == null) return;
+  if (!s.modifiedRows[idx]) s.modifiedRows[idx] = {};
+  s.modifiedRows[idx][e.field] = e.value;
+}
+function onDataMarkDeleted(tabId: string) {
+  const s = getDataSidebarState(tabId);
+  if (s.selectedRowIndex != null && !s.deletedRows.includes(s.selectedRowIndex)) {
+    s.deletedRows.push(s.selectedRowIndex);
+  }
+}
+function onDataUnmarkDeleted(tabId: string) {
+  const s = getDataSidebarState(tabId);
+  if (s.selectedRowIndex != null) {
+    s.deletedRows = s.deletedRows.filter(i => i !== s.selectedRowIndex);
+  }
+}
+function clearDataSidebarState(tabId: string) {
+  const s = getDataSidebarState(tabId);
+  s.selectedRowIndex = null;
+  s.selectedColumn = null;
+  s.modifiedRows = {};
+  s.deletedRows = [];
+}
+const activeDataTab = computed(() => {
+  const id = activeTabId.value;
+  const tab = tabs.value.find(t => t.id === id);
+  return tab && tab.tabType !== 'query' && tab.viewMode === 'data' ? tab : null;
+});
+const dataSidebarVisible = computed(() => {
+  return dataSidebarOpen.value && tabs.value.length > 0;
+});
+const dataSidebarSelectedRow = computed(() => {
+  const tab = activeDataTab.value;
+  if (!tab?.data?.rows) return null;
+  const s = getDataSidebarState(tab.id);
+  const idx = s.selectedRowIndex;
+  if (idx == null || idx < 0 || idx >= tab.data.rows.length) return null;
+  return tab.data.rows[idx] as Record<string, unknown>;
+});
+const dataSidebarSelectedColumn = computed(() => {
+  const tab = activeDataTab.value;
+  return tab ? getDataSidebarState(tab.id).selectedColumn : null;
+});
+const dataSidebarModifiedFields = computed(() => {
+  const tab = activeDataTab.value;
+  if (!tab) return {};
+  const s = getDataSidebarState(tab.id);
+  const idx = s.selectedRowIndex;
+  return idx != null ? (s.modifiedRows[idx] ?? {}) : {};
+});
+const dataSidebarIsDeleted = computed(() => {
+  const tab = activeDataTab.value;
+  if (!tab) return false;
+  const s = getDataSidebarState(tab.id);
+  return s.selectedRowIndex !== null && s.deletedRows.includes(s.selectedRowIndex);
+});
+
+const dataSidebarColumnTypes = computed(() => {
+  const tab = activeDataTab.value;
+  if (!tab?.structure?.columns?.length) return {};
+  return Object.fromEntries(tab.structure.columns.map((c: { name: string; type: string }) => [c.name, c.type]));
+});
 
 // Define loadTables function before watch to avoid "Cannot access before initialization" error
 const loadTables = async () => {
@@ -676,8 +810,15 @@ const handleDatabaseSelected = async (databaseName: string) => {
   await loadTables();
 };
 
+function handleDataSidebarClickOutside(e: MouseEvent) {
+  if (!dataSidebarVisible.value) return;
+  if (contentAreaInnerRef.value?.contains(e.target as Node)) return;
+  onDataSidebarClose(activeTabId.value);
+}
+
 // Debug on mount
 onMounted(() => {
+  document.addEventListener('click', handleDataSidebarClickOutside);
   console.log('ConnectionContent mounted:', {
     hasConnection: !!connection.value,
     connection: connection.value,
@@ -685,6 +826,9 @@ onMounted(() => {
     activeConnections: activeConnections,
     currentTabId: currentTabId
   });
+});
+onUnmounted(() => {
+  document.removeEventListener('click', handleDataSidebarClickOutside);
 });
 
 const formatDate = (date: Date | string) => {
@@ -812,6 +956,11 @@ const formatDate = (date: Date | string) => {
       flex: 1;
       overflow-y: auto;
       padding: 8px;
+      scrollbar-width: none;
+      -ms-overflow-style: none;
+      &::-webkit-scrollbar {
+        display: none;
+      }
 
       .table-item {
         display: flex;
@@ -996,10 +1145,18 @@ const formatDate = (date: Date | string) => {
       }
     }
 
+    .content-area-inner {
+      flex: 1;
+      display: flex;
+      min-height: 0;
+      overflow: hidden;
+    }
+
     .tabs-container {
       flex: 1;
       display: flex;
       flex-direction: column;
+      min-width: 0;
       overflow: hidden;
 
       :deep(.el-tabs) {
@@ -1053,7 +1210,22 @@ const formatDate = (date: Date | string) => {
         min-height: 0;
         overflow-y: auto;
         background-color: var(--el-bg-color);
+        scrollbar-width: none;
+        -ms-overflow-style: none;
+        &::-webkit-scrollbar {
+          display: none;
+        }
       }
+    }
+
+    .data-detail-sidebar-wrap {
+      flex-shrink: 0;
+      width: 380px;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+      border-left: 1px solid var(--el-border-color-lighter);
+      background-color: var(--el-bg-color);
     }
   }
 

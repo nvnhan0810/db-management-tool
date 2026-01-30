@@ -71,8 +71,8 @@
               :page-size="perPage"
               :total="result.total"
               layout="prev, pager, next"
+              size="small"
               @current-change="handlePageChange"
-              small
             />
           </div>
         </div>

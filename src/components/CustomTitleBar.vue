@@ -75,12 +75,14 @@
 
     <!-- Right side - Window controls and theme toggle -->
     <div class="title-bar-right">
-      <!-- Sidebar toggle button -->
-      <!-- <el-button size="small" class="control-btn sidebar-toggle" @click="handleSidebarToggle">
-        <el-icon>
-          <component :is="sidebarVisible ? 'Hide' : 'View'" />
-        </el-icon>
-      </el-button> -->
+      <!-- Data sidebar toggle (right panel: row/cell detail) -->
+      <el-tooltip v-if="hasActiveConnection" :content="dataSidebarOpen ? 'Hide detail panel' : 'Show detail panel'" placement="bottom">
+        <el-button size="small" class="control-btn sidebar-toggle" @click="handleDataSidebarToggle">
+          <el-icon>
+            <component :is="dataSidebarOpen ? 'Hide' : 'View'" />
+          </el-icon>
+        </el-button>
+      </el-tooltip>
 
       <!-- Theme toggle button (always visible) -->
       <el-button size="small" class="control-btn theme-toggle" @click="handleThemeToggle">
@@ -113,6 +115,7 @@
 
 <script setup lang="ts">
 import { useDatabase } from '@/composables/useDatabase';
+import { storeToRefs } from 'pinia';
 import { useConnectionStore } from '@/stores/connectionStore';
 import { useConnectionsStore } from '@/stores/connectionsStore';
 import {
@@ -120,10 +123,12 @@ import {
   Edit,
   Folder,
   FullScreen,
+  Hide,
   Link,
   Minus,
   Monitor,
-  SwitchButton
+  SwitchButton,
+  View
 } from '@element-plus/icons-vue';
 import { ElMessage } from 'element-plus';
 import { computed, onMounted, ref, watch } from 'vue';
@@ -133,6 +138,7 @@ import { useTheme } from '../composables/useTheme';
 const connectionStore = useConnectionStore();
 const connectionsStore = useConnectionsStore();
 const { disconnect } = useDatabase();
+const { dataSidebarOpen } = storeToRefs(connectionsStore);
 const router = useRouter();
 
 
@@ -236,9 +242,9 @@ watch(
   }
 );
 
-// const handleSidebarToggle = () => {
-//   emit('toggle-sidebar');
-// };
+const handleDataSidebarToggle = () => {
+  connectionsStore.toggleDataSidebar();
+};
 
 
 

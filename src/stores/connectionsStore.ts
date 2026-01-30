@@ -132,6 +132,15 @@ export const useConnectionsStore = defineStore('activeConnections', () => {
 
   const hasConnections = computed(() => activeConnections.value.length > 0);
 
+  // Data table sidebar (right) – toggled by CustomTitleBar, not by row click
+  const dataSidebarOpen = ref(false);
+  const toggleDataSidebar = () => {
+    dataSidebarOpen.value = !dataSidebarOpen.value;
+  };
+  const closeDataSidebar = () => {
+    dataSidebarOpen.value = false;
+  };
+
   // Actions
   const addConnection = async (connection: DatabaseConnection, name: string): Promise<string> => {
     const tabId = `tab-${nextTabId.value++}`;
@@ -354,6 +363,7 @@ export const useConnectionsStore = defineStore('activeConnections', () => {
     activeConnections,
     currentTabId,
     currentConnection,
+    dataSidebarOpen,
 
     // Computed
     sortedConnections,
@@ -373,6 +383,8 @@ export const useConnectionsStore = defineStore('activeConnections', () => {
     getConnectionByTabId,
     clearAllConnections,
     selectDatabase,
+    toggleDataSidebar,
+    closeDataSidebar,
     markAppQuit,
     isFreshStart,
     testRestartDetection,
