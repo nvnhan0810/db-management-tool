@@ -1,7 +1,7 @@
 {
   "name": "nvnhan0810.com:db-client-app",
   "productName": "GL Database Client",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "GL Database Client is a desktop application for managing and querying databases.",
   "main": ".vite/build/main.js",
   "scripts": {

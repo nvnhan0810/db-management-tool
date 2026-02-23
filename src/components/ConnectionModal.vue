@@ -7,144 +7,34 @@
     :close-on-press-escape="false"
     @close="handleCancel"
   >
-    <el-form
-      ref="formRef"
-      :model="form"
-      :rules="rules"
-      label-width="120px"
-      label-position="left"
-    >
-      <el-form-item label="Connection Name" prop="name">
-        <el-input
-          v-model="form.name"
-          placeholder="Enter connection name (required for save)"
-          :class="{ 'is-error': nameError }"
-        />
-        <div v-if="nameError" class="field-error">{{ nameError }}</div>
-        <div class="field-hint">Required for Save, optional for Connect</div>
-      </el-form-item>
-
-      <el-form-item label="Database Type" prop="type">
-        <el-select v-model="form.type" placeholder="Select database type" style="width: 100%">
-          <el-option label="MySQL" value="mysql" />
-          <el-option label="PostgreSQL" value="postgresql" />
-          <el-option label="SQLite" value="sqlite" />
-        </el-select>
-      </el-form-item>
-
-      <template v-if="form.type !== 'sqlite'">
-        <el-form-item label="Host" prop="host">
-          <el-input v-model="form.host" placeholder="localhost" />
-        </el-form-item>
-
-        <el-form-item label="Port" prop="port">
-          <el-input-number
-            v-model="form.port"
-            :min="1"
-            :max="65535"
-            style="width: 100%"
-          />
-        </el-form-item>
-
-        <el-form-item label="Username" prop="username">
-          <el-input v-model="form.username" placeholder="Enter username" />
-        </el-form-item>
-
-        <el-form-item label="Password" prop="password">
-          <el-input
-            v-model="form.password"
-            type="password"
-            placeholder="Enter password"
-            show-password
-          />
-        </el-form-item>
-      </template>
-
-      <el-form-item label="Database" prop="database">
-        <el-input
-          v-model="form.database"
-          :placeholder="form.type === 'sqlite' ? 'Path to database file' : 'Database name (optional)'"
-        />
-        <div class="field-hint">Leave empty to connect without selecting a database</div>
-      </el-form-item>
-
-      <!-- SSH Tunnel Section -->
-      <template v-if="form.type !== 'sqlite'">
-        <el-divider content-position="left">
-          <span style="font-size: 14px; font-weight: 500;">SSH Tunnel (Optional)</span>
-        </el-divider>
-
-        <el-form-item>
-          <el-checkbox v-model="form.ssh!.enabled">
-            Enable SSH Tunnel
-          </el-checkbox>
-          <div class="field-hint">Use SSH tunnel to connect through a jump server</div>
-        </el-form-item>
-
-        <template v-if="form.ssh && form.ssh.enabled">
-          <el-form-item label="SSH Host" prop="ssh.host">
-            <el-input
-              v-model="form.ssh.host"
-              placeholder="ssh.example.com"
+    <div class="form-wrapper">
+      <el-form
+        ref="formRef"
+        :model="form"
+        :rules="rules"
+        label-width="120px"
+        label-position="left"
+      >
+        <el-tabs v-model="activeTab" class="connection-modal-tabs">
+          <el-tab-pane label="Connection" name="connection">
+            <ConnectionModalConnectionTab
+              :form="form"
+              :name-error="nameError"
+              :disabled="isFormBusy"
             />
-          </el-form-item>
-
-          <el-form-item label="SSH Port" prop="ssh.port">
-            <el-input-number
-              v-model="form.ssh.port"
-              :min="1"
-              :max="65535"
-              style="width: 100%"
+          </el-tab-pane>
+          <el-tab-pane label="SSH" name="ssh" :disabled="form.type === 'sqlite'">
+            <ConnectionModalSSHTab
+              v-model:ssh-auth-method="sshAuthMethod"
+              :form="form"
+              :disabled="isFormBusy"
             />
-            <div class="field-hint">Default: 22</div>
-          </el-form-item>
-
-          <el-form-item label="SSH Username" prop="ssh.username">
-            <el-input
-              v-model="form.ssh.username"
-              placeholder="Enter SSH username"
-            />
-          </el-form-item>
-
-          <el-form-item label="SSH Authentication">
-            <el-radio-group v-model="sshAuthMethod">
-              <el-radio label="password">Password</el-radio>
-              <el-radio label="key">Private Key</el-radio>
-            </el-radio-group>
-          </el-form-item>
-
-          <el-form-item v-if="sshAuthMethod === 'password'" label="SSH Password" prop="ssh.password">
-            <el-input
-              v-model="form.ssh.password"
-              type="password"
-              placeholder="Enter SSH password"
-              show-password
-            />
-          </el-form-item>
-
-          <template v-if="sshAuthMethod === 'key'">
-            <el-form-item label="SSH Private Key" prop="ssh.privateKey">
-              <el-input
-                v-model="form.ssh.privateKey"
-                type="textarea"
-                :rows="4"
-                placeholder="Paste your SSH private key here (OpenSSH format)"
-              />
-              <div class="field-hint">Paste your private key content (starting with -----BEGIN...)</div>
-            </el-form-item>
-
-            <el-form-item label="Key Passphrase" prop="ssh.passphrase">
-              <el-input
-                v-model="form.ssh.passphrase"
-                type="password"
-                placeholder="Enter passphrase if key is encrypted (optional)"
-                show-password
-              />
-            </el-form-item>
-          </template>
-        </template>
-      </template>
-    </el-form>
+          </el-tab-pane>
+        </el-tabs>
+      </el-form>
+      <!-- Overlay blocks all form interaction when Test/Connect/Save is running -->
+      <div v-if="isFormBusy" class="form-busy-overlay" aria-hidden="true" />
+    </div>
 
     <div v-if="error" class="error-message">
       {{ error }}
@@ -154,16 +44,27 @@
       <div class="dialog-footer">
         <el-button @click="handleCancel">Cancel</el-button>
         <el-button
+          type="default"
+          class="btn-test-connection"
+          :loading="isTesting"
+          :disabled="isSaving || isConnecting"
+          @click="handleTestConnection"
+        >
+          Test Connection
+        </el-button>
+        <el-button
           type="primary"
-          @click="handleSave"
           :loading="isSaving"
+          :disabled="isConnecting || isTesting"
+          @click="handleSave"
         >
           Save
         </el-button>
         <el-button
           type="success"
-          @click="handleConnect"
           :loading="isConnecting"
+          :disabled="isSaving || isTesting"
+          @click="handleConnect"
         >
           Connect
         </el-button>
@@ -173,6 +74,8 @@
 </template>
 
 <script setup lang="ts">
+import ConnectionModalConnectionTab from '@/components/ConnectionModal/ConnectionTab.vue';
+import ConnectionModalSSHTab from '@/components/ConnectionModal/SSHTab.vue';
 import { useDatabase } from '@/composables/useDatabase';
 import type { SavedConnection } from '@/services/storage';
 import { useConnectionsStore } from '@/stores/connectionsStore';
@@ -195,7 +98,7 @@ const emit = defineEmits<{
 
 const router = useRouter();
 const connectionStore = useConnectionStore();
-const { connect } = useDatabase();
+const { connect, disconnect } = useDatabase();
 const connectionsStore = useConnectionsStore();
 
 const visible = computed({
@@ -206,6 +109,8 @@ const visible = computed({
 const formRef = ref();
 const isSaving = ref(false);
 const isConnecting = ref(false);
+const isTesting = ref(false);
+const isFormBusy = computed(() => isSaving.value || isConnecting.value || isTesting.value);
 const error = ref<string | null>(null);
 const nameError = ref('');
 const isEditing = ref(false);
@@ -232,6 +137,40 @@ const form = reactive<DatabaseConnection & { name?: string }>({
 });
 
 const sshAuthMethod = ref<'password' | 'key'>('password');
+const activeTab = ref<'connection' | 'ssh'>('connection');
+
+const DEFAULT_PORTS: Record<string, number> = {
+  postgresql: 5432,
+  mysql: 3306,
+};
+
+/** Database value for connection: PostgreSQL uses 'postgres' when empty. */
+const getEffectiveDatabase = (): string => {
+  const db = form.database?.trim() ?? '';
+  if (form.type === 'postgresql' && !db) return 'postgres';
+  return db;
+};
+
+const buildCleanConnection = (): DatabaseConnection => ({
+  id: form.id,
+  type: form.type,
+  host: form.host,
+  port: form.port,
+  username: form.username,
+  password: form.password,
+  database: getEffectiveDatabase(),
+  ssh: form.ssh?.enabled
+    ? {
+        enabled: true,
+        host: form.ssh.host || '',
+        port: form.ssh.port || 22,
+        username: form.ssh.username || '',
+        password: sshAuthMethod.value === 'password' ? (form.ssh.password || '') : undefined,
+        privateKey: sshAuthMethod.value === 'key' ? (form.ssh.privateKey || '') : undefined,
+        passphrase: sshAuthMethod.value === 'key' ? (form.ssh.passphrase || '') : undefined,
+      }
+    : undefined,
+});
 
 const rules = {
   type: [{ required: true, message: 'Please select database type', trigger: 'change' }],
@@ -267,11 +206,29 @@ const rules = {
 // Reset form when modal opens or connectionToEdit changes
 watch(visible, (newVal) => {
   if (newVal) {
+    activeTab.value = 'connection';
     if (props.connectionToEdit) {
       loadConnectionForEdit(props.connectionToEdit);
     } else {
       resetForm();
     }
+  }
+});
+
+// When switching to SQLite, stay on Connection tab (SSH tab is disabled)
+// When changing between MySQL/PostgreSQL, auto-update port if it was the default of the previous type
+watch(() => form.type, (newType, oldType) => {
+  if (newType === 'sqlite' && activeTab.value === 'ssh') {
+    activeTab.value = 'connection';
+    return;
+  }
+  if (newType === 'sqlite') return;
+  const newDefault = DEFAULT_PORTS[newType];
+  if (newDefault === undefined) return;
+  const oldDefault = oldType ? DEFAULT_PORTS[oldType] : undefined;
+  const isCurrentlyDefaultOfOld = oldDefault !== undefined && form.port === oldDefault;
+  if (isCurrentlyDefaultOfOld || oldType === 'sqlite') {
+    form.port = newDefault;
   }
 });
 
@@ -393,6 +350,35 @@ const handleCancel = () => {
   visible.value = false;
 };
 
+const handleTestConnection = async () => {
+  const isValid = await validateForm();
+  if (!isValid) {
+    return;
+  }
+
+  error.value = null;
+  isTesting.value = true;
+
+  try {
+    const cleanConnection = buildCleanConnection();
+    const success = await connect(cleanConnection);
+
+    if (success) {
+      await disconnect();
+      ElMessage.success('Connection test successful!');
+    } else {
+      error.value = 'Connection test failed. Please check your credentials and try again.';
+      ElMessage.error(error.value);
+    }
+  } catch (err) {
+    console.error('Test connection error:', err);
+    error.value = err instanceof Error ? err.message : 'Connection test failed';
+    ElMessage.error(error.value);
+  } finally {
+    isTesting.value = false;
+  }
+};
+
 const handleSave = async () => {
   // Validate name (required for save)
   if (!validateName()) {
@@ -409,26 +395,7 @@ const handleSave = async () => {
   isSaving.value = true;
 
   try {
-    // Create clean connection object
-    const cleanConnection: DatabaseConnection = {
-      id: form.id,
-      type: form.type,
-      host: form.host,
-      port: form.port,
-      username: form.username,
-      password: form.password,
-      database: form.database,
-      ssh: form.ssh?.enabled ? {
-        enabled: true,
-        host: form.ssh.host || '',
-        port: form.ssh.port || 22,
-        username: form.ssh.username || '',
-        password: sshAuthMethod.value === 'password' ? (form.ssh.password || '') : undefined,
-        privateKey: sshAuthMethod.value === 'key' ? (form.ssh.privateKey || '') : undefined,
-        passphrase: sshAuthMethod.value === 'key' ? (form.ssh.passphrase || '') : undefined,
-      } : undefined,
-    };
-
+    const cleanConnection = buildCleanConnection();
     console.log('Saving connection with SSH config:', cleanConnection.ssh);
 
     // Save or update connection
@@ -459,26 +426,7 @@ const handleConnect = async () => {
   isConnecting.value = true;
 
   try {
-    // Create clean connection object
-    const cleanConnection: DatabaseConnection = {
-      id: form.id,
-      type: form.type,
-      host: form.host,
-      port: form.port,
-      username: form.username,
-      password: form.password,
-      database: form.database,
-      ssh: form.ssh?.enabled ? {
-        enabled: true,
-        host: form.ssh.host || '',
-        port: form.ssh.port || 22,
-        username: form.ssh.username || '',
-        password: sshAuthMethod.value === 'password' ? (form.ssh.password || '') : undefined,
-        privateKey: sshAuthMethod.value === 'key' ? (form.ssh.privateKey || '') : undefined,
-        passphrase: sshAuthMethod.value === 'key' ? (form.ssh.passphrase || '') : undefined,
-      } : undefined,
-    };
-
+    const cleanConnection = buildCleanConnection();
     // Connect to database
     const success = await connect(cleanConnection);
 
@@ -553,6 +501,18 @@ const handleConnect = async () => {
   border-radius: 4px;
 }
 
+.form-wrapper {
+  position: relative;
+}
+
+.form-busy-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 10;
+  cursor: not-allowed;
+  background: transparent;
+}
+
 .dialog-footer {
   display: flex;
   justify-content: flex-end;
@@ -567,5 +527,29 @@ const handleConnect = async () => {
   .el-input__wrapper {
     box-shadow: 0 0 0 1px var(--el-color-danger) inset;
   }
+}
+
+.connection-modal-tabs {
+  :deep(.el-tabs__header) {
+    margin-bottom: 16px;
+  }
+  :deep(.el-tabs__content) {
+    overflow: visible;
+  }
+}
+
+/* Loading state: only footer buttons in this modal */
+.dialog-footer .btn-test-connection {
+  min-width: 130px;
+}
+
+/* Remove Element Plus loading mask (::before) only for footer buttons */
+.dialog-footer :deep(.el-button.is-loading)::before {
+  display: none;
+}
+
+/* In dark mode, keep footer button text visible while loading (override index.scss) */
+.dark .dialog-footer :deep(.el-button.is-loading) {
+  color: inherit !important;
 }
 </style>
