@@ -232,6 +232,20 @@ function updateField(field: string, newValue: string) {
   const v = newValue.trim() === '' || newValue.toUpperCase() === 'NULL' ? null : newValue;
   emit('update-field', field, v);
 }
+
+/** Đọc toàn bộ giá trị hiện tại từ DOM và emit update-field cho từng field (để Cmd+S luôn dùng data mới nhất). */
+function flushEditsFromDom() {
+  const row = displayRow.value;
+  for (const key of Object.keys(cellRefs.value)) {
+    const div = cellRefs.value[key];
+    if (!div) continue;
+    const text = div.textContent ?? '';
+    const v = text.trim() === '' || text.toUpperCase() === 'NULL' ? null : text;
+    emit('update-field', key, v);
+  }
+}
+
+defineExpose({ flushEditsFromDom });
 </script>
 
 <style scoped lang="scss">

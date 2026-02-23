@@ -195,6 +195,7 @@
             class="data-detail-sidebar-wrap"
           >
             <TableDataCellSidebar
+              ref="dataSidebarRef"
               :visible="true"
               :selected-row="dataSidebarSelectedRow"
               :selected-column="dataSidebarSelectedColumn"
@@ -477,6 +478,7 @@ function clearDataSidebarState(tabId: string) {
 }
 
 const tableDataViewRefs: Record<string, { runSave: () => Promise<void> } | null> = {};
+const dataSidebarRef = ref<{ flushEditsFromDom: () => void } | null>(null);
 
 function setTableDataViewRef(tabId: string, el: { runSave: () => Promise<void> } | null) {
   if (el) {
@@ -486,7 +488,7 @@ function setTableDataViewRef(tabId: string, el: { runSave: () => Promise<void> }
   }
 }
 
-function handleSaveKeydown(e: KeyboardEvent) {
+async function handleSaveKeydown(e: KeyboardEvent) {
   const key = e.key?.toLowerCase();
   if ((e.ctrlKey || e.metaKey) && key === 's') {
     e.preventDefault();
@@ -494,7 +496,14 @@ function handleSaveKeydown(e: KeyboardEvent) {
     const tab = tabs.value.find(t => t.id === activeTabId.value);
     if (tab && tab.tabType !== 'query' && tab.viewMode === 'data') {
       const comp = tableDataViewRefs[tab.id];
-      if (comp?.runSave) comp.runSave();
+        if (comp?.runSave) {
+          const active = document.activeElement as HTMLElement | null;
+          if (active && (active.isContentEditable || active.tagName === 'INPUT' || active.tagName === 'TEXTAREA')) {
+            active.blur();
+            await nextTick();
+          }
+          comp.runSave();
+        }
     }
   }
 }

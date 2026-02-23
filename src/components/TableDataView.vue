@@ -515,8 +515,23 @@ function escapeValue(val: unknown): string {
   return valueToSqlString(val);
 }
 
+function isLargeTextColumn(col: string): boolean {
+  const t = props.columnTypes?.[col]?.toLowerCase() ?? '';
+  return t === 'text' || t.includes('text') || t === 'blob' || t.includes('blob') || t === 'longtext' || t === 'mediumtext' || t === 'clob';
+}
+
 function buildWhereFromRow(row: Record<string, unknown>, columns: string[]): string {
-  const parts = columns.map(col => {
+  // Strategy: prefer single `id` column → simplest and most reliable WHERE
+  const idCol = columns.find(c => c.toLowerCase() === 'id');
+  if (idCol !== undefined && row[idCol] !== null && row[idCol] !== undefined) {
+    return `${escapeIdentifier(idCol)} = ${escapeValue(row[idCol])}`;
+  }
+
+  // Fallback: exclude large text/blob columns to avoid multiline comparison issues
+  const safeCols = columns.filter(col => !isLargeTextColumn(col));
+  const useCols = safeCols.length > 0 ? safeCols : columns;
+
+  const parts = useCols.map(col => {
     const v = row[col];
     const ident = escapeIdentifier(col);
     if (v === null || v === undefined) return `${ident} IS NULL`;
