@@ -282,18 +282,18 @@ interface Tab {
 }
 
 const connectionsStore = useConnectionsStore();
-const { dataSidebarOpen } = storeToRefs(connectionsStore);
-const { currentConnection, activeConnections, currentTabId, switchToConnection } = connectionsStore;
+const { dataSidebarOpen, currentConnection, activeConnections, currentTabId } = storeToRefs(connectionsStore);
+const { switchToConnection } = connectionsStore;
 const { getTables, getTableStructure, executeQuery } = useDatabase();
 
 // Use currentConnection, but fallback to first active connection if currentConnection is null
 const connection = computed(() => {
-  const conn = currentConnection || (activeConnections.length > 0 ? activeConnections[0] : null);
+  const conn = currentConnection.value || (activeConnections.value.length > 0 ? activeConnections.value[0] : null);
 
   console.log('ConnectionContent - Computing connection:', {
-    hasCurrentConnection: !!currentConnection,
-    currentTabId: currentTabId,
-    activeConnectionsCount: activeConnections.length,
+    hasCurrentConnection: !!currentConnection.value,
+    currentTabId: currentTabId.value,
+    activeConnectionsCount: activeConnections.value.length,
     connection: conn ? {
       id: conn.id,
       name: conn.name,
@@ -453,9 +453,9 @@ const loadTables = async () => {
 
 // Watch activeConnections to ensure currentTabId is set
 watch(
-  () => activeConnections,
+  activeConnections,
   (newConnections) => {
-    if (newConnections.length > 0 && !currentTabId) {
+    if (newConnections.length > 0 && !currentTabId.value) {
       console.log('No currentTabId, switching to first connection');
       switchToConnection(newConnections[0].tabId);
     }
@@ -471,7 +471,7 @@ watch(
       hasConnection: !!connection.value,
       connectionId: connection.value?.id,
       database: connection.value?.database,
-      activeConnectionsCount: activeConnections.length
+      activeConnectionsCount: activeConnections.value.length
     });
 
     if (connection.value?.database) {

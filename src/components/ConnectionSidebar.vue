@@ -4,47 +4,73 @@
       <h3>Connections</h3>
     </div>
     <div class="sidebar-content">
-      <div
-        v-for="connection in sortedConnections"
+      <el-tooltip
+        v-for="connection in displayedConnections"
         :key="connection.tabId"
-        class="connection-item"
-        :class="{ active: connection.tabId === currentTabId }"
-        @click="handleSelectConnection(connection.tabId)"
+        placement="right"
+        :show-after="300"
       >
-        <div class="connection-item-header">
+        <template #content>
+          <div class="connection-tooltip">
+            <div>Name: {{ connection.name || connection.host }}</div>
+            <div>Host: {{ connection.host }}:{{ connection.port }}</div>
+            <div v-if="connection.database">Database: {{ connection.database }}</div>
+            <div v-if="connection.ssh?.host">SSH Host: {{ connection.ssh.host }}</div>
+          </div>
+        </template>
+        <div
+          class="connection-item"
+          :class="{ active: connection.tabId === currentTabId }"
+          @click="handleSelectConnection(connection.tabId)"
+        >
           <div class="connection-icon">
-            <el-icon>
-              <Connection />
-            </el-icon>
+            <el-icon><Connection /></el-icon>
           </div>
           <div class="connection-info">
-            <div class="connection-name">{{ connection.name || `${connection.type} - ${connection.host}` }}</div>
-            <div class="connection-details">
-              <span class="connection-type">{{ connection.type }}</span>
-              <span class="connection-host">{{ connection.host }}:{{ connection.port }}</span>
-            </div>
+            <span class="connection-name">{{ connection.name || `${connection.type} - ${connection.host}` }}</span>
+            <span class="connection-host">{{ connection.host }}:{{ connection.port }}</span>
           </div>
         </div>
-        <div class="connection-status">
-          <el-tag :type="connection.isConnected ? 'success' : 'danger'" size="small">
-            {{ connection.isConnected ? 'Connected' : 'Disconnected' }}
-          </el-tag>
-        </div>
-      </div>
+      </el-tooltip>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
+import type { ActiveConnection } from '@/stores/connectionsStore';
 import { useConnectionsStore } from '@/stores/connectionsStore';
+import { storeToRefs } from 'pinia';
 import { Connection } from '@element-plus/icons-vue';
+import { computed, ref, watch } from 'vue';
 
 const connectionsStore = useConnectionsStore();
-const {
+const { sortedConnections, currentTabId } = storeToRefs(connectionsStore);
+const { switchToConnection } = connectionsStore;
+
+// Giữ thứ tự hiển thị cố định - chỉ thêm mới khi có connection mới, không reorder khi switch
+const displayOrder = ref<string[]>([]);
+
+watch(
   sortedConnections,
-  currentTabId,
-  switchToConnection,
-} = connectionsStore;
+  (conns) => {
+    const tabIds = conns.map((c) => c.tabId);
+    const current = new Set(displayOrder.value);
+    const newIds = tabIds.filter((id) => !current.has(id));
+    const removed = displayOrder.value.filter((id) => tabIds.includes(id));
+    if (newIds.length > 0) {
+      displayOrder.value = [...removed, ...newIds];
+    } else {
+      displayOrder.value = removed;
+    }
+  },
+  { immediate: true, deep: true }
+);
+
+const displayedConnections = computed(() => {
+  const conns = sortedConnections.value;
+  const order = displayOrder.value;
+  return order.map((tabId) => conns.find((c) => c.tabId === tabId)).filter(Boolean) as ActiveConnection[];
+});
 
 const handleSelectConnection = (tabId: string) => {
   switchToConnection(tabId);
@@ -53,7 +79,7 @@ const handleSelectConnection = (tabId: string) => {
 
 <style scoped lang="scss">
 .connection-sidebar {
-  width: 280px;
+  width: 140px;
   height: 100%;
   display: flex;
   flex-direction: column;
@@ -72,12 +98,12 @@ const handleSelectConnection = (tabId: string) => {
   }
 
   .sidebar-header {
-    padding: 16px;
+    padding: 12px;
     border-bottom: 1px solid var(--el-border-color-light);
 
     h3 {
       margin: 0;
-      font-size: 16px;
+      font-size: 14px;
       font-weight: 600;
       color: var(--el-text-color-primary);
     }
@@ -86,101 +112,101 @@ const handleSelectConnection = (tabId: string) => {
   .sidebar-content {
     flex: 1;
     overflow-y: auto;
-    padding: 8px;
+    padding: 6px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
 
-    .connection-item {
-      padding: 12px;
-      margin-bottom: 8px;
-      border-radius: 8px;
-      cursor: pointer;
-      transition: all 0.2s ease;
+  .connection-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 8px;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+    background-color: transparent;
+    border: 1px solid transparent;
+    min-width: 0;
+
+    &:hover {
+      border-color: var(--el-color-primary);
+      box-shadow: 0 0 0 1px var(--el-color-primary) inset;
       background-color: transparent;
-      border: 1px solid transparent;
+    }
 
-      &:hover {
-        background-color: var(--el-fill-color-light);
+    &.active {
+      background-color: var(--el-color-primary-light-9);
+      border-color: var(--el-color-primary);
+
+      .dark & {
+        background-color: rgba(64, 158, 255, 0.2);
+        border-color: rgba(64, 158, 255, 0.5);
       }
 
-      &.active {
-        background-color: var(--el-color-primary-light-9);
-        border-color: var(--el-color-primary);
+      [data-theme="light"] & {
+        background-color: rgba(64, 158, 255, 0.1);
+        border-color: rgba(64, 158, 255, 0.3);
+      }
+    }
 
-        .dark & {
-          background-color: rgba(64, 158, 255, 0.2);
-          border-color: rgba(64, 158, 255, 0.5);
-        }
+    .connection-icon {
+      width: 24px;
+      height: 24px;
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 4px;
+      background-color: var(--el-color-primary-light-9);
+      color: var(--el-color-primary);
 
-        [data-theme="light"] & {
-          background-color: rgba(64, 158, 255, 0.1);
-          border-color: rgba(64, 158, 255, 0.3);
-        }
+      .dark & {
+        background-color: rgba(64, 158, 255, 0.2);
+        color: #66b1ff;
       }
 
-      .connection-item-header {
-        display: flex;
-        align-items: flex-start;
-        gap: 12px;
-        margin-bottom: 8px;
+      [data-theme="light"] & {
+        background-color: rgba(64, 158, 255, 0.1);
+        color: #409eff;
+      }
+    }
 
-        .connection-icon {
-          width: 32px;
-          height: 32px;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          border-radius: 6px;
-          background-color: var(--el-color-primary-light-9);
-          color: var(--el-color-primary);
-          flex-shrink: 0;
+    .connection-info {
+      flex: 1;
+      min-width: 0;
+      max-width: 100px;
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
 
-          .dark & {
-            background-color: rgba(64, 158, 255, 0.2);
-            color: #66b1ff;
-          }
-
-          [data-theme="light"] & {
-            background-color: rgba(64, 158, 255, 0.1);
-            color: #409eff;
-          }
-        }
-
-        .connection-info {
-          flex: 1;
-          min-width: 0;
-
-          .connection-name {
-            font-size: 14px;
-            font-weight: 600;
-            color: var(--el-text-color-primary);
-            margin-bottom: 4px;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            white-space: nowrap;
-          }
-
-          .connection-details {
-            display: flex;
-            flex-direction: column;
-            gap: 2px;
-            font-size: 12px;
-            color: var(--el-text-color-regular);
-
-            .connection-type {
-              text-transform: uppercase;
-              font-weight: 500;
-            }
-
-            .connection-host {
-              opacity: 0.8;
-            }
-          }
-        }
+      .connection-name {
+        font-size: 12px;
+        font-weight: 600;
+        color: var(--el-text-color-primary);
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
       }
 
-      .connection-status {
-        display: flex;
-        justify-content: flex-end;
+      .connection-host {
+        font-size: 10px;
+        color: var(--el-text-color-secondary);
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
       }
+    }
+  }
+}
+
+/* Tooltip content - rendered in popper, needs global or :deep */
+:deep(.connection-tooltip) {
+  div {
+    line-height: 1.5;
+    &:not(:last-child) {
+      margin-bottom: 4px;
     }
   }
 }

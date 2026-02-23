@@ -190,16 +190,26 @@ const handleThemeToggle = () => {
 // Handle disconnect
 const handleDisconnect = async () => {
   try {
-    // Check if we should disconnect from connectionStore or connectionsStore
+    // When we have 2+ connections, only use connectionsStore: disconnect current tab, do NOT navigate.
+    // Navigation to home is handled by watch() when activeConnections.length becomes 0.
+    if (connectionsStore.activeConnections.length > 0) {
+      const currentConnection = connectionsStore.currentConnection;
+      if (currentConnection?.tabId) {
+        await connectionsStore.removeConnection(currentConnection.tabId);
+        ElMessage.success('Disconnected successfully');
+      }
+      emit('disconnect');
+      return;
+    }
+
+    // Single connection (from Home or last one): use connectionStore and navigate to home
     if (connectionStore.activeConnection) {
-      // Disconnect from connectionStore
       const activeConnectionId = connectionStore.activeConnection.id;
 
       await disconnect();
       connectionStore.setActiveConnection(null);
       connectionStore.setConnectionStatus(false);
 
-      // Also remove from connectionsStore if it exists there
       const connectionInStore = connectionsStore.activeConnections.find(
         conn => conn.id === activeConnectionId
       );
@@ -209,21 +219,11 @@ const handleDisconnect = async () => {
 
       ElMessage.success('Disconnected successfully');
 
-      // Navigate to home if we're in workspace
       if (router.currentRoute.value.name === 'workspace') {
         router.push({ name: 'home' });
       }
-    } else if (connectionsStore.currentConnection) {
-      // Disconnect from connectionsStore (workspace)
-      const currentConnection = connectionsStore.currentConnection;
-      if (currentConnection.tabId) {
-        await connectionsStore.removeConnection(currentConnection.tabId);
-        ElMessage.success('Disconnected successfully');
-        // Navigation will be handled by watch() below
-      }
     }
 
-    // Also emit event for backward compatibility
     emit('disconnect');
   } catch (error) {
     console.error('Error disconnecting:', error);

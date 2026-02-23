@@ -83,8 +83,11 @@ export const useConnectionsStore = defineStore('activeConnections', () => {
             }
           }
 
-          // Load the state only if it's recent and valid
-          activeConnections.value = state.activeConnections;
+          // Load the state only if it's recent and valid; restore lastActivity as Date (JSON stores it as string)
+          activeConnections.value = (state.activeConnections as ActiveConnection[]).map((conn: ActiveConnection) => ({
+            ...conn,
+            lastActivity: conn.lastActivity instanceof Date ? conn.lastActivity : new Date(conn.lastActivity as unknown as string),
+          }));
           currentTabId.value = state.currentTabId;
           nextTabId.value = state.nextTabId || 1;
           console.log('Loaded saved connection state');
@@ -124,11 +127,7 @@ export const useConnectionsStore = defineStore('activeConnections', () => {
     return activeConnections.value.find(conn => conn.tabId === currentTabId.value);
   });
 
-  const sortedConnections = computed(() => {
-    return [...activeConnections.value].sort((a, b) =>
-      b.lastActivity.getTime() - a.lastActivity.getTime()
-    );
-  });
+  const sortedConnections = computed(() => [...activeConnections.value]);
 
   const hasConnections = computed(() => activeConnections.value.length > 0);
 
@@ -229,12 +228,9 @@ export const useConnectionsStore = defineStore('activeConnections', () => {
     const connection = activeConnections.value.find(conn => conn.tabId === tabId);
     if (connection) {
       currentTabId.value = tabId;
-      connection.lastActivity = new Date();
+      // Don't update lastActivity - keeps connection position in sidebar when switching
 
-      // Ensure connection is marked as connected when switching to it
-      // This is important for multi-connection scenarios
       if (!connection.isConnected) {
-        console.log(`Marking connection ${connection.id} as connected when switching to tab ${tabId}`);
         connection.isConnected = true;
       }
     }
