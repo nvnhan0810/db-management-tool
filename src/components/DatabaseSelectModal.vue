@@ -29,9 +29,6 @@
         </el-icon>
         <div class="database-info">
           <div class="database-name">{{ database.name }}</div>
-          <div v-if="database.tableCount !== undefined" class="database-details">
-            {{ database.tableCount }} table{{ database.tableCount !== 1 ? 's' : '' }}
-          </div>
         </div>
         <el-icon v-if="selectedDatabase === database.name" class="check-icon">
           <Check />
@@ -60,6 +57,7 @@ import { useDatabase } from '@/composables/useDatabase';
 import { useConnectionsStore } from '@/stores/connectionsStore';
 import { Check, Folder } from '@element-plus/icons-vue';
 import { ElMessage } from 'element-plus';
+import { storeToRefs } from 'pinia';
 import { computed, ref, watch } from 'vue';
 
 const props = defineProps<{
@@ -74,7 +72,8 @@ const emit = defineEmits<{
 
 const { getDatabases } = useDatabase();
 const connectionsStore = useConnectionsStore();
-const { selectDatabase, currentConnection } = connectionsStore;
+const { currentConnection } = storeToRefs(connectionsStore);
+const { selectDatabase } = connectionsStore;
 
 const visible = computed({
   get: () => props.modelValue,
@@ -91,8 +90,9 @@ watch(visible, async (newValue) => {
   if (newValue) {
     await loadDatabases();
     // Pre-select current database if exists
-    if (currentConnection?.database) {
-      selectedDatabase.value = currentConnection.database;
+    const current = currentConnection?.value;
+    if (current?.database) {
+      selectedDatabase.value = current.database;
     } else {
       selectedDatabase.value = '';
     }
@@ -102,7 +102,10 @@ watch(visible, async (newValue) => {
 const loadDatabases = async () => {
   isLoading.value = true;
   try {
-    const connectionId = props.connectionId || currentConnection?.id;
+    // Ưu tiên dùng rootConnectionId để luôn lấy danh sách DB từ connection gốc
+    const current = currentConnection?.value;
+    const baseId = (current as any)?.rootConnectionId || current?.id;
+    const connectionId = props.connectionId || baseId;
     if (!connectionId) {
       ElMessage.error('No connection available');
       return;
@@ -178,12 +181,14 @@ const handleCancel = () => {
     margin-bottom: 4px;
     border-radius: 6px;
     cursor: pointer;
-    transition: all 0.2s ease;
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
     background-color: transparent;
     border: 1px solid transparent;
 
     &:hover {
-      background-color: var(--el-fill-color-light);
+      border-color: var(--el-color-primary);
+      box-shadow: 0 0 0 1px var(--el-color-primary) inset;
+      background-color: transparent;
     }
 
     &.active {

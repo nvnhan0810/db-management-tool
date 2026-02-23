@@ -224,10 +224,10 @@
 
 <script setup lang="ts">
 import { useDatabase } from '@/composables/useDatabase';
-import { storeToRefs } from 'pinia';
 import { useConnectionsStore } from '@/stores/connectionsStore';
 import { Connection, Document, Folder, Search } from '@element-plus/icons-vue';
 import { ElMessage } from 'element-plus';
+import { storeToRefs } from 'pinia';
 import { computed, nextTick, onMounted, onUnmounted, reactive, ref, watch } from 'vue';
 import DatabaseSelectModal from './DatabaseSelectModal.vue';
 import QueryEditorTab from './QueryEditorTab.vue';
@@ -319,6 +319,70 @@ const tabs = ref<Tab[]>([]);
 const activeTabId = ref<string>('');
 const showDatabaseModal = ref(false);
 const contentAreaInnerRef = ref<HTMLElement | null>(null);
+
+// Per-connection view state: tables + tabs + active tab
+interface ConnectionViewState {
+  tables: Table[];
+  tabs: Tab[];
+  activeTabId: string;
+  activeTableName: string;
+}
+
+const connectionViewState = reactive<Record<string, ConnectionViewState>>({});
+const lastConnectionId = ref<string | null>(null);
+
+// Ensure we always have a state object for a given connection id
+const ensureConnectionViewState = (connectionId: string): ConnectionViewState => {
+  if (!connectionViewState[connectionId]) {
+    connectionViewState[connectionId] = reactive({
+      tables: [],
+      tabs: [],
+      activeTabId: '',
+      activeTableName: '',
+    });
+  }
+  return connectionViewState[connectionId];
+};
+
+// When connection changes, switch tables/tabs to that connection's state
+watch(
+  () => connection.value?.id,
+  (newId, oldId) => {
+    if (!newId) {
+      lastConnectionId.value = null;
+      tables.value = [];
+      tabs.value = [];
+      activeTabId.value = '';
+      activeTableName.value = '';
+      return;
+    }
+
+    // Remember last connection id
+    lastConnectionId.value = newId;
+
+    const state = ensureConnectionViewState(newId);
+
+    // Bind refs to this connection's state (share the same arrays)
+    tables.value = state.tables;
+    tabs.value = state.tabs;
+    activeTabId.value = state.activeTabId;
+    activeTableName.value = state.activeTableName;
+  },
+  { immediate: true }
+);
+
+// Keep per-connection active tab / table name in sync
+watch(activeTabId, (val) => {
+  const id = connection.value?.id;
+  if (!id || !connectionViewState[id]) return;
+  connectionViewState[id].activeTabId = val;
+});
+
+watch(activeTableName, (val) => {
+  const id = connection.value?.id;
+  if (!id || !connectionViewState[id]) return;
+  connectionViewState[id].activeTableName = val;
+});
 
 // Data table cell sidebar state (per tab, inside content-area)
 interface DataSidebarState {
@@ -425,7 +489,8 @@ const loadTables = async () => {
       hasDatabase: !!connection.value?.database,
       connection: connection.value
     });
-    tables.value = [];
+    // Clear current connection's tables in-place to keep per-connection state object
+    tables.value.splice(0, tables.value.length);
     return;
   }
 
@@ -442,10 +507,11 @@ const loadTables = async () => {
       tables: tableList,
       isArray: Array.isArray(tableList)
     });
-    tables.value = tableList || [];
+    // Replace tables in-place to preserve reference used by connectionViewState
+    tables.value.splice(0, tables.value.length, ...((tableList || []) as Table[]));
   } catch (error) {
     console.error('Failed to load tables:', error);
-    tables.value = [];
+    tables.value.splice(0, tables.value.length);
   } finally {
     isLoadingTables.value = false;
   }
@@ -475,9 +541,16 @@ watch(
     });
 
     if (connection.value?.database) {
-      await loadTables();
+      // Only load tables if this connection doesn't already have cached tables
+      const connId = connection.value.id;
+      const state = connId ? connectionViewState[connId] : undefined;
+      const hasCachedTables = !!state && state.tables && state.tables.length > 0;
+
+      if (!hasCachedTables) {
+        await loadTables();
+      }
     } else {
-      tables.value = [];
+      tables.value.splice(0, tables.value.length);
       activeTableName.value = '';
     }
   },
@@ -798,17 +871,23 @@ const handleAddQuery = () => {
   console.log('ConnectionContent: New query tab created', newQueryTab);
 };
 
-// Expose method for parent components
-defineExpose({
-  handleAddQuery
-});
-
 // Get column names from data rows
-
 const handleDatabaseSelected = async (databaseName: string) => {
   // Reload tables after database is selected
   await loadTables();
 };
+
+// Expose for Workspace so title bar \"Select Database\" can open this modal
+const openDatabaseSelectModal = () => {
+  showDatabaseModal.value = true;
+};
+
+defineExpose({
+  handleAddQuery,
+  openDatabaseSelectModal,
+  currentConnection,
+  currentTabId,
+});
 
 function handleDataSidebarClickOutside(e: MouseEvent) {
   if (!dataSidebarVisible.value) return;

@@ -1,7 +1,11 @@
 <template>
   <div class="default-layout">
     <!-- Custom Title Bar -->
-    <CustomTitleBar @add-query="handleAddQuery" @new-connection="handleNewConnection" />
+    <CustomTitleBar
+      @add-query="handleAddQuery"
+      @new-connection="handleNewConnection"
+      @select-database="handleSelectDatabase"
+    />
 
     <!-- Main Content -->
     <div class="layout-content">
@@ -95,6 +99,13 @@ const handleConnectionSaved = () => {
 const handleConnectionConnected = () => {
   connectionStore.loadSavedConnections();
   showConnectionModal.value = false;
+};
+
+// Title bar: Select Database -> delegate to Workspace (ConnectionContent)
+const handleSelectDatabase = () => {
+  if (routerViewRef.value && typeof routerViewRef.value.handleSelectDatabase === 'function') {
+    routerViewRef.value.handleSelectDatabase();
+  }
 };
 
 // Handle add query from CustomTitleBar

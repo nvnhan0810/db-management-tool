@@ -26,14 +26,15 @@ const showSidebar = computed(() => activeConnections.length > 1);
 // Expose method to parent (DefaultLayout)
 defineExpose({
   handleAddQuery: () => {
-    console.log('Workspace: handleAddQuery called');
     if (connectionContentRef.value && typeof connectionContentRef.value.handleAddQuery === 'function') {
-      console.log('Workspace: Calling ConnectionContent handleAddQuery');
       connectionContentRef.value.handleAddQuery();
-    } else {
-      console.warn('Workspace: connectionContentRef.value.handleAddQuery is not a function', connectionContentRef.value);
     }
-  }
+  },
+  handleSelectDatabase: () => {
+    if (connectionContentRef.value && typeof connectionContentRef.value.openDatabaseSelectModal === 'function') {
+      connectionContentRef.value.openDatabaseSelectModal();
+    }
+  },
 });
 </script>
 

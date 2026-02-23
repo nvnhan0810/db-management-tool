@@ -9,6 +9,11 @@ export interface ActiveConnection extends Omit<DatabaseConnection, 'id'> {
   lastActivity: Date;
   tabId: string; // Unique tab identifier
   selectedDatabase?: string; // Currently selected database
+  /**
+   * Root physical connection id used for server-level operations (e.g. list databases).
+   * For cloned connections (chọn DB khác), nhiều ActiveConnection có chung rootConnectionId.
+   */
+  rootConnectionId?: string;
 }
 
 export const useConnectionsStore = defineStore('activeConnections', () => {
@@ -155,12 +160,16 @@ export const useConnectionsStore = defineStore('activeConnections', () => {
     // Connection is already established in ConnectionForm, so we assume it's connected
     const isConnected = true;
 
+    // Nếu connection được tạo từ một ActiveConnection khác, giữ nguyên rootConnectionId; ngược lại dùng id hiện tại.
+    const baseRootId = (connection as unknown as ActiveConnection).rootConnectionId ?? connection.id;
+
     const activeConnection: ActiveConnection = {
       ...connection,
       name,
       isConnected: isConnected, // Set based on actual connection result
       lastActivity: new Date(),
       tabId,
+      rootConnectionId: baseRootId,
     };
 
     // Clear any existing state that might have been cleared by fresh start detection
@@ -304,41 +313,97 @@ export const useConnectionsStore = defineStore('activeConnections', () => {
     }
 
     try {
-      // Update connection to use selected database
-      connection.database = databaseName;
-      connection.selectedDatabase = databaseName;
+      const hadDatabase = !!connection.database;
+      const normalizedCurrentDb = connection.database?.trim().toLowerCase() || '';
+      const normalizedTargetDb = databaseName.trim().toLowerCase();
 
-      // Reconnect with new database
-      if (window.electron) {
-        // First disconnect the current connection
-        try {
-          await window.electron.invoke('database:disconnect', connection.id);
-        } catch (disconnectError) {
-          // Ignore disconnect errors
+      // Nếu chọn trùng với database hiện đang active (so sánh không phân biệt hoa thường / khoảng trắng)
+      if (hadDatabase && normalizedCurrentDb === normalizedTargetDb) {
+        return true;
+      }
+
+      // Case 2.1: connection chưa có database -> cập nhật DB ngay trên connection hiện tại
+      if (!hadDatabase) {
+        connection.database = databaseName;
+        connection.selectedDatabase = databaseName;
+
+        if (window.electron) {
+          // Reconnect with new database on the same connection id
+          try {
+            await window.electron.invoke('database:disconnect', connection.id);
+          } catch {
+            // Ignore disconnect errors
+          }
+
+          // Tạo object kết nối thuần (tránh reactive Proxy, đặc biệt với ssh)
+          const plainConnection = {
+            id: connection.id,
+            type: connection.type,
+            host: connection.host,
+            port: connection.port,
+            username: connection.username,
+            password: connection.password,
+            database: databaseName,
+            ssh: connection.ssh ? { ...connection.ssh } : undefined,
+          };
+
+          const isConnected = await window.electron.invoke('database:connect', plainConnection);
+          connection.isConnected = isConnected;
+          return !!isConnected;
         }
 
-        // Create new connection with the selected database
+        // No electron (fallback, mainly for tests)
+        return true;
+      }
+
+      // Case 2.2: connection đã có database -> tạo mới connection với DB vừa chọn và auto active
+      if (window.electron) {
+        const newId = crypto.randomUUID();
+
+        // Sao chép ssh sang object thuần để tránh lỗi "An object could not be cloned"
+        const sshConfig = connection.ssh ? { ...connection.ssh } : undefined;
+
         const plainConnection = {
-          id: connection.id, // This is the UUID from DatabaseConnection
+          id: newId,
           type: connection.type,
           host: connection.host,
           port: connection.port,
           username: connection.username,
           password: connection.password,
-          database: databaseName
+          database: databaseName,
+          ssh: sshConfig,
         };
 
         const isConnected = await window.electron.invoke('database:connect', plainConnection);
-        connection.isConnected = isConnected;
-
-        if (isConnected) {
-          return true;
-        } else {
+        if (!isConnected) {
           return false;
         }
-      } else {
+
+        const newConnection: DatabaseConnection & { rootConnectionId?: string } = {
+          id: newId as `${string}-${string}-${string}-${string}-${string}`,
+          type: connection.type,
+          host: connection.host,
+          port: connection.port,
+          username: connection.username,
+          password: connection.password,
+          database: databaseName,
+          ssh: sshConfig,
+          // Giữ rootConnectionId của connection gốc để dùng lại cho getDatabases
+          rootConnectionId: (connection as ActiveConnection).rootConnectionId ?? connection.id,
+        };
+
+        // Tên hiển thị: ưu tiên name gốc, kèm theo tên DB nếu cần
+        const displayName =
+          connection.name && connection.name !== ''
+            ? `${connection.name} (${databaseName})`
+            : `${connection.type} - ${connection.host}/${databaseName}`;
+
+        await addConnection(newConnection, displayName);
         return true;
       }
+
+      // Nếu không có electron, fallback: chỉ cập nhật tạm trong UI (hiếm khi dùng)
+      return false;
     } catch (error) {
       console.error('Error selecting database:', error);
       return false;
