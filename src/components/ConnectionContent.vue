@@ -141,29 +141,33 @@
                       :error="tab.structureError || null"
                     />
 
-                    <!-- Data View -->
-                    <TableDataView
-                      v-else-if="tab.viewMode === 'data'"
-                      :data="tab.data"
-                      :is-loading="tab.isLoadingData === true"
-                      :error="tab.dataError || null"
-                      :db-type="connection?.type || 'postgresql'"
-                      :table-name="tab.tableName"
-                      :connection-id="connection?.id"
-                      :column-types="(tab.structure?.columns) ? Object.fromEntries(tab.structure.columns.map((c: { name: string; type: string }) => [c.name, c.type])) : {}"
-                      :sidebar-panel-open="dataSidebarVisible"
-                      :sidebar-selected-row-index="getDataSidebarState(tab.id).selectedRowIndex"
-                      :sidebar-selected-column="getDataSidebarState(tab.id).selectedColumn"
-                      :sidebar-modified-rows="getDataSidebarState(tab.id).modifiedRows"
-                      :sidebar-deleted-rows="getDataSidebarState(tab.id).deletedRows"
-                      @filter-apply="(whereClause: string | null) => handleFilterApply(tab, whereClause)"
-                      @refresh="() => { loadTableData(tab); clearDataSidebarState(tab.id); }"
-                      @cell-select="(e: { rowIndex: number; columnKey: string | null }) => onDataCellSelect(tab.id, e)"
-                      @sidebar-close="onDataSidebarClose(tab.id)"
-                      @update-field="(e: { field: string; value: unknown }) => onDataUpdateField(tab.id, e)"
-                      @mark-deleted="onDataMarkDeleted(tab.id)"
-                      @unmark-deleted="onDataUnmarkDeleted(tab.id)"
-                    />
+          <!-- Data View -->
+          <TableDataView
+            v-else-if="tab.viewMode === 'data'"
+            :ref="(el: any) => setTableDataViewRef(tab.id, el)"
+            :data="tab.data"
+            :is-loading="tab.isLoadingData === true"
+            :error="tab.dataError || null"
+            :db-type="connection?.type || 'postgresql'"
+            :table-name="tab.tableName"
+            :connection-id="connection?.id"
+            :column-types="(tab.structure?.columns) ? Object.fromEntries(tab.structure.columns.map((c: { name: string; type: string }) => [c.name, c.type])) : {}"
+            :sidebar-panel-open="dataSidebarVisible"
+            :sidebar-selected-row-index="getDataSidebarState(tab.id).selectedRowIndex"
+            :sidebar-selected-column="getDataSidebarState(tab.id).selectedColumn"
+            :sidebar-modified-rows="getDataSidebarState(tab.id).modifiedRows"
+            :sidebar-deleted-rows="getDataSidebarState(tab.id).deletedRows"
+            :sort-by="tab.sortBy || null"
+            :sort-order="tab.sortOrder || null"
+            @filter-apply="(whereClause: string | null) => handleFilterApply(tab, whereClause)"
+            @refresh="() => { loadTableData(tab); clearDataSidebarState(tab.id); }"
+            @cell-select="(e: { rowIndex: number; columnKey: string | null }) => onDataCellSelect(tab.id, e)"
+            @sidebar-close="onDataSidebarClose(tab.id)"
+            @update-field="(e: { field: string; value: unknown }) => onDataUpdateField(tab.id, e)"
+            @mark-deleted="onDataMarkDeleted(tab.id)"
+            @unmark-deleted="onDataUnmarkDeleted(tab.id)"
+            @sort-change="(payload: { prop: string | null; order: 'ascending' | 'descending' | null }) => handleSortChange(tab, payload)"
+          />
 
                     <!-- Fallback if no view mode -->
                     <div v-else class="no-view-mode">
@@ -247,6 +251,8 @@ interface Tab {
   tableType?: string;
   tabType?: 'table' | 'query'; // 'table' for table tabs, 'query' for query editor tabs
   viewMode?: 'structure' | 'data';
+  sortBy?: string | null;
+  sortOrder?: 'asc' | 'desc' | null;
   isLoadingStructure?: boolean;
   isLoadingData?: boolean;
   structureError?: string;
@@ -407,6 +413,10 @@ function onDataCellSelect(tabId: string, e: { rowIndex: number; columnKey: strin
   const s = getDataSidebarState(tabId);
   s.selectedRowIndex = e.rowIndex;
   s.selectedColumn = e.columnKey;
+  // Open data sidebar when a row is selected
+  if (!dataSidebarOpen.value) {
+    connectionsStore.toggleDataSidebar();
+  }
 }
 function onDataSidebarClose(tabId: string) {
   const s = getDataSidebarState(tabId);
@@ -418,8 +428,33 @@ function onDataUpdateField(tabId: string, e: { field: string; value: unknown }) 
   const s = getDataSidebarState(tabId);
   const idx = s.selectedRowIndex;
   if (idx == null) return;
+
+  // Find base row from tab data to compare original value
+  const tab = tabs.value.find(t => t.id === tabId);
+  const baseRow =
+    tab && tab.data && Array.isArray(tab.data.rows) && idx >= 0 && idx < tab.data.rows.length
+      ? (tab.data.rows[idx] as Record<string, unknown>)
+      : null;
+
+  const original = baseRow ? baseRow[e.field] : undefined;
+  const newValue = e.value;
+
   if (!s.modifiedRows[idx]) s.modifiedRows[idx] = {};
-  s.modifiedRows[idx][e.field] = e.value;
+  const rowMods = s.modifiedRows[idx];
+
+  if (areDbValuesEqual(newValue, original)) {
+    // revert: remove modification for this field
+    if (Object.prototype.hasOwnProperty.call(rowMods, e.field)) {
+      delete rowMods[e.field];
+    }
+  } else {
+    rowMods[e.field] = newValue;
+  }
+
+  // If row has no more modifications, remove the row entry
+  if (Object.keys(rowMods).length === 0) {
+    delete s.modifiedRows[idx];
+  }
 }
 function onDataMarkDeleted(tabId: string) {
   const s = getDataSidebarState(tabId);
@@ -439,6 +474,29 @@ function clearDataSidebarState(tabId: string) {
   s.selectedColumn = null;
   s.modifiedRows = {};
   s.deletedRows = [];
+}
+
+const tableDataViewRefs: Record<string, { runSave: () => Promise<void> } | null> = {};
+
+function setTableDataViewRef(tabId: string, el: { runSave: () => Promise<void> } | null) {
+  if (el) {
+    tableDataViewRefs[tabId] = el;
+  } else {
+    delete tableDataViewRefs[tabId];
+  }
+}
+
+function handleSaveKeydown(e: KeyboardEvent) {
+  const key = e.key?.toLowerCase();
+  if ((e.ctrlKey || e.metaKey) && key === 's') {
+    e.preventDefault();
+    e.stopPropagation();
+    const tab = tabs.value.find(t => t.id === activeTabId.value);
+    if (tab && tab.tabType !== 'query' && tab.viewMode === 'data') {
+      const comp = tableDataViewRefs[tab.id];
+      if (comp?.runSave) comp.runSave();
+    }
+  }
 }
 const activeDataTab = computed(() => {
   const id = activeTabId.value;
@@ -714,10 +772,23 @@ const loadTableData = async (tab: Tab, page: number = 1, perPage: number = 50) =
       tableName = tab.tableName;
     }
 
-    console.log('Loading table data:', tab.tableName, 'page:', page, 'perPage:', perPage, 'whereClause:', tab.whereClause);
+    console.log('Loading table data:', tab.tableName, 'page:', page, 'perPage:', perPage, 'whereClause:', tab.whereClause, 'sortBy:', targetTab.sortBy, 'sortOrder:', targetTab.sortOrder);
 
     // Build WHERE clause
-    const whereClause = tab.whereClause ? ` WHERE ${tab.whereClause}` : '';
+    const whereClause = targetTab.whereClause ? ` WHERE ${targetTab.whereClause}` : '';
+
+    // Build ORDER BY clause from sort state
+    let orderClause = '';
+    if (targetTab.sortBy && targetTab.sortOrder) {
+      let sortColumn = targetTab.sortBy;
+      if (connection.value.type === 'postgresql') {
+        sortColumn = `"${sortColumn.replace(/"/g, '""')}"`;
+      } else if (connection.value.type === 'mysql') {
+        sortColumn = `\`${sortColumn.replace(/`/g, '``')}\``;
+      }
+      const direction = targetTab.sortOrder === 'desc' ? 'DESC' : 'ASC';
+      orderClause = ` ORDER BY ${sortColumn} ${direction}`;
+    }
 
     // Get total count first
     const countQuery = `SELECT COUNT(*) as total FROM ${tableName}${whereClause}`;
@@ -733,7 +804,7 @@ const loadTableData = async (tab: Tab, page: number = 1, perPage: number = 50) =
       : 0;
 
     // Get data
-    const queryStr = `SELECT * FROM ${tableName}${whereClause} LIMIT ${perPage} OFFSET ${offset}`;
+    const queryStr = `SELECT * FROM ${tableName}${whereClause}${orderClause} LIMIT ${perPage} OFFSET ${offset}`;
     const result = await window.electron?.invoke('database:query', {
       connectionId: connection.value.id,
       query: queryStr
@@ -839,6 +910,41 @@ const handleFilterApply = async (tab: Tab, whereClause: string | null) => {
   await loadTableData(targetTab, page, perPage);
 };
 
+// Handle sort changes from TableDataView (header click)
+const handleSortChange = async (
+  tab: Tab,
+  payload: { prop: string | null; order: 'ascending' | 'descending' | null }
+) => {
+  const tabIndex = tabs.value.findIndex(t => t.id === tab.id);
+  const targetTab = tabIndex !== -1 ? tabs.value[tabIndex] : tab;
+
+  if (!payload.prop || !payload.order) {
+    // Clear sort
+    targetTab.sortBy = null;
+    targetTab.sortOrder = null;
+  } else {
+    targetTab.sortBy = payload.prop;
+    targetTab.sortOrder = payload.order === 'descending' ? 'desc' : 'asc';
+  }
+
+  // Reload data from first page with same page size
+  const perPage = targetTab.data?.perPage || 50;
+  await loadTableData(targetTab, 1, perPage);
+};
+
+// Helper: loose equality for DB values so that 22 and "22" are treated as same
+function areDbValuesEqual(a: unknown, b: unknown): boolean {
+  if (a === b) return true;
+  if (a == null && b == null) return true;
+  // If both can be parsed as finite numbers, compare numerically
+  const na = typeof a === 'number' ? a : Number(a);
+  const nb = typeof b === 'number' ? b : Number(b);
+  if (!Number.isNaN(na) && !Number.isNaN(nb)) {
+    return na === nb;
+  }
+  return String(a ?? '') === String(b ?? '');
+}
+
 // Handle add new query tab
 const handleAddQuery = () => {
   console.log('ConnectionContent: handleAddQuery called', {
@@ -898,6 +1004,7 @@ function handleDataSidebarClickOutside(e: MouseEvent) {
 // Debug on mount
 onMounted(() => {
   document.addEventListener('click', handleDataSidebarClickOutside);
+  document.addEventListener('keydown', handleSaveKeydown, { capture: true });
   console.log('ConnectionContent mounted:', {
     hasConnection: !!connection.value,
     connection: connection.value,
@@ -908,6 +1015,7 @@ onMounted(() => {
 });
 onUnmounted(() => {
   document.removeEventListener('click', handleDataSidebarClickOutside);
+  document.removeEventListener('keydown', handleSaveKeydown, { capture: true });
 });
 
 const formatDate = (date: Date | string) => {

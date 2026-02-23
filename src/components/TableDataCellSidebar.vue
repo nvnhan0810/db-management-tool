@@ -29,7 +29,7 @@
           v-for="(value, key) in displayRow"
           :key="key"
           class="detail-item"
-          :class="{ 'is-selected-cell': selectedColumn === key, 'is-modified': isFieldModified(key) }"
+          :class="{ 'is-modified': isFieldModified(key) }"
         >
           <div class="detail-label">
             {{ key }}
@@ -58,6 +58,7 @@
               contenteditable="true"
               data-placeholder="NULL or value..."
               @input="(e: Event) => onCellInput(e, key)"
+              @blur="(e: FocusEvent) => onCellBlur(e, key)"
               @paste="onPaste"
             />
           </div>
@@ -160,7 +161,15 @@ watch(
 );
 
 function onCellInput(e: Event, field: string) {
+  // Chỉ cập nhật nội dung hiển thị/nháp, KHÔNG emit modified ngay để tránh
+  // vừa gõ 1 ký tự đã bị đánh dấu modified và làm nhảy caret.
   const el = e.target as HTMLDivElement;
+  const text = el?.textContent ?? '';
+  // Nội dung sẽ được commit khi blur qua onCellBlur.
+}
+
+function onCellBlur(e: FocusEvent, field: string) {
+  const el = e.target as HTMLDivElement | null;
   const text = el?.textContent ?? '';
   updateField(field, text);
 }
@@ -283,11 +292,6 @@ function updateField(field: string, newValue: string) {
   padding: 8px;
   border-radius: 6px;
   border: 1px solid transparent;
-
-  &.is-selected-cell {
-    border-color: var(--el-color-primary-light-5);
-    background-color: var(--el-color-primary-light-9);
-  }
 
   &.is-modified {
     background-color: rgba(230, 162, 60, 0.12);

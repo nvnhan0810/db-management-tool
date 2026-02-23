@@ -25,8 +25,10 @@
           :data="data.rows"
           border
           style="width: 100%"
-          max-height="500"
+          height="100%"
           stripe
+          :default-sort="defaultSort"
+          @sort-change="handleSortChange"
           @cell-click="handleCellClick"
           @cell-dblclick="handleCellDblclick"
           :row-class-name="tableRowClassName"
@@ -39,36 +41,36 @@
             :label="column"
             min-width="120"
             resizable
+            sortable="custom"
           >
             <template #default="{ row, $index }">
               <div
                 v-if="editingCell?.rowIndex === $index && editingCell?.columnKey === column"
                 class="cell-edit-wrap"
-                :class="{ 'cell-edit-textarea': isTextColumn(column) }"
+                :class="{
+                  'cell-edit-textarea': isTextColumn(column),
+                  'is-multiline-editable': isTextColumn(column) && isMultilineEditable
+                }"
                 @click.stop
               >
                 <el-input
                   v-if="!isTextColumn(column)"
                   ref="editInputRef"
                   :model-value="editDraftValue"
-                  size="small"
                   class="cell-edit-input"
                   @update:model-value="(v: string) => (editDraftValue = v)"
                   @blur="commitCellEdit($index, column)"
                   @keydown.enter.prevent="commitCellEdit($index, column)"
                 />
-                <el-input
+                <div
                   v-else
-                  ref="editInputRef"
-                  :model-value="editDraftValue"
-                  type="textarea"
-                  :rows="2"
-                  size="small"
-                  class="cell-edit-input cell-edit-textarea-input"
-                  @update:model-value="(v: string) => (editDraftValue = v)"
+                  :ref="setEditableDivRef"
+                  class="cell-edit-input editable-div"
+                  contenteditable="true"
+                  @input="onEditableInput"
                   @blur="commitCellEdit($index, column)"
                   @keydown.enter.ctrl.prevent="commitCellEdit($index, column)"
-                />
+                ></div>
               </div>
               <span
                 v-else
@@ -93,7 +95,7 @@
 
 <script setup lang="ts">
 import { ElMessage } from 'element-plus';
-import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue';
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
 import TableDataFilter from './TableDataFilter.vue';
 
 interface TableData {
@@ -125,6 +127,10 @@ interface Props {
   sidebarSelectedColumn?: string | null;
   sidebarModifiedRows?: Record<number, Record<string, unknown>>;
   sidebarDeletedRows?: number[];
+  /** Current sort column (DB field name), or null for no sort */
+  sortBy?: string | null;
+  /** Current sort order: 'asc', 'desc', or null for no sort */
+  sortOrder?: 'asc' | 'desc' | null;
 }
 
 interface Emits {
@@ -135,6 +141,7 @@ interface Emits {
   (e: 'update-field', payload: { field: string; value: unknown }): void;
   (e: 'mark-deleted'): void;
   (e: 'unmark-deleted'): void;
+  (e: 'sort-change', payload: { prop: string | null; order: 'ascending' | 'descending' | null }): void;
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -150,6 +157,8 @@ const props = withDefaults(defineProps<Props>(), {
   sidebarSelectedColumn: undefined,
   sidebarModifiedRows: undefined,
   sidebarDeletedRows: undefined,
+  sortBy: null,
+  sortOrder: null,
 });
 
 const emit = defineEmits<Emits>();
@@ -181,26 +190,83 @@ const sidebarVisible = computed(() =>
   props.sidebarPanelOpen === true || (selectedRowIndex.value !== null && (props.data?.rows?.length ?? 0) > 0)
 );
 
+// Map Tab's sort state to Element Plus default-sort format
+const defaultSort = computed(() => {
+  if (!props.sortBy || !props.sortOrder) {
+    return {};
+  }
+  return {
+    prop: props.sortBy,
+    order: props.sortOrder === 'asc' ? 'ascending' : 'descending',
+  } as const;
+});
+
 function isTextColumn(columnName: string): boolean {
   const t = props.columnTypes?.[columnName]?.toLowerCase() ?? '';
   return /^(text|varchar|character varying|string|nvarchar|longtext|mediumtext|clob)$/.test(t) || t.includes('text') || t.includes('varchar');
 }
 
+function isNumericColumn(columnName: string): boolean {
+  const t = props.columnTypes?.[columnName]?.toLowerCase() ?? '';
+  if (!t) return false;
+  return /(int|bigint|smallint|tinyint|numeric|decimal|double|float|real|serial)/.test(t);
+}
+
 const editingCell = ref<{ rowIndex: number; columnKey: string } | null>(null);
 const editDraftValue = ref('');
-const editInputRef = ref<{ focus?: () => void; $el?: HTMLElement } | null>(null);
+const editInputRef = ref<{ focus?: () => void; $el?: HTMLElement } | HTMLElement | null>(null);
+const isMultilineEditable = ref(false);
+
+/** Chỉ set 1 lần khi div mount; dùng ref ổn định nên không bị gọi lại mỗi render → không nhảy caret */
+function setEditableDivRef(el: unknown) {
+  const htmlEl = el as HTMLElement | null;
+  if (htmlEl) {
+    editInputRef.value = htmlEl;
+    htmlEl.innerText = editDraftValue.value;
+  } else {
+    editInputRef.value = null;
+  }
+}
+
+function updateEditableMultilineFlag(fromEl?: HTMLElement | null) {
+  const rawEl =
+    fromEl ??
+    (editInputRef.value && '$el' in (editInputRef.value as any)
+      ? (editInputRef.value as any).$el
+      : editInputRef.value);
+
+  const el = rawEl as HTMLElement | null;
+  if (!el) return;
+
+  const hasOverflow = el.scrollHeight - el.clientHeight > 1;
+  isMultilineEditable.value = hasOverflow;
+}
+
+function onEditableInput(e: Event) {
+  const el = e.target as HTMLElement | null;
+  // Với contenteditable, DOM là source-of-truth khi đang gõ.
+  // Không sync ngược vào editDraftValue để tránh re-render làm nhảy caret.
+  updateEditableMultilineFlag(el);
+}
 
 function focusEditInput() {
   nextTick(() => {
     nextTick(() => {
       const el = editInputRef.value;
       if (!el) return;
-      if (typeof (el as { focus?: () => void }).focus === 'function') {
-        (el as { focus: () => void }).focus();
+
+      // Nếu ref trỏ trực tiếp tới div contenteditable
+      if ((el as HTMLElement).getAttribute?.('contenteditable') === 'true') {
+        (el as HTMLElement).focus();
       } else {
-        const input = (el as { $el?: HTMLElement }).$el?.querySelector?.('input, textarea');
-        if (input instanceof HTMLElement) input.focus();
+        // Trường hợp el-input (component)
+        const root = (el as { $el?: HTMLElement }).$el ?? null;
+        const input = root?.querySelector?.('input, textarea') as HTMLElement | null;
+        if (input) {
+          input.focus();
+        }
       }
+      updateEditableMultilineFlag();
     });
   });
 }
@@ -211,6 +277,7 @@ function startCellEdit(rowIndex: number, columnKey: string) {
   const displayVal = getDisplayCellValue(row, columnKey, row[columnKey]);
   editingCell.value = { rowIndex, columnKey };
   editDraftValue.value = formatCellValue(displayVal);
+  isMultilineEditable.value = false;
   if (useControlledSidebar.value) {
     emit('cell-select', { rowIndex, columnKey });
   } else {
@@ -220,22 +287,80 @@ function startCellEdit(rowIndex: number, columnKey: string) {
   focusEditInput();
 }
 
+watch(editDraftValue, () => {
+  nextTick(() => updateEditableMultilineFlag());
+});
+
 function parseCellValue(v: string): unknown {
   const s = v.trim();
   if (s === '' || s.toUpperCase() === 'NULL') return null;
+
+  // Try to parse numeric strings so that "22" becomes 22 and equals original number 22
+  if (/^-?\d+(\.\d+)?$/.test(s)) {
+    const num = Number(s);
+    if (!Number.isNaN(num)) return num;
+  }
+
   return s;
 }
 
 function commitCellEdit(rowIndex: number, columnKey: string) {
   if (editingCell.value?.rowIndex !== rowIndex || editingCell.value?.columnKey !== columnKey) return;
-  const value = parseCellValue(editDraftValue.value);
+
+  // Lấy raw value tuỳ theo loại cột
+  let raw = editDraftValue.value;
+  if (isTextColumn(columnKey)) {
+    const el = editInputRef.value as HTMLElement | null;
+    raw = el?.innerText ?? '';
+  }
+  const trimmed = raw.trim();
+
+  // Nếu là cột numeric (int/bigint/decimal...) thì chặn giá trị không phải số
+  if (isNumericColumn(columnKey)) {
+    const isNullLike = trimmed === '' || trimmed.toUpperCase() === 'NULL';
+    const isNumeric = /^-?\d+(\.\d+)?$/.test(trimmed);
+    if (!isNullLike && !isNumeric) {
+      ElMessage.error('Invalid numeric value for this column');
+      return; // giữ nguyên editing để user sửa lại
+    }
+  }
+
+  const value = parseCellValue(raw);
+
+  // Determine original value for comparison
+  const original =
+    props.data?.rows && props.data.rows[rowIndex]
+      ? (props.data.rows[rowIndex] as Record<string, unknown>)[columnKey]
+      : undefined;
+
   if (useControlledSidebar.value) {
+    // In controlled mode, always emit update-field; parent can decide how to treat "no-op" edits
     emit('update-field', { field: columnKey, value });
   } else {
-    if (!internalModifiedRows.value[rowIndex]) internalModifiedRows.value[rowIndex] = {};
-    internalModifiedRows.value[rowIndex][columnKey] = value;
-    internalModifiedRows.value = { ...internalModifiedRows.value };
+    // Internal mode: only keep modified state if value is actually different from original
+    const rowMods = internalModifiedRows.value[rowIndex] || {};
+
+    if (value === original) {
+      // Revert: remove modification for this field
+      if (Object.prototype.hasOwnProperty.call(rowMods, columnKey)) {
+        delete rowMods[columnKey];
+      }
+    } else {
+      rowMods[columnKey] = value;
+    }
+
+    // If row has no more modified fields, remove the row entry
+    if (Object.keys(rowMods).length === 0) {
+      const { [rowIndex]: _removed, ...rest } = internalModifiedRows.value;
+      internalModifiedRows.value = { ...rest };
+    } else {
+      internalModifiedRows.value = {
+        ...internalModifiedRows.value,
+        [rowIndex]: rowMods,
+      };
+    }
   }
+
   editingCell.value = null;
 }
 
@@ -269,12 +394,25 @@ function handleCellDblclick() {
 }
 
 function tableRowClassName({ rowIndex }: { rowIndex: number }): string {
-  return deletedRows.value.has(rowIndex) ? 'row-deleted' : '';
+  const classes: string[] = [];
+  if (deletedRows.value.has(rowIndex)) {
+    classes.push('row-deleted');
+  }
+  if (rowIndex === selectedRowIndex.value) {
+    classes.push('row-selected');
+  }
+  return classes.join(' ');
 }
 
 function tableCellClassName({ rowIndex, column }: { rowIndex: number; column: { property?: string } }): string {
   const key = column?.property;
   if (!key) return '';
+
+  // While editing this cell: mark as editing to allow custom layout/padding
+  if (editingCell.value && editingCell.value.rowIndex === rowIndex && editingCell.value.columnKey === key) {
+    return 'cell-editing';
+  }
+
   const mods = modifiedRows.value[rowIndex];
   if (mods && Object.prototype.hasOwnProperty.call(mods, key)) return 'cell-modified';
   return '';
@@ -328,17 +466,18 @@ function handleClickOutside(e: MouseEvent) {
   if (!viewRef.value?.contains(e.target as Node)) closeSidebar();
 }
 
-/** When editing a cell, click outside the input should commit and close. */
+/** When editing a cell, click outside the edited td should commit and close. */
 function handleClickOutsideEdit(e: MouseEvent) {
   if (!editingCell.value) return;
-  const el = editInputRef.value;
-  const inputEl: Node | null =
-    el && typeof (el as { $el?: Node }).$el !== 'undefined'
-      ? (el as { $el: Node }).$el
-      : el && typeof (el as Node).contains === 'function'
-        ? (el as Node)
-        : null;
-  if (inputEl && inputEl.contains(e.target as Node)) return;
+  const tableRoot = viewRef.value;
+  if (!tableRoot) return;
+
+  const cellEl = tableRoot.querySelector('.cell-editing') as HTMLElement | null;
+  if (cellEl && cellEl.contains(e.target as Node)) {
+    // Click vẫn ở bên trong ô đang edit → không commit
+    return;
+  }
+
   commitCellEdit(editingCell.value.rowIndex, editingCell.value.columnKey);
 }
 
@@ -387,6 +526,12 @@ function buildWhereFromRow(row: Record<string, unknown>, columns: string[]): str
 }
 
 async function runSave() {
+  // Nếu đang có ô đang edit, commit nó trước khi build SQL
+  if (editingCell.value) {
+    const { rowIndex, columnKey } = editingCell.value;
+    commitCellEdit(rowIndex, columnKey);
+  }
+
   if (!props.tableName || !props.connectionId || !props.data?.rows) {
     ElMessage.warning('Table name or connection not available');
     return;
@@ -413,6 +558,7 @@ async function runSave() {
   }
   try {
     for (const sql of statements) {
+      console.log('[TableDataView] Executing SQL:', sql);
       const result = await window.electron.invoke('database:query', {
         connectionId: props.connectionId,
         query: sql,
@@ -432,22 +578,13 @@ async function runSave() {
   }
 }
 
-function handleKeydown(e: KeyboardEvent) {
-  if ((e.ctrlKey || e.metaKey) && e.key === 's') {
-    e.preventDefault();
-    runSave();
-  }
-}
-
 onMounted(() => {
   document.addEventListener('click', handleClickOutside);
   document.addEventListener('mousedown', handleClickOutsideEdit);
-  document.addEventListener('keydown', handleKeydown);
 });
 onUnmounted(() => {
   document.removeEventListener('click', handleClickOutside);
   document.removeEventListener('mousedown', handleClickOutsideEdit);
-  document.removeEventListener('keydown', handleKeydown);
 });
 
 function getDisplayCellValue(row: unknown, columnKey: string | undefined, originalValue: unknown): unknown {
@@ -560,12 +697,22 @@ const handleFilterClear = () => {
   // Clear filter means apply null whereClause to reload data without filters
   emit('filter-apply', null);
 };
+
+// Forward Element Plus sort-change to parent so it can reload data with ORDER BY
+function handleSortChange(params: { column: any; prop: string | undefined; order: 'ascending' | 'descending' | null }) {
+  const prop = params.prop ?? null;
+  emit('sort-change', { prop, order: params.order });
+}
+
+defineExpose({ runSave });
 </script>
 
 <style scoped lang="scss">
 .data-view {
+  display: flex;
+  flex-direction: column;
   height: 100%;
-  min-height: 400px;
+  min-height: 0;
 }
 
 .loading-data {
@@ -662,11 +809,11 @@ const handleFilterClear = () => {
           color: #e2e8f0;
         }
 
-        &:hover {
-          background-color: var(--el-fill-color-light);
+        &:hover > td {
+          background-color: rgba(64, 158, 255, 0.10) !important;
 
           .dark & {
-            background-color: rgba(45, 55, 72, 0.6) !important;
+            background-color: rgba(64, 158, 255, 0.25) !important;
           }
         }
 
@@ -680,8 +827,8 @@ const handleFilterClear = () => {
 
         td {
           .dark & {
-            background-color: transparent !important;
-            color: #e2e8f0 !important;
+            background-color: rgba(26, 32, 44, 0.6);
+            color: #e2e8f0;
             border-bottom-color: rgba(74, 85, 104, 0.4) !important;
           }
         }
@@ -697,6 +844,16 @@ const handleFilterClear = () => {
     }
   }
 
+  :deep(.row-selected) {
+    & > td {
+      background-color: rgba(64, 158, 255, 0.16) !important;
+
+      .dark & {
+        background-color: rgba(64, 158, 255, 0.25) !important;
+      }
+    }
+  }
+
   :deep(.cell-modified) {
     background-color: rgba(230, 162, 60, 0.25) !important;
     border-color: rgba(230, 162, 60, 0.5);
@@ -705,6 +862,9 @@ const handleFilterClear = () => {
   .cell-edit-wrap {
     padding: 0 4px;
     min-width: 0;
+    display: flex;
+    align-items: center; /* default: single-line centered vertically */
+    height: 100%;
   }
 
   .cell-edit-input {
@@ -715,18 +875,68 @@ const handleFilterClear = () => {
     padding: 0 8px;
   }
 
-  .cell-edit-textarea-input :deep(.el-textarea__inner) {
-    min-height: 52px;
-    resize: vertical;
+  .editable-div {
+    width: 100%;
+    height: 42px;
+    outline: none;
+    white-space: pre-wrap;
+    word-break: break-word;
+    display: block;
+    padding: 0 8px;
+    overflow-y: auto;
+    line-height: 42px; /* 1 dòng: căn giữa dọc */
+  }
+
+  .cell-edit-wrap.is-multiline-editable {
+    align-items: stretch;
+  }
+
+  .cell-edit-wrap.is-multiline-editable .editable-div {
+    align-items: flex-start;
+    line-height: 1.5; /* nhiều dòng: bình thường */
   }
 
   .cell-text {
     display: block;
     min-height: 1em;
-    cursor: cell;
+  cursor: text;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+  }
+
+  /* Editing cell: make input fill full td, remove inner padding/border so td border is used */
+  :deep(.cell-editing) {
+    padding: 0 !important;
+  }
+
+  :deep(.cell-editing .cell) {
+    padding: 0 !important;
+  }
+
+  :deep(.cell-editing .cell-edit-wrap) {
+    padding: 0 !important;
+    height: 100%;
+  }
+
+  :deep(.cell-editing .cell-edit-input .el-input__wrapper),
+  :deep(.cell-editing .cell-edit-input .el-textarea__inner) {
+    border: none !important;
+    box-shadow: none !important;
+    background-color: transparent !important;
+    padding: 0 8px !important;
+    height: 100% !important;
+  }
+
+  :deep(.cell-editing .cell-edit-input.editable-div) {
+    border: none !important;
+    box-shadow: none !important;
+    background-color: transparent !important;
+  }
+
+  :deep(.cell-editing .cell-edit-input .el-input__wrapper) {
+    display: flex;
+    align-items: center;
   }
 }
 </style>
