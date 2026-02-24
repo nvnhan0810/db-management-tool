@@ -159,8 +159,11 @@
             :sidebar-deleted-rows="getDataSidebarState(tab.id).deletedRows"
             :sort-by="tab.sortBy || null"
             :sort-order="tab.sortOrder || null"
+            :pending-new-row="getPendingNewRow(tab.id)"
             @filter-apply="(whereClause: string | null) => handleFilterApply(tab, whereClause)"
             @refresh="() => { loadTableData(tab); clearDataSidebarState(tab.id); }"
+            @update-new-row="(p: { field: string; value: unknown }) => onUpdateNewRow(tab.id, p)"
+            @inserted-new-row="() => onInsertedNewRow(tab)"
             @cell-select="(e: { rowIndex: number; columnKey: string | null }) => onDataCellSelect(tab.id, e)"
             @sidebar-close="onDataSidebarClose(tab.id)"
             @update-field="(e: { field: string; value: unknown }) => onDataUpdateField(tab.id, e)"
@@ -184,6 +187,7 @@
                   @update:view-mode="(val: 'structure' | 'data') => switchViewMode(tab, val)"
                   @page-change="(page: number) => handlePageChange(tab, page)"
                   @per-page-change="(perPage: number) => handlePerPageChange(tab, perPage)"
+                  @add-row="handleAddRow(tab)"
                 />
               </div>
             </el-tab-pane>
@@ -477,6 +481,33 @@ function clearDataSidebarState(tabId: string) {
   s.deletedRows = [];
 }
 
+// Pending new row (add row) per tab: column name -> value; null when not adding
+const pendingNewRowByTab = reactive<Record<string, Record<string, unknown> | null>>({});
+function getPendingNewRow(tabId: string): Record<string, unknown> | null {
+  return pendingNewRowByTab[tabId] ?? null;
+}
+function handleAddRow(tab: Tab) {
+  const columns: string[] =
+    tab.data?.rows?.[0] != null
+      ? Object.keys(tab.data.rows[0] as Record<string, unknown>)
+      : (tab.structure?.columns?.map((c: { name: string }) => c.name) ?? []);
+  if (columns.length === 0) {
+    ElMessage.warning('No columns available for this table');
+    return;
+  }
+  const row: Record<string, unknown> = {};
+  columns.forEach((c) => (row[c] = null));
+  pendingNewRowByTab[tab.id] = row;
+}
+function onUpdateNewRow(tabId: string, payload: { field: string; value: unknown }) {
+  const row = pendingNewRowByTab[tabId];
+  if (row) row[payload.field] = payload.value;
+}
+function onInsertedNewRow(tab: Tab) {
+  pendingNewRowByTab[tab.id] = null;
+  loadTableData(tab);
+}
+
 const tableDataViewRefs: Record<string, { runSave: () => Promise<void> } | null> = {};
 const dataSidebarRef = ref<{ flushEditsFromDom: () => void } | null>(null);
 
@@ -517,11 +548,14 @@ const dataSidebarVisible = computed(() => {
 });
 const dataSidebarSelectedRow = computed(() => {
   const tab = activeDataTab.value;
-  if (!tab?.data?.rows) return null;
+  if (!tab) return null;
   const s = getDataSidebarState(tab.id);
   const idx = s.selectedRowIndex;
-  if (idx == null || idx < 0 || idx >= tab.data.rows.length) return null;
-  return tab.data.rows[idx] as Record<string, unknown>;
+  if (idx == null || idx < 0) return null;
+  const len = tab.data?.rows?.length ?? 0;
+  if (idx === len) return getPendingNewRow(tab.id);
+  if (idx >= len) return null;
+  return tab.data!.rows[idx] as Record<string, unknown>;
 });
 const dataSidebarSelectedColumn = computed(() => {
   const tab = activeDataTab.value;

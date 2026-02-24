@@ -3,7 +3,7 @@
     <!-- Filter Section -->
     <TableDataFilter
       v-if="data"
-      :columns="getDataColumns(data.rows || [])"
+      :columns="displayColumns"
       @apply="handleFilterApply"
     />
 
@@ -21,8 +21,8 @@
     <div v-else-if="data" class="data-content-wrapper">
       <div class="data-content" :class="{ 'with-sidebar': sidebarVisible }">
         <el-table
-          v-if="data.rows && data.rows.length > 0"
-          :data="data.rows"
+          v-if="displayRows.length > 0"
+          :data="displayRows"
           border
           style="width: 100%"
           height="100%"
@@ -35,7 +35,7 @@
           :cell-class-name="tableCellClassName"
         >
           <el-table-column
-            v-for="column in getDataColumns(data.rows)"
+            v-for="column in displayColumns"
             :key="column"
             :prop="column"
             :label="column"
@@ -44,8 +44,23 @@
             sortable="custom"
           >
             <template #default="{ row, $index }">
+              <!-- Add-row: luôn bật input/textarea cho từng cell, không dùng modified state -->
               <div
-                v-if="editingCell?.rowIndex === $index && editingCell?.columnKey === column"
+                v-if="isAddRowIndex($index)"
+                class="cell-edit-wrap cell-edit-textarea"
+                :class="{ 'is-multiline-editable': isTextColumn(column) }"
+                @click.stop
+              >
+                <el-input
+                  :model-value="formatCellValue((row as Record<string, unknown>)[column])"
+                  class="cell-edit-input"
+                  :type="isTextColumn(column) ? 'textarea' : 'text'"
+                  :autosize="isTextColumn(column) ? { minRows: 1, maxRows: 6 } : false"
+                  @update:model-value="(v: string) => onAddRowCellInput(column, v)"
+                />
+              </div>
+              <div
+                v-else-if="editingCell?.rowIndex === $index && editingCell?.columnKey === column"
                 class="cell-edit-wrap"
                 :class="{
                   'cell-edit-textarea': isTextColumn(column),
@@ -131,6 +146,8 @@ interface Props {
   sortBy?: string | null;
   /** Current sort order: 'asc', 'desc', or null for no sort */
   sortOrder?: 'asc' | 'desc' | null;
+  /** Pending new row (add row): same shape as a data row; shown at end of table until saved */
+  pendingNewRow?: Record<string, unknown> | null;
 }
 
 interface Emits {
@@ -142,6 +159,8 @@ interface Emits {
   (e: 'mark-deleted'): void;
   (e: 'unmark-deleted'): void;
   (e: 'sort-change', payload: { prop: string | null; order: 'ascending' | 'descending' | null }): void;
+  (e: 'update-new-row', payload: { field: string; value: unknown }): void;
+  (e: 'inserted-new-row'): void;
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -159,6 +178,7 @@ const props = withDefaults(defineProps<Props>(), {
   sidebarDeletedRows: undefined,
   sortBy: null,
   sortOrder: null,
+  pendingNewRow: null,
 });
 
 const emit = defineEmits<Emits>();
@@ -189,6 +209,44 @@ const deletedRows = computed(() => {
 const sidebarVisible = computed(() =>
   props.sidebarPanelOpen === true || (selectedRowIndex.value !== null && (props.data?.rows?.length ?? 0) > 0)
 );
+
+/** Rows to display: data rows + pending new row at end if any */
+const displayRows = computed(() => {
+  const r = props.data?.rows;
+  if (!r) return [];
+  const list = (r as Record<string, unknown>[]).slice();
+  if (props.pendingNewRow) list.push(props.pendingNewRow);
+  return list;
+});
+
+/** Column names for table header/body; from data or from pending new row when no data rows */
+const displayColumns = computed(() => {
+  const r = props.data?.rows;
+  if (r?.length) return Object.keys(r[0] as Record<string, unknown>);
+  if (props.pendingNewRow) return Object.keys(props.pendingNewRow);
+  return [];
+});
+
+/** Chỉ số row đang là add-row (row mới thêm, luôn bật input, không dùng modified state) */
+const newRowIndex = computed(() => props.data?.rows?.length ?? 0);
+function isAddRowIndex(rowIndex: number): boolean {
+  return !!props.pendingNewRow && rowIndex === newRowIndex.value;
+}
+
+function onAddRowCellInput(columnKey: string, raw: string) {
+  if (!props.pendingNewRow) return;
+  const trimmed = raw.trim();
+  if (isNumericColumn(columnKey)) {
+    const isNullLike = trimmed === '' || trimmed.toUpperCase() === 'NULL';
+    const isNumeric = /^-?\d+(\.\d+)?$/.test(trimmed);
+    if (!isNullLike && !isNumeric) {
+      ElMessage.error('Invalid numeric value for this column');
+      return;
+    }
+  }
+  const value = parseCellValue(raw);
+  emit('update-new-row', { field: columnKey, value });
+}
 
 // Map Tab's sort state to Element Plus default-sort format
 const defaultSort = computed(() => {
@@ -272,6 +330,10 @@ function focusEditInput() {
 }
 
 function startCellEdit(rowIndex: number, columnKey: string) {
+  // Add-row: không dùng editingCell, row đó luôn hiển thị input
+  if (isAddRowIndex(rowIndex)) return;
+  const dataLen = props.data?.rows?.length ?? 0;
+  if (rowIndex >= dataLen) return;
   if (!props.data?.rows?.[rowIndex]) return;
   const row = props.data.rows[rowIndex] as Record<string, unknown>;
   const displayVal = getDisplayCellValue(row, columnKey, row[columnKey]);
@@ -306,6 +368,7 @@ function parseCellValue(v: string): unknown {
 
 function commitCellEdit(rowIndex: number, columnKey: string) {
   if (editingCell.value?.rowIndex !== rowIndex || editingCell.value?.columnKey !== columnKey) return;
+  if (isAddRowIndex(rowIndex)) return; // add-row dùng onAddRowCellInput, không qua commitCellEdit
 
   // Lấy raw value tuỳ theo loại cột
   let raw = editDraftValue.value;
@@ -367,7 +430,10 @@ function commitCellEdit(rowIndex: number, columnKey: string) {
 const selectedRowData = computed(() => {
   const idx = selectedRowIndex.value;
   const rows = props.data?.rows;
-  if (idx == null || !rows || idx < 0 || idx >= rows.length) return null;
+  if (idx == null) return null;
+  const len = rows?.length ?? 0;
+  if (idx === len && props.pendingNewRow) return props.pendingNewRow as Record<string, unknown>;
+  if (!rows || idx < 0 || idx >= len) return null;
   return rows[idx] as Record<string, unknown>;
 });
 
@@ -378,8 +444,7 @@ const modifiedFieldsForSelectedRow = computed(() => {
 });
 
 function handleCellClick(row: Record<string, unknown>, column: { property?: string }, _cell: unknown, _event: Event) {
-  if (!props.data?.rows) return;
-  const rowIndex = props.data.rows.indexOf(row as never);
+  const rowIndex = displayRows.value.indexOf(row as never);
   if (rowIndex < 0) return;
   if (useControlledSidebar.value) {
     emit('cell-select', { rowIndex, columnKey: column?.property ?? null });
@@ -395,8 +460,12 @@ function handleCellDblclick() {
 
 function tableRowClassName({ rowIndex }: { rowIndex: number }): string {
   const classes: string[] = [];
-  if (deletedRows.value.has(rowIndex)) {
+  const dataLen = props.data?.rows?.length ?? 0;
+  if (rowIndex < dataLen && deletedRows.value.has(rowIndex)) {
     classes.push('row-deleted');
+  }
+  if (rowIndex === dataLen && props.pendingNewRow) {
+    classes.push('row-new');
   }
   if (rowIndex === selectedRowIndex.value) {
     classes.push('row-selected');
@@ -407,6 +476,9 @@ function tableRowClassName({ rowIndex }: { rowIndex: number }): string {
 function tableCellClassName({ rowIndex, column }: { rowIndex: number; column: { property?: string } }): string {
   const key = column?.property;
   if (!key) return '';
+
+  // Add-row: không dùng modified state, chỉ đánh dấu class để style
+  if (isAddRowIndex(rowIndex)) return 'cell-add-row';
 
   // While editing this cell: mark as editing to allow custom layout/padding
   if (editingCell.value && editingCell.value.rowIndex === rowIndex && editingCell.value.columnKey === key) {
@@ -547,30 +619,40 @@ async function runSave() {
     commitCellEdit(rowIndex, columnKey);
   }
 
-  if (!props.tableName || !props.connectionId || !props.data?.rows) {
+  if (!props.tableName || !props.connectionId) {
     ElMessage.warning('Table name or connection not available');
     return;
   }
-  const rows = props.data.rows as Record<string, unknown>[];
-  const columns = getDataColumns(props.data.rows);
+  const rows = (props.data?.rows ?? []) as Record<string, unknown>[];
+  const columns = displayColumns.value.length ? displayColumns.value : getDataColumns(rows);
   const dbType = props.dbType || 'postgresql';
   const tableNameEsc = dbType === 'mysql' ? '`' + props.tableName.replace(/`/g, '``') + '`' : '"' + props.tableName.replace(/"/g, '""') + '"';
   const statements: string[] = [];
-  for (let i = 0; i < rows.length; i++) {
-    if (deletedRows.value.has(i)) {
-      statements.push(`DELETE FROM ${tableNameEsc} WHERE ${buildWhereFromRow(rows[i], columns)}`);
-    } else {
-      const mods = modifiedRows.value[i];
-      if (mods && Object.keys(mods).length > 0) {
-        const sets = Object.entries(mods).map(([k, v]) => `${escapeIdentifier(k)} = ${escapeValue(v)}`);
-        statements.push(`UPDATE ${tableNameEsc} SET ${sets.join(', ')} WHERE ${buildWhereFromRow(rows[i], columns)}`);
+
+  // Khi có add-row: chỉ chạy INSERT cho row đó, không trộn UPDATE/DELETE
+  if (props.pendingNewRow && Object.keys(props.pendingNewRow).length > 0) {
+    const cols = displayColumns.value.length ? displayColumns.value : Object.keys(props.pendingNewRow);
+    const vals = cols.map((c) => escapeValue((props.pendingNewRow as Record<string, unknown>)[c]));
+    statements.push(`INSERT INTO ${tableNameEsc} (${cols.map(escapeIdentifier).join(', ')}) VALUES (${vals.join(', ')})`);
+  } else {
+    for (let i = 0; i < rows.length; i++) {
+      if (deletedRows.value.has(i)) {
+        statements.push(`DELETE FROM ${tableNameEsc} WHERE ${buildWhereFromRow(rows[i], columns)}`);
+      } else {
+        const mods = modifiedRows.value[i];
+        if (mods && Object.keys(mods).length > 0) {
+          const sets = Object.entries(mods).map(([k, v]) => `${escapeIdentifier(k)} = ${escapeValue(v)}`);
+          statements.push(`UPDATE ${tableNameEsc} SET ${sets.join(', ')} WHERE ${buildWhereFromRow(rows[i], columns)}`);
+        }
       }
     }
   }
+
   if (statements.length === 0) {
     ElMessage.info('No changes to save');
     return;
   }
+  const hadNewRow = !!props.pendingNewRow;
   try {
     for (const sql of statements) {
       console.log('[TableDataView] Executing SQL:', sql);
@@ -587,6 +669,7 @@ async function runSave() {
       internalSelectedRowIndex.value = null;
       internalSelectedColumn.value = null;
     }
+    if (hadNewRow) emit('inserted-new-row');
     emit('refresh');
   } catch (err) {
     ElMessage.error(err instanceof Error ? err.message : 'Save failed');
@@ -603,7 +686,10 @@ onUnmounted(() => {
 });
 
 function getDisplayCellValue(row: unknown, columnKey: string | undefined, originalValue: unknown): unknown {
-  if (!columnKey || !props.data?.rows) return originalValue;
+  if (!columnKey) return originalValue;
+  // New row: display from the row object itself
+  if (props.pendingNewRow && row === props.pendingNewRow) return (row as Record<string, unknown>)[columnKey];
+  if (!props.data?.rows) return originalValue;
   const rowIndex = props.data.rows.indexOf(row as never);
   if (rowIndex < 0) return originalValue;
   const mods = modifiedRows.value[rowIndex];
@@ -857,6 +943,21 @@ defineExpose({ runSave });
       background-color: rgba(245, 108, 108, 0.15) !important;
       border-color: rgba(245, 108, 108, 0.4);
     }
+  }
+
+  :deep(.row-new) {
+    & > td {
+      background-color: rgba(103, 194, 58, 0.08) !important;
+      border-color: rgba(103, 194, 58, 0.25);
+      .dark & {
+        background-color: rgba(103, 194, 58, 0.12) !important;
+      }
+    }
+  }
+
+  :deep(.cell-add-row) {
+    padding: 2px 4px;
+    vertical-align: middle;
   }
 
   :deep(.row-selected) {

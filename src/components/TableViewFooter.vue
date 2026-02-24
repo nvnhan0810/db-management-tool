@@ -7,6 +7,10 @@
       </el-radio-group>
     </div>
     <div v-if="viewMode === 'data' && data" class="footer-right">
+      <el-button type="primary" size="small" @click="emit('add-row')">
+        <el-icon><Plus /></el-icon>
+        Add row
+      </el-button>
       <span class="total-records">Total: {{ data.total.toLocaleString() }} records</span>
       <el-select :model-value="data.perPage" @update:model-value="handlePerPageChange" style="width: 100px; margin: 0 10px;">
         <el-option label="25" :value="25" />
@@ -27,6 +31,8 @@
 </template>
 
 <script setup lang="ts">
+import { Plus } from '@element-plus/icons-vue';
+
 interface TableData {
   rows: any[];
   total: number;
@@ -43,6 +49,7 @@ interface Emits {
   (e: 'update:viewMode', value: 'structure' | 'data'): void;
   (e: 'page-change', page: number): void;
   (e: 'per-page-change', perPage: number): void;
+  (e: 'add-row'): void;
 }
 
 const props = defineProps<Props>();
