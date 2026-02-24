@@ -1,6 +1,11 @@
 import { defineStore } from 'pinia';
 import { computed, ref } from 'vue';
 
+export interface Table {
+  name: string;
+  type?: string;
+}
+
 export interface TableColumn {
   name: string;
   type: string;
@@ -43,9 +48,44 @@ export interface QueryData {
 
 export interface Tab {
   id: string;
-  title: string;
-  type: 'table' | 'query';
-  data?: TableData | QueryData;
+  tableName: string;
+  tableType?: string;
+  tabType?: 'table' | 'query'; // 'table' for table tabs, 'query' for query editor tabs
+  viewMode?: 'structure' | 'data';
+  sortBy?: string | null;
+  sortOrder?: 'asc' | 'desc' | null;
+  isLoadingStructure?: boolean;
+  isLoadingData?: boolean;
+  structureError?: string;
+  dataError?: string;
+  structure?: {
+    columns: Array<{
+      name: string;
+      type: string;
+      nullable: boolean;
+      ordinal_position?: number;
+      character_set?: string;
+      collation?: string;
+      default_value?: string;
+      extra?: string;
+      foreign_key?: string;
+      comment?: string;
+    }>;
+    indexes?: Array<{
+      name: string;
+      algorithm?: string;
+      is_unique: boolean;
+      column_name: string;
+    }>;
+    rows?: number;
+  };
+  data?: {
+    rows: any[];
+    total: number;
+    page: number;
+    perPage: number;
+  };
+  whereClause?: string | null;
 }
 
 export interface TableTabState {
@@ -84,7 +124,7 @@ export const useTableStore = defineStore('table', () => {
 
   // Getters
   const hasTabs = computed(() => tabs.value.length > 0);
-  
+
   const activeTableState = computed(() => {
     if (!activeTab.value || !tableTabStates.value.has(activeTab.value)) {
       return null;
@@ -161,7 +201,7 @@ export const useTableStore = defineStore('table', () => {
       if (activeTableState.value) {
         return activeTableState.value.executedQueries || [];
       }
-      
+
       // For query tabs, get from query tab state
       if (activeTab.value && tableTabStates.value.has(activeTab.value)) {
         const tabState = tableTabStates.value.get(activeTab.value);
@@ -169,14 +209,14 @@ export const useTableStore = defineStore('table', () => {
           return tabState.executedQueries || [];
         }
       }
-      
+
       return [];
     },
     set: (value: ExecutedQuery[]) => {
       if (activeTableState.value) {
         activeTableState.value.executedQueries = value;
       }
-      
+
       // For query tabs, update query tab state
       if (activeTab.value && tableTabStates.value.has(activeTab.value)) {
         const tabState = tableTabStates.value.get(activeTab.value);
@@ -190,29 +230,29 @@ export const useTableStore = defineStore('table', () => {
   // Actions
   const addTableTab = async (tableData: any, connectionId?: string) => {
     const tableId = `table-${tableData.name}-${Date.now()}`;
-    
+
     // Check if table tab already exists
-    const existingTab = tabs.value.find(tab => 
+    const existingTab = tabs.value.find(tab =>
       tab.type === 'table' && tab.data && 'name' in tab.data && tab.data.name === tableData.name
     );
-    
+
     if (existingTab) {
       activeTab.value = existingTab.id;
       return existingTab.id;
     }
-    
+
     const newTab = {
       id: tableId,
       title: tableData.name,
       type: 'table' as const,
       data: tableData
     };
-    
+
     tabs.value.push(newTab);
     activeTab.value = tableId;
-    
 
-    
+
+
     // Initialize table tab state
     const initialSQL = `SELECT * FROM ${tableData.name} LIMIT 25`;
     const tableState: TableTabState = {
@@ -230,19 +270,19 @@ export const useTableStore = defineStore('table', () => {
         success: true
       }]
     };
-    
+
     tableTabStates.value.set(tableId, tableState);
-    
+
     // Auto-load table data
     await loadTableData(tableId, tableData.name, connectionId);
-    
+
     return tableId;
   };
 
   const addQueryTab = () => {
     const queryId = `query-${Date.now()}`;
     const queryTitle = `Query ${queryCounter.value}`;
-    
+
     const newTab = {
       id: queryId,
       title: queryTitle,
@@ -252,11 +292,11 @@ export const useTableStore = defineStore('table', () => {
         result: undefined
       }
     };
-    
+
     tabs.value.push(newTab);
     activeTab.value = queryId;
     queryCounter.value++;
-    
+
     // Initialize query tab state
     const queryState: QueryTabState = {
       query: '',
@@ -264,7 +304,7 @@ export const useTableStore = defineStore('table', () => {
       isExecuting: false,
       executedQueries: []
     };
-    
+
     tableTabStates.value.set(queryId, queryState as any);
   };
 
@@ -272,12 +312,12 @@ export const useTableStore = defineStore('table', () => {
     const index = tabs.value.findIndex(tab => tab.id === tabId);
     if (index > -1) {
       tabs.value.splice(index, 1);
-      
+
       // Remove table tab state if it exists
       if (tableTabStates.value.has(tabId)) {
         tableTabStates.value.delete(tabId);
       }
-      
+
       // If closed tab was active, switch to another tab
       if (activeTab.value === tabId) {
         if (tabs.value.length > 0) {
@@ -293,9 +333,9 @@ export const useTableStore = defineStore('table', () => {
     if (!activeTab.value || !tableTabStates.value.has(activeTab.value)) {
       return;
     }
-    
+
     const tabState = tableTabStates.value.get(activeTab.value)!;
-    
+
     // Check if this exact SQL query was just added (avoid duplicates)
     // But allow different success/error states for the same SQL
     if ('executedQueries' in tabState) {
@@ -303,7 +343,7 @@ export const useTableStore = defineStore('table', () => {
       if (lastQuery && lastQuery.sql === sql && lastQuery.success === success) {
         return; // Skip if same query with same success/error state was just added
       }
-      
+
       const query: ExecutedQuery = {
         sql,
         timestamp: new Date(),
@@ -311,9 +351,9 @@ export const useTableStore = defineStore('table', () => {
         error,
         executionTime
       };
-      
+
       tabState.executedQueries.unshift(query);
-      
+
       // Keep only last 10 queries
       if (tabState.executedQueries.length > 10) {
         tabState.executedQueries = tabState.executedQueries.slice(0, 10);
@@ -333,24 +373,24 @@ export const useTableStore = defineStore('table', () => {
 
     try {
       tableState.isLoadingData = true;
-      
+
       // Generate SQL for loading data with pagination
       const offset = (tableState.currentPage - 1) * tableState.recordsPerPage;
       const sql = `SELECT * FROM ${tableName} LIMIT ${tableState.recordsPerPage} OFFSET ${offset}`;
-      
+
       // Execute query to get actual data
       const result = await window.electron.invoke('database:query', {
         connectionId: connectionId || 'default',
         query: sql
       });
-      
+
       if (result.success) {
         // Update table data with real data (even if empty array)
         tableState.tableData = result.data || [];
-        
+
         // Add to executed queries
         addExecutedQuery(sql, true);
-        
+
         // Check if data is empty
         if (!result.data || result.data.length === 0) {
           // Table has no data
@@ -375,16 +415,16 @@ export const useTableStore = defineStore('table', () => {
     if (!activeTab.value) return null;
 
     const startTime = Date.now();
-    
+
     try {
       // Execute query
       const result = await window.electron.invoke('database:query', {
         connectionId: connectionId || 'default',
         query: query
       });
-      
+
       const executionTime = Date.now() - startTime;
-      
+
       if (result.success) {
         // Update query tab result
         const activeTabContent = getActiveTabContent();
@@ -399,10 +439,10 @@ export const useTableStore = defineStore('table', () => {
             message: result.message
           };
         }
-        
+
         // Add to executed queries
         addExecutedQuery(query, true, undefined, executionTime);
-        
+
         return {
           success: true,
           data: result.data || [],
@@ -417,7 +457,7 @@ export const useTableStore = defineStore('table', () => {
     } catch (error) {
       const executionTime = Date.now() - startTime;
       const errorMessage = error instanceof Error ? error.message : 'Query execution failed';
-      
+
       // Update query tab result with error
       const activeTabContent = getActiveTabContent();
       if (activeTabContent?.type === 'query' && activeTabContent.data) {
@@ -428,10 +468,10 @@ export const useTableStore = defineStore('table', () => {
           executionTime
         };
       }
-      
+
       // Add error to executed queries
       addExecutedQuery(query, false, errorMessage, executionTime);
-      
+
       return {
         success: false,
         error: errorMessage,
@@ -448,7 +488,7 @@ export const useTableStore = defineStore('table', () => {
     activeTab,
     tableTabStates,
     queryCounter,
-    
+
     // Getters
     hasTabs,
     activeTableState,
@@ -460,7 +500,7 @@ export const useTableStore = defineStore('table', () => {
     currentPage,
     totalPages,
     executedQueries,
-    
+
     // Actions
     addTableTab,
     addQueryTab,

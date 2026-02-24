@@ -25,192 +25,84 @@
         </div>
 
         <!-- Tables List -->
-        <div v-else-if="tables.length > 0" class="tables-list-wrapper">
-          <div class="tables-filter">
-            <el-input
-              v-model="tableNameFilter"
-              placeholder="Filter by table name..."
-              clearable
-              size="small"
-              class="table-filter-input"
-            >
-              <template #prefix>
-                <el-icon><Search /></el-icon>
-              </template>
-            </el-input>
-          </div>
-          <div class="tables-list">
-            <template v-if="filteredTables.length > 0">
-              <div
-                v-for="table in filteredTables"
-                :key="table.name"
-                class="table-item"
-                :class="{ active: activeTableName === table.name }"
-                @click="handleSelectTable(table)"
-              >
-                <el-icon class="table-icon">
-                  <Document />
-                </el-icon>
-                <span class="table-name">{{ table.name }}</span>
-              </div>
-            </template>
-            <div v-else class="no-match">
-              <span>No tables match "{{ tableNameFilter }}"</span>
-            </div>
-          </div>
-        </div>
-
-        <!-- No Tables -->
-        <div v-else class="no-tables">
-          <el-empty description="No tables found" :image-size="80" />
-        </div>
+        <TableListLeftSidebar v-else-if="tables.length > 0" :tables="tables" :active-table-name="activeTableName" @select-table="handleSelectTable" />
       </div>
 
       <!-- Right Content: Tabs -->
       <div class="content-area">
         <!-- Default: Connection Info -->
-        <div v-if="tabs.length === 0" class="connection-info-default">
-          <el-card>
-            <template #header>
-              <div class="card-header">
-                <div class="header-left">
-                  <el-icon class="header-icon">
-                    <Connection />
-                  </el-icon>
-                  <span>{{ connection.name || `${connection.type} - ${connection.host}` }}</span>
-                </div>
-                <div class="header-right">
-                  <el-tag :type="connection.isConnected ? 'success' : 'danger'" size="default">
-                    {{ connection.isConnected ? 'Connected' : 'Disconnected' }}
-                  </el-tag>
-                </div>
-              </div>
-            </template>
-            <div class="connection-details">
-              <div class="detail-item">
-                <span class="detail-label">Type:</span>
-                <span class="detail-value">{{ connection.type.toUpperCase() }}</span>
-              </div>
-              <div class="detail-item">
-                <span class="detail-label">Host:</span>
-                <span class="detail-value">{{ connection.host }}:{{ connection.port }}</span>
-              </div>
-              <div v-if="connection.database" class="detail-item">
-                <span class="detail-label">Database:</span>
-                <span class="detail-value">{{ connection.database }}</span>
-              </div>
-              <div class="detail-item">
-                <span class="detail-label">Username:</span>
-                <span class="detail-value">{{ connection.username }}</span>
-              </div>
-              <div v-if="connection.lastActivity" class="detail-item">
-                <span class="detail-label">Last Activity:</span>
-                <span class="detail-value">{{ formatDate(connection.lastActivity) }}</span>
-              </div>
-            </div>
-          </el-card>
-        </div>
+        <DatabaseInfo v-if="tabs.length === 0" :tabs="tabs" />
 
         <!-- Tabs View + Data sidebar (inside content-area) -->
-        <div v-else ref="contentAreaInnerRef" class="content-area-inner">
-          <div class="tabs-container">
-            <el-tabs v-model="activeTabId" type="card" closable @tab-remove="handleRemoveTab" @tab-click="handleTabClick">
-            <el-tab-pane
-              v-for="tab in tabs"
-              :key="tab.id"
-              :label="tab.tableName"
-              :name="tab.id"
-            >
-              <div class="tab-content-wrapper">
-                <!-- Main Content Area -->
-                <div class="tab-main-content">
-                  <!-- Query Editor Tab -->
-                  <QueryEditorTab
-                    v-if="tab.tabType === 'query'"
-                    :connection-id="connection?.id"
-                    :db-type="connection?.type || 'postgresql'"
-                  />
+        <div v-else>
+          <TableView :tabs="tabs" v-model="activeTabId" @tab-remove="handleRemoveTab" @tab-click="handleTabClick" />
+          <div ref="contentAreaInnerRef" class="content-area-inner">
+            <div class="tabs-container">
+              <el-tabs v-model="activeTabId" type="card" closable @tab-remove="handleRemoveTab"
+                @tab-click="handleTabClick">
+                <el-tab-pane v-for="tab in tabs" :key="tab.id" :label="tab.tableName" :name="tab.id">
+                  <div class="tab-content-wrapper">
+                    <!-- Main Content Area -->
+                    <div class="tab-main-content">
+                      <!-- Query Editor Tab -->
+                      <QueryEditorTab v-if="tab.tabType === 'query'" :connection-id="connection?.id"
+                        :db-type="connection?.type || 'postgresql'" />
 
-                  <!-- Table Tabs -->
-                  <template v-else>
-                    <!-- Structure View -->
-                    <TableStructureView
-                      v-if="tab.viewMode === 'structure'"
-                      :structure="tab.structure"
-                      :is-loading="tab.isLoadingStructure === true"
-                      :error="tab.structureError || null"
-                    />
+                      <!-- Table Tabs -->
+                      <template v-else>
+                        <!-- Structure View -->
+                        <TableStructureView v-if="tab.viewMode === 'structure'" :structure="tab.structure"
+                          :is-loading="tab.isLoadingStructure === true" :error="tab.structureError || null" />
 
-          <!-- Data View -->
-          <TableDataView
-            v-else-if="tab.viewMode === 'data'"
-            :ref="(el: any) => setTableDataViewRef(tab.id, el)"
-            :data="tab.data"
-            :is-loading="tab.isLoadingData === true"
-            :error="tab.dataError || null"
-            :db-type="connection?.type || 'postgresql'"
-            :table-name="tab.tableName"
-            :connection-id="connection?.id"
-            :column-types="(tab.structure?.columns) ? Object.fromEntries(tab.structure.columns.map((c: { name: string; type: string }) => [c.name, c.type])) : {}"
-            :sidebar-panel-open="dataSidebarVisible"
-            :sidebar-selected-row-index="getDataSidebarState(tab.id).selectedRowIndex"
-            :sidebar-selected-column="getDataSidebarState(tab.id).selectedColumn"
-            :sidebar-modified-rows="getDataSidebarState(tab.id).modifiedRows"
-            :sidebar-deleted-rows="getDataSidebarState(tab.id).deletedRows"
-            :sort-by="tab.sortBy || null"
-            :sort-order="tab.sortOrder || null"
-            :pending-new-row="getPendingNewRow(tab.id)"
-            @filter-apply="(whereClause: string | null) => handleFilterApply(tab, whereClause)"
-            @refresh="() => { loadTableData(tab); clearDataSidebarState(tab.id); }"
-            @update-new-row="(p: { field: string; value: unknown }) => onUpdateNewRow(tab.id, p)"
-            @inserted-new-row="() => onInsertedNewRow(tab)"
-            @cell-select="(e: { rowIndex: number; columnKey: string | null }) => onDataCellSelect(tab.id, e)"
-            @sidebar-close="onDataSidebarClose(tab.id)"
-            @update-field="(e: { field: string; value: unknown }) => onDataUpdateField(tab.id, e)"
-            @mark-deleted="onDataMarkDeleted(tab.id)"
-            @unmark-deleted="onDataUnmarkDeleted(tab.id)"
-            @sort-change="(payload: { prop: string | null; order: 'ascending' | 'descending' | null }) => handleSortChange(tab, payload)"
-          />
+                        <!-- Data View -->
+                        <TableDataView v-else-if="tab.viewMode === 'data'"
+                          :ref="(el: any) => setTableDataViewRef(tab.id, el)" :data="tab.data"
+                          :is-loading="tab.isLoadingData === true" :error="tab.dataError || null"
+                          :db-type="connection?.type || 'postgresql'" :table-name="tab.tableName"
+                          :connection-id="connection?.id"
+                          :column-types="(tab.structure?.columns) ? Object.fromEntries(tab.structure.columns.map((c: { name: string; type: string }) => [c.name, c.type])) : {}"
+                          :sidebar-panel-open="dataSidebarVisible"
+                          :sidebar-selected-row-index="getDataSidebarState(tab.id).selectedRowIndex"
+                          :sidebar-selected-column="getDataSidebarState(tab.id).selectedColumn"
+                          :sidebar-modified-rows="getDataSidebarState(tab.id).modifiedRows"
+                          :sidebar-deleted-rows="getDataSidebarState(tab.id).deletedRows" :sort-by="tab.sortBy || null"
+                          :sort-order="tab.sortOrder || null" :pending-new-row="getPendingNewRow(tab.id)"
+                          @filter-apply="(whereClause: string | null) => handleFilterApply(tab, whereClause)"
+                          @refresh="() => { loadTableData(tab); clearDataSidebarState(tab.id); }"
+                          @update-new-row="(p: { field: string; value: unknown }) => onUpdateNewRow(tab.id, p)"
+                          @inserted-new-row="() => onInsertedNewRow(tab)"
+                          @cell-select="(e: { rowIndex: number; columnKey: string | null }) => onDataCellSelect(tab.id, e)"
+                          @sidebar-close="onDataSidebarClose(tab.id)"
+                          @update-field="(e: { field: string; value: unknown }) => onDataUpdateField(tab.id, e)"
+                          @mark-deleted="onDataMarkDeleted(tab.id)" @unmark-deleted="onDataUnmarkDeleted(tab.id)"
+                          @sort-change="(payload: { prop: string | null; order: 'ascending' | 'descending' | null }) => handleSortChange(tab, payload)" />
 
-                    <!-- Fallback if no view mode -->
-                    <div v-else class="no-view-mode">
-                      <el-empty description="No view mode selected" />
+                        <!-- Fallback if no view mode -->
+                        <div v-else class="no-view-mode">
+                          <el-empty description="No view mode selected" />
+                        </div>
+                      </template>
                     </div>
-                  </template>
-                </div>
 
-                <!-- Footer (only for table tabs) -->
-                <TableViewFooter
-                  v-if="tab.tabType !== 'query'"
-                  :view-mode="tab.viewMode || 'data'"
-                  :data="tab.data"
-                  @update:view-mode="(val: 'structure' | 'data') => switchViewMode(tab, val)"
-                  @page-change="(page: number) => handlePageChange(tab, page)"
-                  @per-page-change="(perPage: number) => handlePerPageChange(tab, perPage)"
-                  @add-row="handleAddRow(tab)"
-                />
-              </div>
-            </el-tab-pane>
-          </el-tabs>
-          </div>
-          <!-- Data table cell sidebar (inside content-area, full height) -->
-          <div
-            v-if="dataSidebarVisible"
-            class="data-detail-sidebar-wrap"
-          >
-            <TableDataCellSidebar
-              ref="dataSidebarRef"
-              :visible="true"
-              :selected-row="dataSidebarSelectedRow"
-              :selected-column="dataSidebarSelectedColumn"
-              :modified-fields="dataSidebarModifiedFields"
-              :is-deleted="dataSidebarIsDeleted"
-              :column-types="dataSidebarColumnTypes"
-              @close="onDataSidebarClose(activeTabId)"
-              @update-field="(field: string, value: unknown) => onDataUpdateField(activeTabId, { field, value })"
-              @mark-deleted="onDataMarkDeleted(activeTabId)"
-              @unmark-deleted="onDataUnmarkDeleted(activeTabId)"
-            />
+                    <!-- Footer (only for table tabs) -->
+                    <TableViewFooter v-if="tab.tabType !== 'query'" :view-mode="tab.viewMode || 'data'" :data="tab.data"
+                      @update:view-mode="(val: 'structure' | 'data') => switchViewMode(tab, val)"
+                      @page-change="(page: number) => handlePageChange(tab, page)"
+                      @per-page-change="(perPage: number) => handlePerPageChange(tab, perPage)"
+                      @add-row="handleAddRow(tab)" />
+                  </div>
+                </el-tab-pane>
+              </el-tabs>
+            </div>
+            <!-- Data table cell sidebar (inside content-area, full height) -->
+            <div v-if="dataSidebarVisible" class="data-detail-sidebar-wrap">
+              <TableDataCellSidebar ref="dataSidebarRef" :visible="true" :selected-row="dataSidebarSelectedRow"
+                :selected-column="dataSidebarSelectedColumn" :modified-fields="dataSidebarModifiedFields"
+                :is-deleted="dataSidebarIsDeleted" :column-types="dataSidebarColumnTypes"
+                @close="onDataSidebarClose(activeTabId)"
+                @update-field="(field: string, value: unknown) => onDataUpdateField(activeTabId, { field, value })"
+                @mark-deleted="onDataMarkDeleted(activeTabId)" @unmark-deleted="onDataUnmarkDeleted(activeTabId)" />
+            </div>
           </div>
         </div>
       </div>
@@ -234,63 +126,20 @@
 <script setup lang="ts">
 import { useDatabase } from '@/composables/useDatabase';
 import { useConnectionsStore } from '@/stores/connectionsStore';
-import { Connection, Document, Folder, Search } from '@element-plus/icons-vue';
+import { Tab, Table } from '@/stores/tableStore';
+import { Folder } from '@element-plus/icons-vue';
 import { ElMessage } from 'element-plus';
 import { storeToRefs } from 'pinia';
 import { computed, nextTick, onMounted, onUnmounted, reactive, ref, watch } from 'vue';
+import DatabaseInfo from './DatabaseContent/DatabaseInfo.vue';
+import TableDataView from './DatabaseContent/TableDataView.vue';
+import TableListLeftSidebar from './DatabaseContent/TableListLeftSidebar.vue';
+import TableView from './DatabaseContent/TableView.vue';
 import DatabaseSelectModal from './DatabaseSelectModal.vue';
-import QueryEditorTab from './QueryEditorTab.vue';
 import TableDataCellSidebar from './TableDataCellSidebar.vue';
-import TableDataView from './TableDataView.vue';
-import TableStructureView from './TableStructureView.vue';
+import QueryEditorTab from './TableView/QueryEditorTab.vue';
+import TableStructureView from './TableView/TableStructureView.vue';
 import TableViewFooter from './TableViewFooter.vue';
-
-interface Table {
-  name: string;
-  type?: string;
-}
-
-interface Tab {
-  id: string;
-  tableName: string;
-  tableType?: string;
-  tabType?: 'table' | 'query'; // 'table' for table tabs, 'query' for query editor tabs
-  viewMode?: 'structure' | 'data';
-  sortBy?: string | null;
-  sortOrder?: 'asc' | 'desc' | null;
-  isLoadingStructure?: boolean;
-  isLoadingData?: boolean;
-  structureError?: string;
-  dataError?: string;
-  structure?: {
-    columns: Array<{
-      name: string;
-      type: string;
-      nullable: boolean;
-      ordinal_position?: number;
-      character_set?: string;
-      collation?: string;
-      default_value?: string;
-      extra?: string;
-      foreign_key?: string;
-      comment?: string;
-    }>;
-    indexes?: Array<{
-      name: string;
-      algorithm?: string;
-      is_unique: boolean;
-      column_name: string;
-    }>;
-    rows?: number;
-  };
-  data?: {
-    rows: any[];
-    total: number;
-    page: number;
-    perPage: number;
-  };
-  whereClause?: string | null;
-}
 
 const connectionsStore = useConnectionsStore();
 const { dataSidebarOpen, currentConnection, activeConnections, currentTabId } = storeToRefs(connectionsStore);
@@ -317,15 +166,9 @@ const connection = computed(() => {
 });
 
 const tables = ref<Table[]>([]);
-const tableNameFilter = ref('');
 const isLoadingTables = ref(false);
 const activeTableName = ref<string>('');
 
-const filteredTables = computed(() => {
-  const q = tableNameFilter.value.trim().toLowerCase();
-  if (!q) return tables.value;
-  return tables.value.filter(t => t.name.toLowerCase().includes(q));
-});
 const tabs = ref<Tab[]>([]);
 const activeTabId = ref<string>('');
 const showDatabaseModal = ref(false);
@@ -543,9 +386,7 @@ const activeDataTab = computed(() => {
   const tab = tabs.value.find(t => t.id === id);
   return tab && tab.tabType !== 'query' && tab.viewMode === 'data' ? tab : null;
 });
-const dataSidebarVisible = computed(() => {
-  return dataSidebarOpen.value && tabs.value.length > 0;
-});
+
 const dataSidebarSelectedRow = computed(() => {
   const tab = activeDataTab.value;
   if (!tab) return null;
@@ -1060,22 +901,6 @@ onUnmounted(() => {
   document.removeEventListener('click', handleDataSidebarClickOutside);
   document.removeEventListener('keydown', handleSaveKeydown, { capture: true });
 });
-
-const formatDate = (date: Date | string) => {
-  const d = typeof date === 'string' ? new Date(date) : date;
-  const now = new Date();
-  const diffInMs = now.getTime() - d.getTime();
-  const diffInMins = Math.floor(diffInMs / 60000);
-  const diffInHours = Math.floor(diffInMs / 3600000);
-  const diffInDays = Math.floor(diffInMs / 86400000);
-
-  if (diffInMins < 1) return 'Just now';
-  if (diffInMins < 60) return `${diffInMins} minute${diffInMins > 1 ? 's' : ''} ago`;
-  if (diffInHours < 24) return `${diffInHours} hour${diffInHours > 1 ? 's' : ''} ago`;
-  if (diffInDays < 7) return `${diffInDays} day${diffInDays > 1 ? 's' : ''} ago`;
-
-  return d.toLocaleDateString();
-};
 </script>
 
 <style scoped lang="scss">
@@ -1165,97 +990,6 @@ const formatDate = (date: Date | string) => {
       padding: 20px;
     }
 
-    .tables-list-wrapper {
-      flex: 1;
-      display: flex;
-      flex-direction: column;
-      min-height: 0;
-    }
-
-    .tables-filter {
-      flex-shrink: 0;
-      padding: 8px;
-      border-bottom: 1px solid var(--el-border-color-lighter);
-    }
-
-    .table-filter-input {
-      width: 100%;
-    }
-
-    .tables-list {
-      flex: 1;
-      overflow-y: auto;
-      padding: 8px;
-      scrollbar-width: none;
-      -ms-overflow-style: none;
-      &::-webkit-scrollbar {
-        display: none;
-      }
-
-      .table-item {
-        display: flex;
-        align-items: center;
-        padding: 6px 12px;
-        cursor: pointer;
-        transition: all 0.2s ease;
-        background-color: transparent;
-        border: 1px solid transparent;
-
-        &:hover {
-          background-color: rgba(64, 158, 255, 0.1);
-          .table-name,
-          .table-icon {
-            color: #303133;
-          }
-          .dark & {
-            background-color: rgba(64, 158, 255, 0.18);
-            .table-name,
-            .table-icon {
-              color: #e5e7eb;
-            }
-          }
-          [data-theme="light"] & {
-            background-color: rgba(64, 158, 255, 0.08);
-            .table-name,
-            .table-icon {
-              color: #303133;
-            }
-          }
-        }
-
-        &.active {
-          background-color: var(--el-color-primary-light-9);
-          border-color: var(--el-color-primary);
-
-          .dark & {
-            background-color: rgba(64, 158, 255, 0.2);
-            border-color: rgba(64, 158, 255, 0.5);
-          }
-
-          [data-theme="light"] & {
-            background-color: rgba(64, 158, 255, 0.1);
-            border-color: rgba(64, 158, 255, 0.3);
-          }
-
-          .table-name {
-            color: var(--el-color-primary);
-            font-weight: 600;
-          }
-        }
-
-        .table-icon {
-          font-size: 16px;
-          color: var(--el-text-color-regular);
-          margin-right: 8px;
-        }
-
-        .table-name {
-          font-size: 14px;
-          color: var(--el-text-color-primary);
-        }
-      }
-    }
-
     .no-match {
       padding: 16px;
       text-align: center;
@@ -1280,100 +1014,6 @@ const formatDate = (date: Date | string) => {
     flex-direction: column;
     overflow: hidden;
     background-color: transparent;
-
-    .connection-info-default {
-      flex: 1;
-      padding: 20px;
-      overflow-y: auto;
-
-      :deep(.el-card) {
-        border: 1px solid var(--el-border-color);
-        background-color: var(--el-bg-color-page);
-        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
-
-        .dark & {
-          background-color: rgba(45, 55, 72, 0.8);
-          border-color: rgba(74, 85, 104, 0.5);
-          box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
-        }
-
-        [data-theme="light"] & {
-          background-color: rgba(255, 255, 255, 0.9);
-          border-color: rgba(226, 232, 240, 0.8);
-          box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
-        }
-      }
-
-      :deep(.el-card__header) {
-        padding: 16px;
-        background-color: transparent;
-        border-bottom: 1px solid var(--el-border-color-light);
-
-        .card-header {
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-
-          .header-left {
-            display: flex;
-            align-items: center;
-            gap: 12px;
-            font-weight: 600;
-            font-size: 16px;
-            color: var(--el-text-color-primary);
-
-            .header-icon {
-              font-size: 20px;
-              color: var(--el-color-primary);
-            }
-          }
-
-          .header-right {
-            display: flex;
-            align-items: center;
-          }
-        }
-      }
-
-      :deep(.el-card__body) {
-        padding: 16px;
-        background-color: transparent;
-      }
-
-      .connection-details {
-        display: flex;
-        flex-direction: column;
-        gap: 16px;
-
-        .detail-item {
-          display: flex;
-          align-items: center;
-          padding: 12px;
-          border-radius: 6px;
-          background-color: var(--el-fill-color-lighter);
-
-          .dark & {
-            background-color: rgba(74, 85, 104, 0.3);
-          }
-
-          [data-theme="light"] & {
-            background-color: rgba(247, 250, 252, 0.8);
-          }
-
-          .detail-label {
-            font-weight: 600;
-            color: var(--el-text-color-regular);
-            min-width: 120px;
-            margin-right: 12px;
-          }
-
-          .detail-value {
-            color: var(--el-text-color-primary);
-            font-size: 14px;
-          }
-        }
-      }
-    }
 
     .content-area-inner {
       flex: 1;
