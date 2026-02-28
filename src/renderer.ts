@@ -26,56 +26,8 @@
  * ```
  */
 
-import * as ElementPlusIconsVue from '@element-plus/icons-vue';
-import ElementPlus from 'element-plus';
-import 'element-plus/dist/index.css';
-import { createPinia } from 'pinia';
-import { createApp } from 'vue';
-import App from './App.vue';
-import router from './router';
-import './sass/index.scss';
+import './index.css';
 
-// Initialize theme on app startup
-const initTheme = () => {
-  const savedTheme = localStorage.getItem('theme');
-  const isDark = savedTheme === 'dark' || (!savedTheme && window.matchMedia('(prefers-color-scheme: dark)').matches);
-  
-  const html = document.documentElement;
-  if (isDark) {
-    html.classList.add('dark');
-    html.setAttribute('data-theme', 'dark');
-  } else {
-    html.classList.remove('dark');
-    html.setAttribute('data-theme', 'light');
-  }
-};
-
-// Apply theme immediately
-initTheme();
-
-// Setup beforeunload event to prevent accidental reload
-window.addEventListener('beforeunload', (e) => {
-  // Check if there are active connections (you can customize this check)
-  const hasActiveConnections = localStorage.getItem('connectionsState');
-  if (hasActiveConnections) {
-    e.preventDefault();
-    e.returnValue = 'You have active database connections. Are you sure you want to leave?';
-    return e.returnValue;
-  }
-});
-
-const app = createApp(App);
-const pinia = createPinia();
-
-// Register all Element Plus icons
-for (const [key, component] of Object.entries(ElementPlusIconsVue)) {
-  app.component(key, component);
-}
-
-app.use(pinia);
-app.use(router);
-app.use(ElementPlus);
-
-app.mount('#app');
-
-console.log('👋 This message is being logged by "renderer.ts", included via Vite');
+console.log(
+  '👋 This message is being logged by "renderer.ts", included via Vite',
+);

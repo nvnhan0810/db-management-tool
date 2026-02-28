@@ -1,8 +1,6 @@
-import { app, BrowserWindow, ipcMain } from 'electron';
-import started from 'electron-squirrel-startup';
+import { app, BrowserWindow } from 'electron';
 import path from 'node:path';
-import { deleteSecret, getSecret, saveSecret } from './main-secrets';
-import { databaseService } from './services/database';
+import started from 'electron-squirrel-startup';
 
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
 if (started) {
@@ -12,30 +10,24 @@ if (started) {
 const createWindow = () => {
   // Create the browser window.
   const mainWindow = new BrowserWindow({
-    width: 1200,
-    height: 800,
-    frame: false, // Completely disable default frame and title bar
-    // Don't use titleBarStyle when frame is false - it can cause conflicts
+    width: 800,
+    height: 600,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
-      nodeIntegration: false,
-      contextIsolation: true,
     },
-    // Set background color based on platform
-    backgroundColor: process.platform === 'darwin' ? '#f8f9fa' : '#1a202c',
-    // Enable vibrancy on macOS
-    vibrancy: process.platform === 'darwin' ? 'under-window' : undefined,
   });
 
   // and load the index.html of the app.
   if (MAIN_WINDOW_VITE_DEV_SERVER_URL) {
     mainWindow.loadURL(MAIN_WINDOW_VITE_DEV_SERVER_URL);
-
-    // Open the DevTools.
-    mainWindow.webContents.openDevTools();
   } else {
-    mainWindow.loadFile(path.join(__dirname, `../renderer/${MAIN_WINDOW_VITE_NAME}/index.html`));
+    mainWindow.loadFile(
+      path.join(__dirname, `../renderer/${MAIN_WINDOW_VITE_NAME}/index.html`),
+    );
   }
+
+  // Open the DevTools.
+  mainWindow.webContents.openDevTools();
 };
 
 // This method will be called when Electron has finished
@@ -43,60 +35,10 @@ const createWindow = () => {
 // Some APIs can only be used after this event occurs.
 app.on('ready', createWindow);
 
-// Secrets IPC - store sensitive data in OS keychain via keytar
-ipcMain.handle('secrets:save', async (_event, args: { id: string; value: string }) => {
-  const { id, value } = args;
-  if (!id || typeof value !== 'string') {
-    throw new Error('Invalid arguments for secrets:save');
-  }
-  await saveSecret(id, value);
-  return true;
-});
-
-ipcMain.handle('secrets:get', async (_event, args: { id: string }) => {
-  const { id } = args;
-  if (!id) {
-    throw new Error('Invalid arguments for secrets:get');
-  }
-  const value = await getSecret(id);
-  return value;
-});
-
-ipcMain.handle('secrets:delete', async (_event, args: { id: string }) => {
-  const { id } = args;
-  if (!id) {
-    throw new Error('Invalid arguments for secrets:delete');
-  }
-  await deleteSecret(id);
-  return true;
-});
-
-// Disconnect all database connections before app quits
-app.on('before-quit', async (event) => {
-  event.preventDefault();
-
-  try {
-    console.log('App is quitting, disconnecting all database connections...');
-    await databaseService.disconnectAll();
-    console.log('All database connections disconnected successfully');
-  } catch (error) {
-    console.error('Error disconnecting database connections on quit:', error);
-  }
-
-  // Force quit after disconnecting
-  app.exit(0);
-});
-
-// Also handle window-all-closed event
-app.on('window-all-closed', async () => {
-  try {
-    console.log('All windows closed, disconnecting all database connections...');
-    await databaseService.disconnectAll();
-    console.log('All database connections disconnected successfully');
-  } catch (error) {
-    console.error('Error disconnecting database connections on window close:', error);
-  }
-
+// Quit when all windows are closed, except on macOS. There, it's common
+// for applications and their menu bar to stay active until the user quits
+// explicitly with Cmd + Q.
+app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
     app.quit();
   }
@@ -112,145 +54,3 @@ app.on('activate', () => {
 
 // In this file you can include the rest of your app's specific main process
 // code. You can also put them in separate files and import them here.
-
-// Database handlers
-ipcMain.handle('database:connect', async (event, connection) => {
-  try {
-    const result = await databaseService.connect(connection);
-    return { success: result, error: null };
-  } catch (error) {
-    console.error('IPC database:connect error:', error);
-    const errorMessage = error instanceof Error ? error.message : 'Failed to connect to database';
-    return { success: false, error: errorMessage };
-  }
-});
-
-ipcMain.handle('database:disconnect', (event, connectionId) => {
-  return databaseService.disconnect(connectionId);
-});
-
-ipcMain.handle('database:disconnectAll', () => {
-  return databaseService.disconnectAll();
-});
-
-ipcMain.handle('database:hasActiveConnections', () => {
-  return databaseService.hasActiveConnections();
-});
-
-// Handle reload prevention message
-ipcMain.handle('reload:prevent', (event, message) => {
-  const window = BrowserWindow.getFocusedWindow();
-  if (window) {
-    window.webContents.send('reload-prevented', message);
-  }
-});
-
-ipcMain.handle('database:query', (event, { connectionId, query }) => {
-  return databaseService.query(connectionId, query);
-});
-
-ipcMain.handle('database:getTables', async (event, { connectionId }) => {
-  return databaseService.getTables(connectionId);
-});
-
-ipcMain.handle('database:getTableStructure', async (event, { connectionId, tableName }) => {
-  try {
-    // Validate parameters
-    if (!connectionId || !tableName) {
-      throw new Error('Missing connectionId or tableName');
-    }
-
-    const result = await databaseService.getTableStructure(connectionId, tableName);
-
-    if (result === undefined) {
-      throw new Error('Database service returned undefined');
-    }
-
-    return result;
-  } catch (error) {
-    console.error('IPC getTableStructure error:', error);
-    throw error;
-  }
-});
-
-ipcMain.handle('database:getDatabases', async (event, { connectionId }) => {
-  try {
-    // Validate parameters
-    if (!connectionId) {
-      throw new Error('Missing connectionId');
-    }
-
-    const result = await databaseService.getDatabases(connectionId);
-
-    if (result === undefined) {
-      throw new Error('Database service returned undefined');
-    }
-
-    return result;
-  } catch (error) {
-    console.error('IPC getDatabases error:', error);
-    throw error;
-  }
-});
-
-ipcMain.handle('database:executeQuery', async (event, { connectionId, query }) => {
-  try {
-    // Validate parameters
-    if (!connectionId || !query) {
-      throw new Error('Missing connectionId or query');
-    }
-
-    const result = await databaseService.executeQuery(connectionId, query);
-
-    if (result === undefined) {
-      throw new Error('Database service returned undefined');
-    }
-
-    return result;
-  } catch (error) {
-    console.error('IPC executeQuery error:', error);
-    throw error;
-  }
-});
-
-// Window control handlers
-ipcMain.handle('window:minimize', () => {
-  console.log('IPC: window:minimize called');
-  const window = BrowserWindow.getFocusedWindow();
-  if (window) {
-    window.minimize();
-    return { success: true };
-  }
-  return { success: false, error: 'No focused window' };
-});
-
-ipcMain.handle('window:maximize', () => {
-  console.log('IPC: window:maximize called');
-  const window = BrowserWindow.getFocusedWindow();
-  if (window) {
-    if (window.isMaximized()) {
-      window.unmaximize();
-    } else {
-      window.maximize();
-    }
-    return { success: true };
-  }
-  return { success: false, error: 'No focused window' };
-});
-
-ipcMain.handle('window:close', () => {
-  console.log('IPC: window:close called');
-  const window = BrowserWindow.getFocusedWindow() || BrowserWindow.getAllWindows()[0];
-  if (window) {
-    // Use destroy() instead of close() to force close
-    // close() might be prevented by before-quit handlers
-    window.destroy();
-    return { success: true };
-  }
-  console.error('No window found to close');
-  return { success: false, error: 'No window found' };
-});
-
-ipcMain.handle('app:quit', () => {
-  app.quit();
-});
