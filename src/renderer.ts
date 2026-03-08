@@ -1,33 +1,56 @@
-/**
- * This file will automatically be loaded by vite and run in the "renderer" context.
- * To learn more about the differences between the "main" and the "renderer" context in
- * Electron, visit:
- *
- * https://electronjs.org/docs/tutorial/process-model
- *
- * By default, Node.js integration in this file is disabled. When enabling Node.js integration
- * in a renderer process, please be aware of potential security implications. You can read
- * more about security risks here:
- *
- * https://electronjs.org/docs/tutorial/security
- *
- * To enable Node.js integration in this file, open up `main.ts` and enable the `nodeIntegration`
- * flag:
- *
- * ```
- *  // Create the browser window.
- *  mainWindow = new BrowserWindow({
- *    width: 800,
- *    height: 600,
- *    webPreferences: {
- *      nodeIntegration: true
- *    }
- *  });
- * ```
- */
+import * as ElementPlusIconsVue from '@element-plus/icons-vue';
+import ElementPlus from 'element-plus';
+import 'element-plus/dist/index.css';
+import { createPinia } from 'pinia';
+import { createApp } from 'vue';
+import App from './App.vue';
+import router from './router';
+import { useThemeStore } from './presentation/stores/themeStore';
+import { useConnectionStore } from './presentation/stores/connectionStore';
+import './styles/theme-black.css';
+import './styles/index.scss';
 
-import './index.css';
+const initTheme = () => {
+  const saved = localStorage.getItem('theme');
+  const isDark =
+    saved === 'dark' ||
+    (!saved && window.matchMedia('(prefers-color-scheme: dark)').matches);
+  const html = document.documentElement;
+  if (isDark) {
+    html.classList.add('dark');
+    html.setAttribute('data-theme', 'dark');
+  } else {
+    html.classList.remove('dark');
+    html.setAttribute('data-theme', 'light');
+  }
+};
+initTheme();
 
-console.log(
-  '👋 This message is being logged by "renderer.ts", included via Vite',
-);
+window.addEventListener('beforeunload', (e) => {
+  const hasState = localStorage.getItem('connectionsState');
+  if (hasState) {
+    e.preventDefault();
+    e.returnValue = 'You have active database connections. Are you sure you want to leave?';
+    return e.returnValue;
+  }
+});
+
+const app = createApp(App);
+const pinia = createPinia();
+
+for (const [key, component] of Object.entries(ElementPlusIconsVue)) {
+  app.component(key, component);
+}
+
+app.use(pinia);
+app.use(router);
+app.use(ElementPlus);
+
+app.mount('#app');
+
+// Initialize stores after mount (Pinia must be installed first)
+const themeStore = useThemeStore();
+themeStore.applyTheme();
+
+const connectionStore = useConnectionStore();
+connectionStore.initialize();

@@ -1,0 +1,332 @@
+
+.custom-title-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 32px;
+  min-height: 32px;
+  max-height: 32px;
+  color: white;
+  -webkit-app-region: drag;
+  user-select: none;
+  position: sticky;
+  top: 0;
+  z-index: 1000;
+  box-sizing: border-box;
+  flex-shrink: 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+/* macOS Styling */
+.custom-title-bar.macos {
+  background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+  color: #212529;
+  padding-left: 80px;
+  /* Space for macOS traffic lights */
+  border-bottom: 1px solid rgba(0, 0, 0, 0.1);
+}
+
+/* Windows Styling */
+.custom-title-bar.windows {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  /* Space for Windows controls */
+}
+
+/* macOS Traffic Light Buttons */
+.macos-traffic-lights {
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  gap: 8px;
+  -webkit-app-region: no-drag;
+  z-index: 1001;
+}
+
+.traffic-light {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+}
+
+.traffic-light-button {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  transition: all 0.2s ease;
+}
+
+.traffic-light.close {
+  background-color: #ff5f57;
+}
+
+.traffic-light.close:hover {
+  background-color: #ff3b30;
+}
+
+.traffic-light.close .traffic-light-button {
+  background-color: #ff5f57;
+}
+
+.traffic-light.close:hover .traffic-light-button {
+  background-color: #ff3b30;
+}
+
+.traffic-light.minimize {
+  background-color: #ffbd2e;
+}
+
+.traffic-light.minimize:hover {
+  background-color: #ff9500;
+}
+
+.traffic-light.minimize .traffic-light-button {
+  background-color: #ffbd2e;
+}
+
+.traffic-light.minimize:hover .traffic-light-button {
+  background-color: #ff9500;
+}
+
+.traffic-light.maximize {
+  background-color: #28ca42;
+}
+
+.traffic-light.maximize:hover {
+  background-color: #30d158;
+}
+
+.traffic-light.maximize .traffic-light-button {
+  background-color: #28ca42;
+}
+
+.traffic-light.maximize:hover .traffic-light-button {
+  background-color: #30d158;
+}
+
+.title-bar-left {
+  display: flex;
+  align-items: center;
+  flex: 1;
+  justify-content: flex-start;
+}
+
+.title-bar-center {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 1;
+}
+
+.app-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  -webkit-app-region: drag;
+}
+
+.app-icon {
+  display: flex;
+  align-items: center;
+  font-size: 16px;
+}
+
+.app-info {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.2;
+}
+
+.app-name {
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.connection-info {
+  font-size: 11px;
+  opacity: 0.8;
+}
+
+.nav-tabs {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  -webkit-app-region: no-drag;
+}
+
+.nav-divider {
+  width: 1px;
+  height: 20px;
+  background-color: rgba(0, 0, 0, 0.2);
+  margin: 0 4px;
+}
+
+.custom-title-bar.windows .nav-divider {
+  background-color: rgba(255, 255, 255, 0.3);
+}
+
+.nav-tab {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  -webkit-app-region: no-drag;
+}
+
+.nav-tab:hover {
+  background-color: rgba(0, 0, 0, 0.1);
+}
+
+.custom-title-bar.windows .nav-tab:hover {
+  background-color: rgba(255, 255, 255, 0.1);
+}
+
+.nav-tab.active {
+  background-color: rgba(0, 0, 0, 0.15);
+  font-weight: 500;
+}
+
+.custom-title-bar.windows .nav-tab.active {
+  background-color: rgba(255, 255, 255, 0.2);
+}
+
+.title-bar-right {
+  display: flex;
+  align-items: center;
+  flex: 1;
+  justify-content: flex-end;
+  gap: 8px;
+  -webkit-app-region: no-drag;
+  position: absolute;
+  right: 0;
+  top: 0;
+  height: 100%;
+}
+
+.window-controls {
+  display: flex;
+  -webkit-app-region: no-drag;
+}
+
+.control-btn {
+  width: 32px;
+  height: 32px;
+  border: none;
+  background: transparent;
+  color: inherit;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+  cursor: pointer;
+  margin-left: 0px;
+  border-radius: 0px;
+}
+
+.control-btn:hover {
+  background-color: rgba(0, 0, 0, 0.1);
+}
+
+.custom-title-bar.windows .control-btn:hover {
+  background-color: rgba(255, 255, 255, 0.1);
+}
+
+.control-btn.close:hover {
+  background-color: #e53e3e !important;
+  color: white;
+}
+
+.control-btn.theme-toggle,
+.control-btn.sidebar-toggle {
+  -webkit-app-region: no-drag;
+  cursor: pointer;
+}
+
+.control-btn.theme-toggle:hover,
+.control-btn.sidebar-toggle:hover {
+  background-color: rgba(0, 0, 0, 0.1);
+}
+
+.custom-title-bar.windows .control-btn.theme-toggle:hover,
+.custom-title-bar.windows .control-btn.sidebar-toggle:hover {
+  background-color: rgba(255, 255, 255, 0.1);
+}
+
+/* Dark theme support */
+.dark .custom-title-bar.macos {
+  background: linear-gradient(135deg, #1a202c 0%, #2d3748 100%);
+  color: #e2e8f0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.dark .custom-title-bar.windows {
+  background: linear-gradient(135deg, #1a202c 0%, #2d3748 100%);
+  color: #e2e8f0;
+}
+
+.dark .nav-tab:hover {
+  background-color: rgba(255, 255, 255, 0.05);
+}
+
+.dark .nav-tab.active {
+  background-color: rgba(255, 255, 255, 0.1);
+}
+
+.dark .control-btn:hover {
+  background-color: rgba(255, 255, 255, 0.1);
+}
+
+.dark .control-btn.theme-toggle:hover,
+.dark .control-btn.sidebar-toggle:hover {
+  background-color: rgba(255, 255, 255, 0.1);
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .custom-title-bar {
+    height: 28px;
+    min-height: 28px;
+    max-height: 28px;
+    padding: 0 8px;
+  }
+
+  .custom-title-bar.macos {
+    padding-left: 70px;
+  }
+
+  .macos-traffic-lights {
+    left: 8px;
+    gap: 6px;
+  }
+
+  .traffic-light {
+    width: 10px;
+    height: 10px;
+  }
+
+  .traffic-light-button {
+    width: 6px;
+    height: 6px;
+  }
+
+  .nav-tab {
+    width: 32px;
+    height: 32px;
+  }
+
+  .control-btn {
+    width: 28px;
+    height: 28px;
+  }
+}

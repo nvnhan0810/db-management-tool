@@ -1,56 +1,147 @@
-import { app, BrowserWindow } from 'electron';
-import path from 'node:path';
+import { app, BrowserWindow, ipcMain } from 'electron';
 import started from 'electron-squirrel-startup';
+import path from 'node:path';
+import { deleteSecret, getSecret, saveSecret } from './main-secrets';
+import { databaseService } from './infrastructure/database/databaseService';
 
-// Handle creating/removing shortcuts on Windows when installing/uninstalling.
 if (started) {
   app.quit();
 }
 
 const createWindow = () => {
-  // Create the browser window.
   const mainWindow = new BrowserWindow({
-    width: 800,
-    height: 600,
+    width: 1200,
+    height: 800,
+    frame: false,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
+      nodeIntegration: false,
+      contextIsolation: true,
     },
+    backgroundColor: process.platform === 'darwin' ? '#f8f9fa' : '#1a202c',
+    vibrancy: process.platform === 'darwin' ? 'under-window' : undefined,
   });
 
-  // and load the index.html of the app.
   if (MAIN_WINDOW_VITE_DEV_SERVER_URL) {
     mainWindow.loadURL(MAIN_WINDOW_VITE_DEV_SERVER_URL);
+    mainWindow.webContents.openDevTools();
   } else {
     mainWindow.loadFile(
-      path.join(__dirname, `../renderer/${MAIN_WINDOW_VITE_NAME}/index.html`),
+      path.join(__dirname, `../renderer/${MAIN_WINDOW_VITE_NAME}/index.html`)
     );
   }
-
-  // Open the DevTools.
-  mainWindow.webContents.openDevTools();
 };
 
-// This method will be called when Electron has finished
-// initialization and is ready to create browser windows.
-// Some APIs can only be used after this event occurs.
 app.on('ready', createWindow);
 
-// Quit when all windows are closed, except on macOS. There, it's common
-// for applications and their menu bar to stay active until the user quits
-// explicitly with Cmd + Q.
-app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') {
-    app.quit();
+ipcMain.handle('secrets:save', async (_event, args: { id: string; value: string }) => {
+  const { id, value } = args;
+  if (!id || typeof value !== 'string') throw new Error('Invalid arguments for secrets:save');
+  await saveSecret(id, value);
+  return true;
+});
+
+ipcMain.handle('secrets:get', async (_event, args: { id: string }) => {
+  const { id } = args;
+  if (!id) throw new Error('Invalid arguments for secrets:get');
+  return await getSecret(id);
+});
+
+ipcMain.handle('secrets:delete', async (_event, args: { id: string }) => {
+  const { id } = args;
+  if (!id) throw new Error('Invalid arguments for secrets:delete');
+  await deleteSecret(id);
+  return true;
+});
+
+app.on('before-quit', async (event) => {
+  event.preventDefault();
+  try {
+    await databaseService.disconnectAll();
+  } catch (err) {
+    console.error('Error disconnecting on quit:', err);
   }
+  app.exit(0);
+});
+
+app.on('window-all-closed', async () => {
+  try {
+    await databaseService.disconnectAll();
+  } catch (err) {
+    console.error('Error disconnecting on close:', err);
+  }
+  if (process.platform !== 'darwin') app.quit();
 });
 
 app.on('activate', () => {
-  // On OS X it's common to re-create a window in the app when the
-  // dock icon is clicked and there are no other windows open.
-  if (BrowserWindow.getAllWindows().length === 0) {
-    createWindow();
+  if (BrowserWindow.getAllWindows().length === 0) createWindow();
+});
+
+ipcMain.handle('database:connect', async (_event, connection) => {
+  try {
+    const result = await databaseService.connect(connection);
+    return { success: result, error: null };
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : 'Failed to connect';
+    return { success: false, error: msg };
   }
 });
 
-// In this file you can include the rest of your app's specific main process
-// code. You can also put them in separate files and import them here.
+ipcMain.handle('database:disconnect', (_event, connectionId) =>
+  databaseService.disconnect(connectionId)
+);
+ipcMain.handle('database:disconnectAll', () => databaseService.disconnectAll());
+ipcMain.handle('database:hasActiveConnections', () =>
+  databaseService.hasActiveConnections()
+);
+
+ipcMain.handle('database:query', (_event, { connectionId, query }) =>
+  databaseService.query(connectionId, query)
+);
+ipcMain.handle('database:getTables', async (_event, { connectionId }) =>
+  databaseService.getTables(connectionId)
+);
+ipcMain.handle('database:getTableStructure', async (_event, { connectionId, tableName }) => {
+  if (!connectionId || !tableName) throw new Error('Missing connectionId or tableName');
+  return databaseService.getTableStructure(connectionId, tableName);
+});
+ipcMain.handle('database:getDatabases', async (_event, { connectionId }) => {
+  if (!connectionId) throw new Error('Missing connectionId');
+  return databaseService.getDatabases(connectionId);
+});
+ipcMain.handle('database:executeQuery', async (_event, { connectionId, query }) => {
+  if (!connectionId || !query) throw new Error('Missing connectionId or query');
+  return databaseService.executeQuery(connectionId, query);
+});
+
+ipcMain.handle('reload:prevent', (event, message) => {
+  const window = BrowserWindow.getFocusedWindow();
+  if (window) window.webContents.send('reload-prevented', message);
+});
+
+ipcMain.handle('window:minimize', () => {
+  const win = BrowserWindow.getFocusedWindow();
+  if (win) {
+    win.minimize();
+    return { success: true };
+  }
+  return { success: false, error: 'No focused window' };
+});
+
+ipcMain.handle('window:maximize', () => {
+  const win = BrowserWindow.getFocusedWindow();
+  if (win) {
+    win.isMaximized() ? win.unmaximize() : win.maximize();
+    return { success: true };
+  }
+  return { success: false, error: 'No focused window' };
+});
+
+ipcMain.handle('window:close', () => {
+  const win = BrowserWindow.getFocusedWindow() || BrowserWindow.getAllWindows()[0];
+  if (win) {
+    win.destroy();
+    return { success: true };
+  }
+  return { success: false, error: 'No window found' };
+});

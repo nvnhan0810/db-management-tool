@@ -1,0 +1,301 @@
+<template>
+  <div class="custom-title-bar" :class="{ macos: isMacOS, windows: !isMacOS }">
+    <div class="left-custom-title-bar">
+      <!-- macOS Traffic Light Buttons (left side) -->
+      <div v-if="isMacOS" class="macos-traffic-lights">
+        <div class="traffic-light close" @click.stop="closeWindow">
+          <div class="traffic-light-button"></div>
+        </div>
+        <div class="traffic-light minimize" @click.stop="minimizeWindow">
+          <div class="traffic-light-button"></div>
+        </div>
+        <div class="traffic-light maximize" @click.stop="maximizeWindow">
+          <div class="traffic-light-button"></div>
+        </div>
+      </div>
+
+      <!-- Left side - Navigation tabs -->
+      <div class="title-bar-left" v-if="hasActiveConnection">
+        <div class="nav-tabs">
+          <el-tooltip content="New Connection" placement="bottom">
+            <div class="nav-tab" @click="$emit('new-connection')">
+              <el-icon>
+                <Link />
+              </el-icon>
+            </div>
+          </el-tooltip>
+
+          <el-tooltip content="Disconnect" placement="bottom">
+            <div class="nav-tab" @click="handleDisconnect">
+              <el-icon>
+                <SwitchButton />
+              </el-icon>
+            </div>
+          </el-tooltip>
+
+          <el-tooltip content="Select Database" placement="bottom">
+            <div class="nav-tab" @click="$emit('select-database')">
+              <el-icon>
+                <Folder />
+              </el-icon>
+            </div>
+          </el-tooltip>
+
+          <!-- Divider -->
+          <div class="nav-divider"></div>
+
+          <!-- Action buttons -->
+          <el-tooltip content="New Query" placement="bottom">
+            <div class="nav-tab" @click="$emit('add-query')">
+              <el-icon>
+                <Edit />
+              </el-icon>
+            </div>
+          </el-tooltip>
+        </div>
+      </div>
+    </div>
+
+    <!-- Center - App title -->
+    <div class="title-bar-center">
+      <div class="app-title">
+        <div class="app-icon">
+          <el-icon>
+            <Monitor />
+          </el-icon>
+        </div>
+        <div class="app-info">
+          <span v-if="currentConnectionName" class="connection-info">
+            {{ currentConnectionName }}
+          </span>
+          <span v-else class="app-name">Database Client</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Right side - Window controls and theme toggle -->
+    <div class="title-bar-right">
+      <!-- Data sidebar toggle (right panel: row/cell detail) -->
+      <el-tooltip v-if="hasActiveConnection" :content="dataSidebarOpen ? 'Hide detail panel' : 'Show detail panel'" placement="bottom">
+        <el-button size="small" class="control-btn sidebar-toggle" @click="handleDataSidebarToggle">
+          <el-icon>
+            <component :is="dataSidebarOpen ? 'Hide' : 'View'" />
+          </el-icon>
+        </el-button>
+      </el-tooltip>
+
+      <!-- Theme toggle button (always visible) -->
+      <el-button size="small" class="control-btn theme-toggle" @click="handleThemeToggle">
+        <el-icon>
+          <component :is="isDarkMode ? 'Sunny' : 'Moon'" />
+        </el-icon>
+      </el-button>
+
+      <!-- Windows-style Window controls (hidden on macOS) -->
+      <div v-if="!isMacOS" class="window-controls">
+        <el-button size="small" class="control-btn minimize" @click.stop="minimizeWindow">
+          <el-icon>
+            <Minus />
+          </el-icon>
+        </el-button>
+        <el-button size="small" class="control-btn maximize" @click.stop="maximizeWindow">
+          <el-icon>
+            <FullScreen />
+          </el-icon>
+        </el-button>
+        <el-button size="small" class="control-btn close" @click.stop="closeWindow">
+          <el-icon>
+            <Close />
+          </el-icon>
+        </el-button>
+      </div>
+    </div>
+  </div>
+</template>
+
+<script setup lang="ts">
+import { useDatabase } from '@/presentation/composables/useDatabase';
+import { storeToRefs } from 'pinia';
+import { useConnectionStore } from '@/presentation/stores/connectionStore';
+import { useConnectionsStore } from '@/presentation/stores/connectionsStore';
+import { useThemeStore } from '@/presentation/stores/themeStore';
+import {
+  Close,
+  Edit,
+  Folder,
+  FullScreen,
+  Hide,
+  Link,
+  Minus,
+  Monitor,
+  SwitchButton,
+  View
+} from '@element-plus/icons-vue';
+import { ElMessage } from 'element-plus';
+import { computed, onMounted, ref, watch } from 'vue';
+import { useRouter } from 'vue-router';
+
+const connectionStore = useConnectionStore();
+const connectionsStore = useConnectionsStore();
+const { disconnect } = useDatabase();
+const { dataSidebarOpen } = storeToRefs(connectionsStore);
+const themeStore = useThemeStore();
+const { isDarkMode } = storeToRefs(themeStore);
+const { toggleTheme } = themeStore;
+const router = useRouter();
+
+
+// Emit events for backward compatibility
+const emit = defineEmits<{
+  'tab-change': [tabId: string];
+  'add-query': [];
+  'new-connection': [];
+  'disconnect': [];
+  'select-database': [];
+  'toggle-sidebar': [];
+}>();
+
+// Platform detection
+const isMacOS = ref(false);
+
+// Computed properties
+const hasActiveConnection = computed(() => {
+  // Check connectionStore first
+  if (connectionStore.activeConnection) {
+    return true;
+  }
+
+  // Check connectionsStore - if there are any active connections, show buttons
+  return connectionsStore.activeConnections.length > 0;
+});
+
+const currentConnectionName = computed(() => {
+  if (connectionStore.activeConnection) {
+    return connectionStore.activeConnection.name || connectionStore.activeConnection.host;
+  }
+  if (connectionsStore.currentConnection) {
+    return connectionsStore.currentConnection.name || connectionsStore.currentConnection.host;
+  }
+  return null;
+});
+
+const activeConnectionId = computed(() => {
+  return connectionStore.activeConnection?.id ?? connectionsStore.currentConnection?.id ?? null;
+});
+
+onMounted(() => {
+  isMacOS.value = navigator.platform.toLowerCase().includes('mac');
+});
+
+const handleThemeToggle = () => {
+  toggleTheme();
+};
+
+// Handle disconnect
+const handleDisconnect = async () => {
+  try {
+    // When we have 2+ connections, only use connectionsStore: disconnect current tab, do NOT navigate.
+    // Navigation to home is handled by watch() when activeConnections.length becomes 0.
+    if (connectionsStore.activeConnections.length > 0) {
+      const currentConnection = connectionsStore.currentConnection;
+      if (currentConnection?.tabId) {
+        await connectionsStore.removeConnection(currentConnection.tabId);
+        ElMessage.success('Disconnected successfully');
+      }
+      emit('disconnect');
+      return;
+    }
+
+    // Single connection (from Home or last one): use connectionStore and navigate to home
+    const connId = activeConnectionId.value;
+    if (connectionStore.activeConnection && connId) {
+      await disconnect(connId);
+      connectionStore.setActiveConnection(null);
+      connectionStore.setConnectionStatus(false);
+
+      const connectionInStore = connectionsStore.activeConnections.find(
+        conn => conn.id === connId
+      );
+      if (connectionInStore?.tabId) {
+        await connectionsStore.removeConnection(connectionInStore.tabId);
+      }
+
+      ElMessage.success('Disconnected successfully');
+
+      if (router.currentRoute.value.name === 'workspace') {
+        router.push({ name: 'home' });
+      }
+    }
+
+    emit('disconnect');
+  } catch (error) {
+    console.error('Error disconnecting:', error);
+    ElMessage.error('Failed to disconnect');
+  }
+};
+
+// Watch for when all connections are removed and navigate to home
+watch(
+  () => connectionsStore.activeConnections.length,
+  (newLength: number, oldLength: number) => {
+    // Only navigate if we're in workspace and all connections are gone
+    if (newLength === 0 && oldLength > 0 && router.currentRoute.value.name === 'workspace') {
+      router.push({ name: 'home' });
+    }
+  }
+);
+
+const handleDataSidebarToggle = () => {
+  connectionsStore.toggleDataSidebar();
+};
+
+
+
+// Window control methods
+const minimizeWindow = async () => {
+  try {
+    if (window.electron) {
+      await window.electron.invoke('window:minimize', {});
+    } else {
+      console.error('window.electron is not available');
+    }
+  } catch (error) {
+    console.error('Error minimizing window:', error);
+  }
+};
+
+const maximizeWindow = async () => {
+  try {
+    if (window.electron) {
+      await window.electron.invoke('window:maximize', {});
+    } else {
+      console.error('window.electron is not available');
+    }
+  } catch (error) {
+    console.error('Error maximizing window:', error);
+  }
+};
+
+const closeWindow = async (event?: Event) => {
+  try {
+    // Prevent any default behavior
+    if (event) {
+      event.preventDefault();
+      event.stopPropagation();
+    }
+
+    if (window.electron) {
+      const result = await window.electron.invoke('window:close', {});
+      console.log('Close window result:', result);
+    } else {
+      console.error('window.electron is not available');
+    }
+  } catch (error) {
+    console.error('Error closing window:', error);
+  }
+};
+</script>
+
+<style scoped lang="scss">
+@use '@/styles/components/custom-title-bar.scss' as *;
+</style>
