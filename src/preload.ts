@@ -1,6 +1,7 @@
 import { contextBridge, ipcRenderer } from 'electron';
 
 const invokeChannels = [
+  'dialog:showOpenFile',
   'database:connect',
   'database:disconnect',
   'database:disconnectAll',

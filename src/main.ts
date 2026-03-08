@@ -1,4 +1,5 @@
-import { app, BrowserWindow, ipcMain } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain } from 'electron';
+import fs from 'node:fs';
 import started from 'electron-squirrel-startup';
 import path from 'node:path';
 import { deleteSecret, getSecret, saveSecret } from './main-secrets';
@@ -135,6 +136,28 @@ ipcMain.handle('window:maximize', () => {
     return { success: true };
   }
   return { success: false, error: 'No focused window' };
+});
+
+ipcMain.handle('dialog:showOpenFile', async (_event, options?: { title?: string }) => {
+  const win = BrowserWindow.getFocusedWindow();
+  const result = await dialog.showOpenDialog(win ?? BrowserWindow.getAllWindows()[0], {
+    title: options?.title ?? 'Select SSH Private Key',
+    properties: ['openFile'],
+    filters: [
+      { name: 'Private Key', extensions: ['pem', 'key', 'id_rsa'] },
+      { name: 'All Files', extensions: ['*'] },
+    ],
+  });
+  if (result.canceled || result.filePaths.length === 0) {
+    return { canceled: true, content: null };
+  }
+  try {
+    const content = fs.readFileSync(result.filePaths[0], 'utf-8');
+    return { canceled: false, content, path: result.filePaths[0] };
+  } catch (err) {
+    console.error('Failed to read private key file:', err);
+    return { canceled: false, content: null, error: err instanceof Error ? err.message : 'Failed to read file' };
+  }
 });
 
 ipcMain.handle('window:close', () => {

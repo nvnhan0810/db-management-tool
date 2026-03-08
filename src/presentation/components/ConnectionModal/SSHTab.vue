@@ -53,14 +53,33 @@
 
       <template v-if="sshAuthMethod === 'key'">
         <el-form-item label="SSH Private Key" prop="ssh.privateKey">
-          <el-input
-            v-model="form.ssh!.privateKey"
-            type="textarea"
-            :rows="4"
-            placeholder="Paste your SSH private key here (OpenSSH format)"
-            :disabled="disabled || !form.ssh?.enabled"
-          />
-          <div class="field-hint">Paste your private key content (starting with -----BEGIN...)</div>
+          <div class="private-key-picker">
+            <el-input
+              :model-value="selectedKeyPath || (form.ssh?.privateKey ? '••• Key loaded' : '')"
+              placeholder="No file selected"
+              readonly
+              :disabled="disabled || !form.ssh?.enabled"
+              class="key-path-input"
+            />
+            <el-button
+              type="primary"
+              :disabled="disabled || !form.ssh?.enabled"
+              @click="handleSelectKeyFile"
+            >
+              <el-icon><FolderOpened /></el-icon>
+              Select File
+            </el-button>
+            <el-button
+              v-if="form.ssh!.privateKey"
+              type="danger"
+              plain
+              :disabled="disabled || !form.ssh?.enabled"
+              @click="handleClearKey"
+            >
+              Clear
+            </el-button>
+          </div>
+          <div class="field-hint">Select your SSH private key file (.pem, .key or OpenSSH format)</div>
         </el-form-item>
 
         <el-form-item label="Key Passphrase" prop="ssh.passphrase">
@@ -80,8 +99,10 @@
 
 <script setup lang="ts">
 import type { DatabaseConnection } from '@/domain/connection/types';
+import { FolderOpened } from '@element-plus/icons-vue';
+import { ref, watch } from 'vue';
 
-withDefaults(
+const props = withDefaults(
   defineProps<{
     form: DatabaseConnection & { name?: string };
     disabled?: boolean;
@@ -90,9 +111,54 @@ withDefaults(
 );
 
 const sshAuthMethod = defineModel<'password' | 'key'>('sshAuthMethod', { required: true });
+
+const selectedKeyPath = ref('');
+
+watch(
+  () => sshAuthMethod.value,
+  (val) => {
+    if (val !== 'key') selectedKeyPath.value = '';
+  }
+);
+
+const handleSelectKeyFile = async () => {
+  const result = (await window.electron?.invoke('dialog:showOpenFile', {
+    title: 'Select SSH Private Key',
+  })) as { canceled?: boolean; content?: string; path?: string; error?: string };
+
+  if (!result || result.canceled || !result.content) {
+    if (result?.error) {
+      console.error('Failed to load private key:', result.error);
+    }
+    return;
+  }
+
+  if (props.form.ssh) {
+    props.form.ssh.privateKey = result.content;
+    selectedKeyPath.value = result.path ?? 'Selected';
+  }
+};
+
+const handleClearKey = () => {
+  if (props.form.ssh) {
+    props.form.ssh.privateKey = '';
+    selectedKeyPath.value = '';
+  }
+};
 </script>
 
 <style scoped lang="scss">
+.private-key-picker {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  width: 100%;
+
+  .key-path-input {
+    flex: 1;
+  }
+}
+
 .field-hint {
   color: var(--el-text-color-secondary);
   font-size: 12px;

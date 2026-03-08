@@ -152,6 +152,7 @@
             :table-name="tab.tableName"
             :connection-id="connection?.id"
             :column-types="(tab.structure?.columns) ? Object.fromEntries(tab.structure.columns.map((c: { name: string; type: string }) => [c.name, c.type])) : {}"
+            :columns-from-structure="tab.structure?.columns?.map((c: { name: string }) => c.name) ?? []"
             :sidebar-panel-open="dataSidebarVisible"
             :sidebar-selected-row-index="getDataSidebarState(tab.id).selectedRowIndex"
             :sidebar-selected-column="getDataSidebarState(tab.id).selectedColumn"
@@ -184,6 +185,7 @@
                   @update:view-mode="(val: 'structure' | 'data') => switchViewMode(tab, val)"
                   @page-change="(page: number) => handlePageChange(tab, page)"
                   @per-page-change="(perPage: number) => handlePerPageChange(tab, perPage)"
+                  @add-row="handleAddRow(tab)"
                 />
               </div>
             </el-tab-pane>
@@ -900,6 +902,14 @@ const handlePageChange = async (tab: Tab, page: number) => {
 const handlePerPageChange = async (tab: Tab, perPage: number) => {
   if (tab.data) {
     await loadTableData(tab, 1, perPage);
+  }
+};
+
+// Handle add row
+const handleAddRow = (tab: Tab) => {
+  const comp = tableDataViewRefs[tab.id];
+  if (comp && typeof (comp as { addRow?: () => void }).addRow === 'function') {
+    (comp as { addRow: () => void }).addRow();
   }
 };
 

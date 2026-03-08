@@ -3,7 +3,7 @@
     <!-- Filter Section -->
     <TableDataFilter
       v-if="data"
-      :columns="getDataColumns(data.rows || [])"
+      :columns="displayColumns"
       @apply="handleFilterApply"
     />
 
@@ -21,8 +21,8 @@
     <div v-else-if="data" class="data-content-wrapper">
       <div class="data-content" :class="{ 'with-sidebar': sidebarVisible }">
         <el-table
-          v-if="data.rows && data.rows.length > 0"
-          :data="data.rows"
+          v-if="displayRows.length > 0"
+          :data="displayRows"
           border
           style="width: 100%"
           height="100%"
@@ -35,50 +35,77 @@
           :cell-class-name="tableCellClassName"
         >
           <el-table-column
-            v-for="column in getDataColumns(data.rows)"
+            v-for="column in displayColumns"
             :key="column"
             :prop="column"
             :label="column"
             min-width="120"
             resizable
-            sortable="custom"
+            :sortable="pendingNewRows.length > 0 ? false : 'custom'"
           >
             <template #default="{ row, $index }">
+              <!-- New row: always show input -->
               <div
-                v-if="editingCell?.rowIndex === $index && editingCell?.columnKey === column"
-                class="cell-edit-wrap"
-                :class="{
-                  'cell-edit-textarea': isTextColumn(column),
-                  'is-multiline-editable': isTextColumn(column) && isMultilineEditable
-                }"
+                v-if="isNewRow($index)"
+                class="cell-add-wrap"
                 @click.stop
               >
                 <el-input
                   v-if="!isTextColumn(column)"
-                  ref="editInputRef"
-                  :model-value="editDraftValue"
-                  class="cell-edit-input"
-                  @update:model-value="(v: string) => (editDraftValue = v)"
-                  @blur="commitCellEdit($index, column)"
-                  @keydown.enter.prevent="commitCellEdit($index, column)"
+                  v-model="(row as Record<string, unknown>)[column]"
+                  class="cell-add-input"
+                  size="small"
+                  placeholder=""
+                  @click.stop
                 />
-                <div
+                <el-input
                   v-else
-                  :ref="setEditableDivRef"
-                  class="cell-edit-input editable-div"
-                  contenteditable="true"
-                  @input="onEditableInput"
-                  @blur="commitCellEdit($index, column)"
-                  @keydown.enter.ctrl.prevent="commitCellEdit($index, column)"
-                ></div>
+                  v-model="(row as Record<string, unknown>)[column]"
+                  type="textarea"
+                  :autosize="{ minRows: 1, maxRows: 4 }"
+                  class="cell-add-input"
+                  placeholder=""
+                  @click.stop
+                />
               </div>
-              <span
-                v-else
-                class="cell-text"
-                @dblclick.stop="startCellEdit($index, column)"
-              >
-                {{ formatCellValue(getDisplayCellValue(row, column, row[column])) || '\u00A0' }}
-              </span>
+              <!-- Existing row: edit or display -->
+              <template v-else>
+                <div
+                  v-if="editingCell?.rowIndex === $index && editingCell?.columnKey === column"
+                  class="cell-edit-wrap"
+                  :class="{
+                    'cell-edit-textarea': isTextColumn(column),
+                    'is-multiline-editable': isTextColumn(column) && isMultilineEditable
+                  }"
+                  @click.stop
+                >
+                  <el-input
+                    v-if="!isTextColumn(column)"
+                    ref="editInputRef"
+                    :model-value="editDraftValue"
+                    class="cell-edit-input"
+                    @update:model-value="(v: string) => (editDraftValue = v)"
+                    @blur="commitCellEdit($index, column)"
+                    @keydown.enter.prevent="commitCellEdit($index, column)"
+                  />
+                  <div
+                    v-else
+                    :ref="setEditableDivRef"
+                    class="cell-edit-input editable-div"
+                    contenteditable="true"
+                    @input="onEditableInput"
+                    @blur="commitCellEdit($index, column)"
+                    @keydown.enter.ctrl.prevent="commitCellEdit($index, column)"
+                  ></div>
+                </div>
+                <span
+                  v-else
+                  class="cell-text"
+                  @dblclick.stop="startCellEdit($index, column)"
+                >
+                  {{ formatCellValue(getDisplayCellValue(row, column, row[column])) || '\u00A0' }}
+                </span>
+              </template>
             </template>
           </el-table-column>
         </el-table>
@@ -95,7 +122,7 @@
 
 <script setup lang="ts">
 import { ElMessage } from 'element-plus';
-import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
+import { computed, nextTick, onMounted, onUnmounted, reactive, ref, watch } from 'vue';
 import TableDataFilter from '@/presentation/components/TableDataFilter.vue';
 
 interface TableData {
@@ -131,6 +158,8 @@ interface Props {
   sortBy?: string | null;
   /** Current sort order: 'asc', 'desc', or null for no sort */
   sortOrder?: 'asc' | 'desc' | null;
+  /** Column names when table has no rows (from structure) */
+  columnsFromStructure?: string[];
 }
 
 interface Emits {
@@ -159,10 +188,30 @@ const props = withDefaults(defineProps<Props>(), {
   sidebarDeletedRows: undefined,
   sortBy: null,
   sortOrder: null,
+  columnsFromStructure: () => [],
 });
 
 const emit = defineEmits<Emits>();
 const viewRef = ref<HTMLElement | null>(null);
+
+const dataRowsLength = computed(() => props.data?.rows?.length ?? 0);
+const pendingNewRows = ref<Record<string, unknown>[]>([]);
+
+const displayRows = computed(() => {
+  const rows = props.data?.rows ?? [];
+  return [...rows, ...pendingNewRows.value];
+});
+
+const displayColumns = computed(() => {
+  if (displayRows.value.length > 0) {
+    return Object.keys(displayRows.value[0] as object);
+  }
+  return props.columnsFromStructure ?? [];
+});
+
+function isNewRow(rowIndex: number): boolean {
+  return rowIndex >= dataRowsLength.value;
+}
 
 const useControlledSidebar = computed(() => props.sidebarSelectedRowIndex !== undefined);
 const internalSelectedRowIndex = ref<number | null>(null);
@@ -378,9 +427,10 @@ const modifiedFieldsForSelectedRow = computed(() => {
 });
 
 function handleCellClick(row: Record<string, unknown>, column: { property?: string }, _cell: unknown, _event: Event) {
-  if (!props.data?.rows) return;
-  const rowIndex = props.data.rows.indexOf(row as never);
+  const rowIndex = displayRows.value.indexOf(row as never);
   if (rowIndex < 0) return;
+  if (isNewRow(rowIndex)) return;
+  if (!props.data?.rows) return;
   if (useControlledSidebar.value) {
     emit('cell-select', { rowIndex, columnKey: column?.property ?? null });
   } else {
@@ -395,6 +445,9 @@ function handleCellDblclick() {
 
 function tableRowClassName({ rowIndex }: { rowIndex: number }): string {
   const classes: string[] = [];
+  if (isNewRow(rowIndex)) {
+    classes.push('row-new');
+  }
   if (deletedRows.value.has(rowIndex)) {
     classes.push('row-deleted');
   }
@@ -407,6 +460,8 @@ function tableRowClassName({ rowIndex }: { rowIndex: number }): string {
 function tableCellClassName({ rowIndex, column }: { rowIndex: number; column: { property?: string } }): string {
   const key = column?.property;
   if (!key) return '';
+
+  if (isNewRow(rowIndex)) return 'cell-new';
 
   // While editing this cell: mark as editing to allow custom layout/padding
   if (editingCell.value && editingCell.value.rowIndex === rowIndex && editingCell.value.columnKey === key) {
@@ -541,43 +596,65 @@ function buildWhereFromRow(row: Record<string, unknown>, columns: string[]): str
 }
 
 async function runSave() {
-  // Nếu đang có ô đang edit, commit nó trước khi build SQL
   if (editingCell.value) {
     const { rowIndex, columnKey } = editingCell.value;
     commitCellEdit(rowIndex, columnKey);
   }
 
-  if (!props.tableName || !props.connectionId || !props.data?.rows) {
+  if (!props.tableName || !props.connectionId) {
     ElMessage.warning('Table name or connection not available');
     return;
   }
-  const rows = props.data.rows as Record<string, unknown>[];
-  const columns = getDataColumns(props.data.rows);
+
+  const columns = displayColumns.value;
   const dbType = props.dbType || 'postgresql';
   const tableNameEsc = dbType === 'mysql' ? '`' + props.tableName.replace(/`/g, '``') + '`' : '"' + props.tableName.replace(/"/g, '""') + '"';
   const statements: string[] = [];
-  for (let i = 0; i < rows.length; i++) {
-    if (deletedRows.value.has(i)) {
-      statements.push(`DELETE FROM ${tableNameEsc} WHERE ${buildWhereFromRow(rows[i], columns)}`);
-    } else {
-      const mods = modifiedRows.value[i];
-      if (mods && Object.keys(mods).length > 0) {
-        const sets = Object.entries(mods).map(([k, v]) => `${escapeIdentifier(k)} = ${escapeValue(v)}`);
-        statements.push(`UPDATE ${tableNameEsc} SET ${sets.join(', ')} WHERE ${buildWhereFromRow(rows[i], columns)}`);
+
+  const rows = props.data?.rows as Record<string, unknown>[] | undefined;
+  if (rows) {
+    for (let i = 0; i < rows.length; i++) {
+      if (deletedRows.value.has(i)) {
+        statements.push(`DELETE FROM ${tableNameEsc} WHERE ${buildWhereFromRow(rows[i], columns)}`);
+      } else {
+        const mods = modifiedRows.value[i];
+        if (mods && Object.keys(mods).length > 0) {
+          const sets = Object.entries(mods).map(([k, v]) => `${escapeIdentifier(k)} = ${escapeValue(v)}`);
+          statements.push(`UPDATE ${tableNameEsc} SET ${sets.join(', ')} WHERE ${buildWhereFromRow(rows[i], columns)}`);
+        }
       }
     }
   }
+
+  for (const newRow of pendingNewRows.value) {
+    const cols: string[] = [];
+    const vals: string[] = [];
+    for (const col of columns) {
+      const v = newRow[col];
+      const s = typeof v === 'string' ? v.trim() : v;
+      if (s === '' || s === null || s === undefined) {
+        cols.push(escapeIdentifier(col));
+        vals.push('NULL');
+      } else {
+        cols.push(escapeIdentifier(col));
+        vals.push(escapeValue(s));
+      }
+    }
+    if (cols.length > 0) {
+      statements.push(`INSERT INTO ${tableNameEsc} (${cols.join(', ')}) VALUES (${vals.join(', ')})`);
+    }
+  }
+
   if (statements.length === 0) {
     ElMessage.info('No changes to save');
     return;
   }
   try {
     for (const sql of statements) {
-      console.log('[TableDataView] Executing SQL:', sql);
-      const result = await window.electron.invoke('database:query', {
+      const result = (await window.electron.invoke('database:query', {
         connectionId: props.connectionId,
         query: sql,
-      });
+      })) as { success?: boolean; error?: string } | null;
       if (result && !result.success) throw new Error(result.error || 'Query failed');
     }
     ElMessage.success('Saved');
@@ -587,6 +664,7 @@ async function runSave() {
       internalSelectedRowIndex.value = null;
       internalSelectedColumn.value = null;
     }
+    pendingNewRows.value = [];
     emit('refresh');
   } catch (err) {
     ElMessage.error(err instanceof Error ? err.message : 'Save failed');
@@ -719,7 +797,33 @@ function handleSortChange(params: { column: any; prop: string | undefined; order
   emit('sort-change', { prop, order: params.order });
 }
 
-defineExpose({ runSave });
+function addRow() {
+  const columns = displayColumns.value;
+  if (columns.length === 0) {
+    ElMessage.warning('No columns available. Load table structure first.');
+    return;
+  }
+  const newRow = reactive(
+    Object.fromEntries(columns.map((c) => [c, '']))
+  ) as Record<string, unknown>;
+  pendingNewRows.value.push(newRow);
+  nextTick(() => {
+    scrollTableToBottom();
+  });
+}
+
+function scrollTableToBottom() {
+  nextTick(() => {
+    const root = viewRef.value;
+    if (!root) return;
+    const bodyWrapper = root.querySelector('.el-table__body-wrapper');
+    if (bodyWrapper) {
+      bodyWrapper.scrollTop = bodyWrapper.scrollHeight;
+    }
+  });
+}
+
+defineExpose({ runSave, addRow });
 </script>
 
 <style scoped lang="scss">
@@ -849,6 +953,40 @@ defineExpose({ runSave });
         }
       }
     }
+  }
+
+  :deep(.row-new) {
+    background-color: rgba(103, 194, 58, 0.12) !important;
+    td {
+      background-color: rgba(103, 194, 58, 0.08) !important;
+    }
+  }
+
+  :deep(.cell-new) {
+    padding: 0 !important;
+  }
+
+  :deep(.cell-new .cell) {
+    padding: 0 !important;
+  }
+
+  .cell-add-wrap {
+    padding: 0 4px;
+    height: 100%;
+    display: flex;
+    align-items: center;
+  }
+
+  .cell-add-input {
+    width: 100%;
+  }
+
+  .cell-add-input :deep(.el-input__wrapper),
+  .cell-add-input :deep(.el-textarea__inner) {
+    border: none !important;
+    box-shadow: none !important;
+    background-color: transparent !important;
+    padding: 0 8px !important;
   }
 
   :deep(.row-deleted) {
