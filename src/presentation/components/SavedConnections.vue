@@ -48,7 +48,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue';
-import { useConnectionStore } from '@/presentation/stores/connectionStore';
+import { useConnectionsStore } from '@/presentation/stores/connectionsStore';
 import type { SavedConnection } from '@/infrastructure/storage/storageService';
 
 const props = defineProps<{
@@ -56,14 +56,14 @@ const props = defineProps<{
   refreshKey?: number; // Add this to force refresh
 }>();
 
-const connectionStore = useConnectionStore();
+const connectionsStore = useConnectionsStore();
 const { 
   connections: savedConnections, 
   isLoading, 
   hasConnections, 
   loadSavedConnections,
   deleteConnection: deleteSavedConnection 
-} = connectionStore;
+} = connectionsStore;
 
 // Load saved connections on mount and when refreshKey changes
 onMounted(() => {

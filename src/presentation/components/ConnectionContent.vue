@@ -231,7 +231,7 @@
 
 <script setup lang="ts">
 import { useDatabase } from '@/presentation/composables/useDatabase';
-import { useConnectionsStore } from '@/presentation/stores/connectionsStore';
+import { useConnectionStore } from '@/presentation/stores/connectionStore';
 import { Connection, Document, Folder, Search } from '@element-plus/icons-vue';
 import { ElMessage } from 'element-plus';
 import { storeToRefs } from 'pinia';
@@ -290,9 +290,9 @@ interface Tab {
   whereClause?: string | null;
 }
 
-const connectionsStore = useConnectionsStore();
-const { dataSidebarOpen, currentConnection, activeConnections, currentTabId } = storeToRefs(connectionsStore);
-const { switchToConnection } = connectionsStore;
+const connectionStore = useConnectionStore();
+const { dataSidebarOpen, currentConnection, activeConnections, currentTabId } = storeToRefs(connectionStore);
+const { switchToConnection } = connectionStore;
 const { getTables, getTableStructure, executeQuery } = useDatabase();
 
 // Use currentConnection, but fallback to first active connection if currentConnection is null
@@ -418,14 +418,14 @@ function onDataCellSelect(tabId: string, e: { rowIndex: number; columnKey: strin
   s.selectedColumn = e.columnKey;
   // Open data sidebar when a row is selected
   if (!dataSidebarOpen.value) {
-    connectionsStore.toggleDataSidebar();
+    connectionStore.toggleDataSidebar();
   }
 }
 function onDataSidebarClose(tabId: string) {
   const s = getDataSidebarState(tabId);
   s.selectedRowIndex = null;
   s.selectedColumn = null;
-  connectionsStore.closeDataSidebar();
+  connectionStore.closeDataSidebar();
 }
 function onDataUpdateField(tabId: string, e: { field: string; value: unknown }) {
   const s = getDataSidebarState(tabId);

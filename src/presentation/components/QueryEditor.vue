@@ -77,7 +77,7 @@
 import { Connection, Folder } from '@element-plus/icons-vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
-import type { ActiveConnection } from '@/presentation/stores/connectionsStore';
+import type { ActiveConnection } from '@/presentation/stores/connectionStore';
 import { useDatabase } from '@/presentation/composables/useDatabase';
 import { useTableStore } from '@/presentation/stores/tableStore';
 import CustomTitleBar from '@/presentation/components/CustomTitleBar.vue';

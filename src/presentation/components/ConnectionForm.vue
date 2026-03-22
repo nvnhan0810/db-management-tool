@@ -98,7 +98,7 @@ import { ElMessage } from 'element-plus';
 import { onMounted, reactive, ref, watch } from 'vue';
 import type { DatabaseConnection } from '@/domain/connection/types';
 import { useDatabase } from '@/presentation/composables/useDatabase';
-import { useConnectionStore } from '@/presentation/stores/connectionStore';
+import { useConnectionsStore } from '@/presentation/stores/connectionsStore';
 
 const { connect, disconnect, error } = useDatabase();
 const {
@@ -106,7 +106,7 @@ const {
   saveConnection,
   getDecryptedConnection,
   updateLastUsed
-} = useConnectionStore();
+} = useConnectionsStore();
 // const { activeConnections } = useConnections();
 
 const isConnecting = ref(false);

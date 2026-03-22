@@ -74,13 +74,13 @@
 </template>
 
 <script setup lang="ts">
+import type { DatabaseConnection } from '@/domain/connection/types';
+import type { SavedConnection } from '@/infrastructure/storage/storageService';
 import ConnectionModalConnectionTab from '@/presentation/components/ConnectionModal/ConnectionTab.vue';
 import ConnectionModalSSHTab from '@/presentation/components/ConnectionModal/SSHTab.vue';
 import { useDatabase } from '@/presentation/composables/useDatabase';
-import type { SavedConnection } from '@/infrastructure/storage/storageService';
 import { useConnectionsStore } from '@/presentation/stores/connectionsStore';
 import { useConnectionStore } from '@/presentation/stores/connectionStore';
-import type { DatabaseConnection } from '@/domain/connection/types';
 import { ElMessage } from 'element-plus';
 import { computed, reactive, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
@@ -97,9 +97,9 @@ const emit = defineEmits<{
 }>();
 
 const router = useRouter();
-const connectionStore = useConnectionStore();
-const { connect, disconnect } = useDatabase();
 const connectionsStore = useConnectionsStore();
+const { connect, disconnect } = useDatabase();
+const connectionStore = useConnectionStore();
 
 const visible = computed({
   get: () => props.modelValue,
@@ -269,7 +269,7 @@ const validateName = (): boolean => {
 const loadConnectionForEdit = async (savedConnection: SavedConnection) => {
   try {
     // Get decrypted connection
-    const decryptedConnection = await connectionStore.getDecryptedConnection(savedConnection);
+    const decryptedConnection = await connectionsStore.getDecryptedConnection(savedConnection);
 
     // Populate form with connection data
     form.id = decryptedConnection.id;
@@ -399,7 +399,7 @@ const handleSave = async () => {
     console.log('Saving connection with SSH config:', cleanConnection.ssh);
 
     // Save or update connection
-    await connectionStore.saveConnection(cleanConnection, form.name!.trim());
+    await connectionsStore.saveConnection(cleanConnection, form.name!.trim());
 
     ElMessage.success(isEditing.value ? 'Connection updated successfully!' : 'Connection saved successfully!');
 
@@ -437,16 +437,16 @@ const handleConnect = async () => {
         ...cleanConnection,
         name: connectionName,
       };
-      connectionStore.setActiveConnection(connectionWithName);
+      connectionsStore.setActiveConnection(connectionWithName);
 
-      // Add to useConnections for multiple connections support
-      const tabId = await connectionsStore.addConnection(connectionWithName, connectionName);
+      // Add to workspace tabs for multiple connections support
+      const tabId = await connectionStore.addConnection(connectionWithName, connectionName);
       console.log('Added connection with tabId:', tabId);
 
       // If name provided, also save the connection
       if (form.name && form.name.trim()) {
         try {
-          await connectionStore.saveConnection(cleanConnection, form.name.trim());
+          await connectionsStore.saveConnection(cleanConnection, form.name.trim());
         } catch (err) {
           console.error('Failed to auto-save connection:', err);
           // Don't fail the connect if save fails

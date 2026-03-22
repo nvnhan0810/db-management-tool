@@ -6,7 +6,7 @@ import { createApp } from 'vue';
 import App from './App.vue';
 import router from './router';
 import { useThemeStore } from './presentation/stores/themeStore';
-import { useConnectionStore } from './presentation/stores/connectionStore';
+import { useConnectionsStore } from './presentation/stores/connectionsStore';
 import './styles/theme-black.css';
 import './styles/index.scss';
 
@@ -52,5 +52,5 @@ app.mount('#app');
 const themeStore = useThemeStore();
 themeStore.applyTheme();
 
-const connectionStore = useConnectionStore();
-connectionStore.initialize();
+const connectionsStore = useConnectionsStore();
+connectionsStore.initialize();

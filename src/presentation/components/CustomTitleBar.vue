@@ -138,7 +138,7 @@ import { useRouter } from 'vue-router';
 const connectionStore = useConnectionStore();
 const connectionsStore = useConnectionsStore();
 const { disconnect } = useDatabase();
-const { dataSidebarOpen } = storeToRefs(connectionsStore);
+const { dataSidebarOpen } = storeToRefs(connectionStore);
 const themeStore = useThemeStore();
 const { isDarkMode } = storeToRefs(themeStore);
 const { toggleTheme } = themeStore;
@@ -160,27 +160,27 @@ const isMacOS = ref(false);
 
 // Computed properties
 const hasActiveConnection = computed(() => {
-  // Check connectionStore first
-  if (connectionStore.activeConnection) {
+  // Check saved “pointer” (e.g. connecting from home)
+  if (connectionsStore.activeConnection) {
     return true;
   }
 
-  // Check connectionsStore - if there are any active connections, show buttons
-  return connectionsStore.activeConnections.length > 0;
+  // Workspace tabs
+  return connectionStore.activeConnections.length > 0;
 });
 
 const currentConnectionName = computed(() => {
-  if (connectionStore.activeConnection) {
-    return connectionStore.activeConnection.name || connectionStore.activeConnection.host;
+  if (connectionsStore.activeConnection) {
+    return connectionsStore.activeConnection.name || connectionsStore.activeConnection.host;
   }
-  if (connectionsStore.currentConnection) {
-    return connectionsStore.currentConnection.name || connectionsStore.currentConnection.host;
+  if (connectionStore.currentConnection) {
+    return connectionStore.currentConnection.name || connectionStore.currentConnection.host;
   }
   return null;
 });
 
 const activeConnectionId = computed(() => {
-  return connectionStore.activeConnection?.id ?? connectionsStore.currentConnection?.id ?? null;
+  return connectionsStore.activeConnection?.id ?? connectionStore.currentConnection?.id ?? null;
 });
 
 onMounted(() => {
@@ -194,30 +194,30 @@ const handleThemeToggle = () => {
 // Handle disconnect
 const handleDisconnect = async () => {
   try {
-    // When we have 2+ connections, only use connectionsStore: disconnect current tab, do NOT navigate.
+    // When we have workspace tabs, disconnect current tab only; do NOT navigate.
     // Navigation to home is handled by watch() when activeConnections.length becomes 0.
-    if (connectionsStore.activeConnections.length > 0) {
-      const currentConnection = connectionsStore.currentConnection;
+    if (connectionStore.activeConnections.length > 0) {
+      const currentConnection = connectionStore.currentConnection;
       if (currentConnection?.tabId) {
-        await connectionsStore.removeConnection(currentConnection.tabId);
+        await connectionStore.removeConnection(currentConnection.tabId);
         ElMessage.success('Disconnected successfully');
       }
       emit('disconnect');
       return;
     }
 
-    // Single connection (from Home or last one): use connectionStore and navigate to home
+    // Single connection (from Home or last one): clear saved pointer and navigate to home
     const connId = activeConnectionId.value;
-    if (connectionStore.activeConnection && connId) {
+    if (connectionsStore.activeConnection && connId) {
       await disconnect(connId);
-      connectionStore.setActiveConnection(null);
-      connectionStore.setConnectionStatus(false);
+      connectionsStore.setActiveConnection(null);
+      connectionsStore.setConnectionStatus(false);
 
-      const connectionInStore = connectionsStore.activeConnections.find(
+      const connectionInStore = connectionStore.activeConnections.find(
         conn => conn.id === connId
       );
       if (connectionInStore?.tabId) {
-        await connectionsStore.removeConnection(connectionInStore.tabId);
+        await connectionStore.removeConnection(connectionInStore.tabId);
       }
 
       ElMessage.success('Disconnected successfully');
@@ -236,7 +236,7 @@ const handleDisconnect = async () => {
 
 // Watch for when all connections are removed and navigate to home
 watch(
-  () => connectionsStore.activeConnections.length,
+  () => connectionStore.activeConnections.length,
   (newLength: number, oldLength: number) => {
     // Only navigate if we're in workspace and all connections are gone
     if (newLength === 0 && oldLength > 0 && router.currentRoute.value.name === 'workspace') {
@@ -246,7 +246,7 @@ watch(
 );
 
 const handleDataSidebarToggle = () => {
-  connectionsStore.toggleDataSidebar();
+  connectionStore.toggleDataSidebar();
 };
 
 

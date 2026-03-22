@@ -62,7 +62,7 @@ import {
     Setting
 } from '@element-plus/icons-vue';
 import { computed } from 'vue';
-import type { ActiveConnection } from '@/presentation/stores/connectionsStore';
+import type { ActiveConnection } from '@/presentation/stores/connectionStore';
 
 interface NavItem {
   id: string;

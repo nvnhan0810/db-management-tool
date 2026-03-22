@@ -35,7 +35,7 @@
 <script setup lang="ts">
 import { Folder } from '@element-plus/icons-vue';
 import { computed } from 'vue';
-import type { ActiveConnection } from '@/presentation/stores/connectionsStore';
+import type { ActiveConnection } from '@/presentation/stores/connectionStore';
 import DatabaseList from '@/presentation/components/DatabaseList.vue';
 
 const props = defineProps<{

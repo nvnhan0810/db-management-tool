@@ -10,12 +10,12 @@
 <script setup lang="ts">
 import ConnectionContent from '@/presentation/components/ConnectionContent.vue';
 import ConnectionSidebar from '@/presentation/components/ConnectionSidebar.vue';
-import { useConnectionsStore } from '@/presentation/stores/connectionsStore';
+import { useConnectionStore } from '@/presentation/stores/connectionStore';
 import { storeToRefs } from 'pinia';
 import { computed, ref } from 'vue';
 
-const connectionsStore = useConnectionsStore();
-const { activeConnections } = storeToRefs(connectionsStore);
+const connectionStore = useConnectionStore();
+const { activeConnections } = storeToRefs(connectionStore);
 const connectionContentRef = ref<InstanceType<typeof ConnectionContent> | null>(null);
 
 const showSidebar = computed(() => activeConnections.value.length > 1);

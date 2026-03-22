@@ -103,19 +103,19 @@ import { computed, ref } from 'vue';
 import { useRouter } from 'vue-router';
 
 const router = useRouter();
-const connectionStore = useConnectionStore();
-const { connect } = useDatabase();
 const connectionsStore = useConnectionsStore();
+const { connect } = useDatabase();
+const connectionStore = useConnectionStore();
 
-const savedConnections = computed(() => connectionStore.connections);
-const isLoading = computed(() => connectionStore.isLoading);
-const hasConnections = computed(() => connectionStore.hasConnections);
+const savedConnections = computed(() => connectionsStore.connections);
+const isLoading = computed(() => connectionsStore.isLoading);
+const hasConnections = computed(() => connectionsStore.hasConnections);
 const {
   deleteConnection,
   getDecryptedConnection,
   updateLastUsed,
   loadSavedConnections,
-} = connectionStore;
+} = connectionsStore;
 
 const showConnectionModal = ref(false);
 const connectionToEdit = ref<SavedConnection | null>(null);
@@ -143,8 +143,8 @@ const handleLoadConnection = async (connection: SavedConnection) => {
     if (success) {
       await updateLastUsed(connection.id);
       const connectionWithName = { ...decryptedConnection, name: connection.name };
-      connectionStore.setActiveConnection(connectionWithName);
-      await connectionsStore.addConnection(connectionWithName, connection.name);
+      connectionsStore.setActiveConnection(connectionWithName);
+      await connectionStore.addConnection(connectionWithName, connection.name);
       loadingMessage.close();
       ElMessage.success(`Connected to ${connection.name}`);
       await new Promise((r) => setTimeout(r, 100));

@@ -41,8 +41,8 @@ import { useRouter } from 'vue-router';
 
 const router = useRouter();
 const routerViewRef = ref();
-const connectionStore = useConnectionStore();
 const connectionsStore = useConnectionsStore();
+const connectionStore = useConnectionStore();
 const { connect } = useDatabase();
 
 const showSavedConnectionsModal = ref(false);
@@ -61,14 +61,14 @@ const handleOpenConnectionForm = () => {
 const handleSelectSavedConnection = async (connection: SavedConnection) => {
   try {
     const loadingMessage = ElMessage({ message: 'Connecting...', type: 'info', duration: 0 });
-    const decryptedConnection = await connectionStore.getDecryptedConnection(connection);
+    const decryptedConnection = await connectionsStore.getDecryptedConnection(connection);
     const success = await connect(decryptedConnection);
 
     if (success) {
-      await connectionStore.updateLastUsed(connection.id);
+      await connectionsStore.updateLastUsed(connection.id);
       const connectionWithName = { ...decryptedConnection, name: connection.name };
-      connectionStore.setActiveConnection(connectionWithName);
-      await connectionsStore.addConnection(connectionWithName, connection.name);
+      connectionsStore.setActiveConnection(connectionWithName);
+      await connectionStore.addConnection(connectionWithName, connection.name);
       loadingMessage.close();
       ElMessage.success(`Connected to ${connection.name}`);
       showSavedConnectionsModal.value = false;
@@ -84,12 +84,12 @@ const handleSelectSavedConnection = async (connection: SavedConnection) => {
 };
 
 const handleConnectionSaved = () => {
-  connectionStore.loadSavedConnections();
+  connectionsStore.loadSavedConnections();
   connectionToEdit.value = null;
 };
 
 const handleConnectionConnected = () => {
-  connectionStore.loadSavedConnections();
+  connectionsStore.loadSavedConnections();
   showConnectionModal.value = false;
 };
 

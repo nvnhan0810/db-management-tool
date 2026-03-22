@@ -50,7 +50,7 @@
 
 <script setup lang="ts">
 import type { SavedConnection } from '@/infrastructure/storage/storageService';
-import { useConnectionStore } from '@/presentation/stores/connectionStore';
+import { useConnectionsStore } from '@/presentation/stores/connectionsStore';
 import { ArrowRight, Plus } from '@element-plus/icons-vue';
 import { computed, watch } from 'vue';
 
@@ -64,10 +64,10 @@ const emit = defineEmits<{
   'select': [connection: SavedConnection];
 }>();
 
-const connectionStore = useConnectionStore();
-const savedConnections = computed(() => connectionStore.connections);
-const isLoading = computed(() => connectionStore.isLoading);
-const hasConnections = computed(() => connectionStore.hasConnections);
+const connectionsStore = useConnectionsStore();
+const savedConnections = computed(() => connectionsStore.connections);
+const isLoading = computed(() => connectionsStore.isLoading);
+const hasConnections = computed(() => connectionsStore.hasConnections);
 
 const visible = computed({
   get: () => props.modelValue,
@@ -76,7 +76,7 @@ const visible = computed({
 
 watch(visible, (open) => {
   if (open) {
-    connectionStore.loadSavedConnections();
+    connectionsStore.loadSavedConnections();
   }
 });
 

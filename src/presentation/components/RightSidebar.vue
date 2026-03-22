@@ -78,7 +78,7 @@
 import { Close } from '@element-plus/icons-vue';
 import { computed, ref, watch } from 'vue';
 import { useTableStore } from '@/presentation/stores/tableStore';
-import { useConnectionsStore } from '@/presentation/stores/connectionsStore';
+import { useConnectionStore } from '@/presentation/stores/connectionStore';
 import { storeToRefs } from 'pinia';
 import RowDetailSidebar from '@/presentation/components/RowDetailSidebar.vue';
 import SqlEditor from '@/presentation/components/SqlEditor.vue';
@@ -107,8 +107,8 @@ const emit = defineEmits<{
 
 // Use Pinia stores
 const tableStore = useTableStore();
-const connectionsStore = useConnectionsStore();
-const { currentConnection } = storeToRefs(connectionsStore);
+const connectionStore = useConnectionStore();
+const { currentConnection } = storeToRefs(connectionStore);
 
 // Use computed properties from Pinia store
 const hasTabs = computed(() => tableStore.hasTabs);

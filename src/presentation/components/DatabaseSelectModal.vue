@@ -54,7 +54,7 @@
 
 <script setup lang="ts">
 import { useDatabase } from '@/presentation/composables/useDatabase';
-import { useConnectionsStore } from '@/presentation/stores/connectionsStore';
+import { useConnectionStore } from '@/presentation/stores/connectionStore';
 import { Check, Folder } from '@element-plus/icons-vue';
 import { ElMessage } from 'element-plus';
 import { storeToRefs } from 'pinia';
@@ -71,9 +71,9 @@ const emit = defineEmits<{
 }>();
 
 const { getDatabases } = useDatabase();
-const connectionsStore = useConnectionsStore();
-const { currentConnection } = storeToRefs(connectionsStore);
-const { selectDatabase } = connectionsStore;
+const connectionStore = useConnectionStore();
+const { currentConnection } = storeToRefs(connectionStore);
+const { selectDatabase } = connectionStore;
 
 const visible = computed({
   get: () => props.modelValue,

@@ -37,15 +37,15 @@
 </template>
 
 <script setup lang="ts">
-import type { ActiveConnection } from '@/presentation/stores/connectionsStore';
-import { useConnectionsStore } from '@/presentation/stores/connectionsStore';
+import type { ActiveConnection } from '@/presentation/stores/connectionStore';
+import { useConnectionStore } from '@/presentation/stores/connectionStore';
 import { storeToRefs } from 'pinia';
 import { Connection } from '@element-plus/icons-vue';
 import { computed, ref, watch } from 'vue';
 
-const connectionsStore = useConnectionsStore();
-const { sortedConnections, currentTabId } = storeToRefs(connectionsStore);
-const { switchToConnection } = connectionsStore;
+const connectionStore = useConnectionStore();
+const { sortedConnections, currentTabId } = storeToRefs(connectionStore);
+const { switchToConnection } = connectionStore;
 
 // Giữ thứ tự hiển thị cố định - chỉ thêm mới khi có connection mới, không reorder khi switch
 const displayOrder = ref<string[]>([]);
