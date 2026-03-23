@@ -291,7 +291,8 @@ interface Tab {
 }
 
 const connectionStore = useConnectionStore();
-const { dataSidebarOpen, currentConnection, activeConnections, currentTabId } = storeToRefs(connectionStore);
+const { dataSidebarOpen, rowDetailPanelEnabled, currentConnection, activeConnections, currentTabId } =
+  storeToRefs(connectionStore);
 const { switchToConnection } = connectionStore;
 const { getTables, getTableStructure, executeQuery } = useDatabase();
 
@@ -416,7 +417,9 @@ function onDataCellSelect(tabId: string, e: { rowIndex: number; columnKey: strin
   const s = getDataSidebarState(tabId);
   s.selectedRowIndex = e.rowIndex;
   s.selectedColumn = e.columnKey;
-  // Open data sidebar when a row is selected
+  if (!rowDetailPanelEnabled.value) {
+    return;
+  }
   if (!dataSidebarOpen.value) {
     connectionStore.toggleDataSidebar();
   }
@@ -515,7 +518,7 @@ const activeDataTab = computed(() => {
   return tab && tab.tabType !== 'query' && tab.viewMode === 'data' ? tab : null;
 });
 const dataSidebarVisible = computed(() => {
-  return dataSidebarOpen.value && tabs.value.length > 0;
+  return rowDetailPanelEnabled.value && dataSidebarOpen.value && tabs.value.length > 0;
 });
 const dataSidebarSelectedRow = computed(() => {
   const tab = activeDataTab.value;

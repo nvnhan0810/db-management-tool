@@ -61,9 +61,8 @@
                 <el-input
                   v-else
                   v-model="(row as Record<string, unknown>)[column]"
-                  type="textarea"
-                  :autosize="{ minRows: 1, maxRows: 4 }"
                   class="cell-add-input"
+                  size="small"
                   placeholder=""
                   @click.stop
                 />
@@ -74,7 +73,6 @@
                   v-if="editingCell?.rowIndex === $index && editingCell?.columnKey === column"
                   class="cell-edit-wrap"
                   :class="{
-                    'cell-edit-textarea': isTextColumn(column),
                     'is-multiline-editable': isTextColumn(column) && isMultilineEditable
                   }"
                   @click.stop
@@ -121,9 +119,9 @@
 </template>
 
 <script setup lang="ts">
+import TableDataFilter from '@/presentation/components/TableDataFilter.vue';
 import { ElMessage } from 'element-plus';
 import { computed, nextTick, onMounted, onUnmounted, reactive, ref, watch } from 'vue';
-import TableDataFilter from '@/presentation/components/TableDataFilter.vue';
 
 interface TableData {
   rows: any[];
@@ -145,7 +143,7 @@ interface Props {
   dbType?: string;
   tableName?: string;
   connectionId?: string;
-  /** Column name -> DB type (for text area vs single-line input) */
+  /** Column name -> DB type (for contenteditable vs single-line input) */
   columnTypes?: Record<string, string>;
   /** When true, right sidebar panel is open (layout with-sidebar) */
   sidebarPanelOpen?: boolean;
@@ -310,7 +308,7 @@ function focusEditInput() {
       } else {
         // Trường hợp el-input (component)
         const root = (el as { $el?: HTMLElement }).$el ?? null;
-        const input = root?.querySelector?.('input, textarea') as HTMLElement | null;
+        const input = root?.querySelector?.('input') as HTMLElement | null;
         if (input) {
           input.focus();
         }
@@ -981,11 +979,10 @@ defineExpose({ runSave, addRow });
     width: 100%;
   }
 
-  .cell-add-input :deep(.el-input__wrapper),
-  .cell-add-input :deep(.el-textarea__inner) {
+  .cell-add-input :deep(.el-input__wrapper) {
     border: none !important;
     box-shadow: none !important;
-    background-color: transparent !important;
+    background-color: var(--el-fill-color-light) !important;
     padding: 0 8px !important;
   }
 
@@ -1072,11 +1069,11 @@ defineExpose({ runSave, addRow });
     height: 100%;
   }
 
-  :deep(.cell-editing .cell-edit-input .el-input__wrapper),
-  :deep(.cell-editing .cell-edit-input .el-textarea__inner) {
+  :deep(.cell-editing .cell-edit-input .el-input__wrapper) {
     border: none !important;
     box-shadow: none !important;
-    background-color: transparent !important;
+    background-color: #1a202c !important;
+    color: #e2e8f0 !important;
     padding: 0 8px !important;
     height: 100% !important;
   }
@@ -1084,12 +1081,17 @@ defineExpose({ runSave, addRow });
   :deep(.cell-editing .cell-edit-input.editable-div) {
     border: none !important;
     box-shadow: none !important;
-    background-color: transparent !important;
+    background-color: #1a202c !important;
+    color: #e2e8f0 !important;
   }
 
   :deep(.cell-editing .cell-edit-input .el-input__wrapper) {
     display: flex;
     align-items: center;
+  }
+
+  :deep(.cell-editing .cell-edit-input .el-input__inner) {
+    height: 38px !important;
   }
 }
 </style>

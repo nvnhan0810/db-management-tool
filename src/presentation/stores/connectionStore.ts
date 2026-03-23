@@ -21,6 +21,8 @@ export const useConnectionStore = defineStore('connection', () => {
   const currentTabId = ref<string | null>(null);
   const nextTabId = ref(1);
   const dataSidebarOpen = ref(false);
+  /** When true (default), clicking a table row opens the cell/row detail panel. */
+  const rowDetailPanelEnabled = ref(true);
   let stateLoaded = false;
 
   const isFreshStart = () => {
@@ -117,6 +119,13 @@ export const useConnectionStore = defineStore('connection', () => {
 
   const closeDataSidebar = () => {
     dataSidebarOpen.value = false;
+  };
+
+  const toggleRowDetailPanel = () => {
+    rowDetailPanelEnabled.value = !rowDetailPanelEnabled.value;
+    if (!rowDetailPanelEnabled.value) {
+      closeDataSidebar();
+    }
   };
 
   const addConnection = async (
@@ -284,6 +293,7 @@ export const useConnectionStore = defineStore('connection', () => {
     currentTabId,
     currentConnection,
     dataSidebarOpen,
+    rowDetailPanelEnabled,
     sortedConnections,
     hasConnections,
     saveState,
@@ -299,6 +309,7 @@ export const useConnectionStore = defineStore('connection', () => {
     selectDatabase,
     toggleDataSidebar,
     closeDataSidebar,
+    toggleRowDetailPanel,
     markAppQuit,
     isFreshStart,
   };

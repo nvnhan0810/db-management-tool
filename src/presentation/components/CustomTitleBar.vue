@@ -75,12 +75,25 @@
 
     <!-- Right side - Window controls and theme toggle -->
     <div class="title-bar-right">
-      <!-- Data sidebar toggle (right panel: row/cell detail) -->
-      <el-tooltip v-if="hasActiveConnection" :content="dataSidebarOpen ? 'Hide detail panel' : 'Show detail panel'" placement="bottom">
-        <el-button size="small" class="control-btn sidebar-toggle" @click="handleDataSidebarToggle">
-          <el-icon>
-            <component :is="dataSidebarOpen ? 'Hide' : 'View'" />
-          </el-icon>
+      <!-- Row/cell detail panel: when on, clicking a data row opens the right sidebar (default: on) -->
+      <el-tooltip
+        v-if="hasActiveConnection"
+        :content="
+          rowDetailPanelEnabled
+            ? 'Row detail panel: on (click row to show)'
+            : 'Row detail panel: off (click row will not open panel)'
+        "
+        placement="bottom"
+      >
+        <el-button
+          size="small"
+          class="control-btn sidebar-toggle"
+          @click="handleRowDetailPanelToggle"
+        >
+          <span
+            class="codicon codicon-layout-sidebar-right row-detail-sidebar-codicon"
+            aria-hidden="true"
+          />
         </el-button>
       </el-tooltip>
 
@@ -115,7 +128,6 @@
 
 <script setup lang="ts">
 import { useDatabase } from '@/presentation/composables/useDatabase';
-import { storeToRefs } from 'pinia';
 import { useConnectionStore } from '@/presentation/stores/connectionStore';
 import { useConnectionsStore } from '@/presentation/stores/connectionsStore';
 import { useThemeStore } from '@/presentation/stores/themeStore';
@@ -124,21 +136,20 @@ import {
   Edit,
   Folder,
   FullScreen,
-  Hide,
   Link,
   Minus,
   Monitor,
-  SwitchButton,
-  View
+  SwitchButton
 } from '@element-plus/icons-vue';
 import { ElMessage } from 'element-plus';
+import { storeToRefs } from 'pinia';
 import { computed, onMounted, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
 
 const connectionStore = useConnectionStore();
 const connectionsStore = useConnectionsStore();
 const { disconnect } = useDatabase();
-const { dataSidebarOpen } = storeToRefs(connectionStore);
+const { rowDetailPanelEnabled } = storeToRefs(connectionStore);
 const themeStore = useThemeStore();
 const { isDarkMode } = storeToRefs(themeStore);
 const { toggleTheme } = themeStore;
@@ -245,8 +256,8 @@ watch(
   }
 );
 
-const handleDataSidebarToggle = () => {
-  connectionStore.toggleDataSidebar();
+const handleRowDetailPanelToggle = () => {
+  connectionStore.toggleRowDetailPanel();
 };
 
 
@@ -298,4 +309,11 @@ const closeWindow = async (event?: Event) => {
 
 <style scoped lang="scss">
 @use '@/styles/components/custom-title-bar.scss' as *;
+
+.row-detail-sidebar-codicon {
+  font-size: 16px;
+  line-height: 1;
+  vertical-align: -0.125em;
+  color: inherit;
+}
 </style>
