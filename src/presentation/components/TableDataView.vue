@@ -51,7 +51,7 @@
                 @click.stop
               >
                 <el-input
-                  v-if="!isTextColumn(column)"
+                  v-if="!isMultilineTextColumn(column)"
                   v-model="(row as Record<string, unknown>)[column]"
                   class="cell-add-input"
                   size="small"
@@ -73,12 +73,12 @@
                   v-if="editingCell?.rowIndex === $index && editingCell?.columnKey === column"
                   class="cell-edit-wrap"
                   :class="{
-                    'is-multiline-editable': isTextColumn(column) && isMultilineEditable
+                    'is-multiline-editable': isMultilineTextColumn(column) && isMultilineEditable
                   }"
                   @click.stop
                 >
                   <el-input
-                    v-if="!isTextColumn(column)"
+                    v-if="!isMultilineTextColumn(column)"
                     ref="editInputRef"
                     :model-value="editDraftValue"
                     class="cell-edit-input"
@@ -248,13 +248,26 @@ const defaultSort = computed(() => {
   } as const;
 });
 
-function isTextColumn(columnName: string): boolean {
-  const t = props.columnTypes?.[columnName]?.toLowerCase() ?? '';
-  return /^(text|varchar|character varying|string|nvarchar|longtext|mediumtext|clob)$/.test(t) || t.includes('text') || t.includes('varchar');
+function getColumnType(columnName: string): string {
+  const raw = props.columnTypes?.[columnName];
+  return typeof raw === 'string' ? raw.toLowerCase().trim() : '';
+}
+
+function isMultilineTextColumn(columnName: string): boolean {
+  const t = getColumnType(columnName);
+  if (!t) return false;
+
+  // Keep VARCHAR/CHAR as single-line input.
+  if (t.includes('varchar') || t.includes('character varying') || t.includes('char(')) {
+    return false;
+  }
+
+  // Use contenteditable only for long/multiline text-like columns.
+  return /(text|longtext|mediumtext|tinytext|clob|ntext|json|xml)/.test(t);
 }
 
 function isNumericColumn(columnName: string): boolean {
-  const t = props.columnTypes?.[columnName]?.toLowerCase() ?? '';
+  const t = getColumnType(columnName);
   if (!t) return false;
   return /(int|bigint|smallint|tinyint|numeric|decimal|double|float|real|serial)/.test(t);
 }
@@ -296,6 +309,24 @@ function onEditableInput(e: Event) {
   updateEditableMultilineFlag(el);
 }
 
+function moveCaretToEnd(el: HTMLElement) {
+  if (el.getAttribute('contenteditable') === 'true') {
+    const selection = window.getSelection();
+    if (!selection) return;
+    const range = document.createRange();
+    range.selectNodeContents(el);
+    range.collapse(false);
+    selection.removeAllRanges();
+    selection.addRange(range);
+    return;
+  }
+
+  if (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement) {
+    const len = el.value?.length ?? 0;
+    el.setSelectionRange(len, len);
+  }
+}
+
 function focusEditInput() {
   nextTick(() => {
     nextTick(() => {
@@ -304,13 +335,16 @@ function focusEditInput() {
 
       // Nếu ref trỏ trực tiếp tới div contenteditable
       if ((el as HTMLElement).getAttribute?.('contenteditable') === 'true') {
-        (el as HTMLElement).focus();
+        const editable = el as HTMLElement;
+        editable.focus();
+        moveCaretToEnd(editable);
       } else {
         // Trường hợp el-input (component)
         const root = (el as { $el?: HTMLElement }).$el ?? null;
-        const input = root?.querySelector?.('input') as HTMLElement | null;
+        const input = root?.querySelector?.('input') as HTMLInputElement | null;
         if (input) {
           input.focus();
+          moveCaretToEnd(input);
         }
       }
       updateEditableMultilineFlag();
@@ -356,7 +390,7 @@ function commitCellEdit(rowIndex: number, columnKey: string) {
 
   // Lấy raw value tuỳ theo loại cột
   let raw = editDraftValue.value;
-  if (isTextColumn(columnKey)) {
+  if (isMultilineTextColumn(columnKey)) {
     const el = editInputRef.value as HTMLElement | null;
     raw = el?.innerText ?? '';
   }

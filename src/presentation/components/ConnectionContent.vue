@@ -636,9 +636,18 @@ const handleSelectTable = async (table: Table) => {
   const existingTab = tabs.value.find(tab => tab.tableName === table.name);
   if (existingTab) {
     activeTabId.value = existingTab.id;
-    // Load data if not loaded
-    if (!existingTab.structure && connection.value?.id) {
-      await loadTableStructure(existingTab);
+    // Ensure both data and structure are available when opening a tab.
+    if (connection.value?.id) {
+      const tasks: Promise<void>[] = [];
+      if (!existingTab.structure) {
+        tasks.push(loadTableStructure(existingTab));
+      }
+      if (!existingTab.data) {
+        tasks.push(loadTableData(existingTab));
+      }
+      if (tasks.length > 0) {
+        await Promise.all(tasks);
+      }
     }
     return;
   }
@@ -656,9 +665,13 @@ const handleSelectTable = async (table: Table) => {
   tabs.value.push(newTab);
   activeTabId.value = newTab.id;
 
-  // Load table data by default
+  // Load both data and structure by default to avoid missing column metadata
+  // when users start editing immediately after opening a table.
   if (connection.value?.id) {
-    await loadTableData(newTab);
+    await Promise.all([
+      loadTableData(newTab),
+      loadTableStructure(newTab),
+    ]);
   }
 };
 
