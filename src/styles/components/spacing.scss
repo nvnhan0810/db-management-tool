@@ -1,0 +1,185 @@
+@use '../variables/spacing' as spacing;
+@use '../variables/breakpoint' as breakpoint;
+
+@mixin generate-gap() {
+    @for $i from 0 through 12 {
+        .gap-#{$i} {
+            gap: #{$i * spacing.$base-spacing}rem;
+        }
+
+        .gap-row-#{$i} {
+            row-gap: #{$i * spacing.$base-spacing}rem;
+        }
+
+        .gap-column-#{$i} {
+            column-gap: #{$i * spacing.$base-spacing}rem;
+        }
+    }
+
+    // Responsive grid-cols classes for each breakpoint
+    @each $breakpoint, $width in breakpoint.$breakpoints {
+        @media (min-width: #{$width}) {
+            @for $i from 0 through 12 {
+                .#{$breakpoint}:gap-#{$i} {
+                    gap: #{$i * spacing.$base-spacing}rem;
+                }
+
+                .#{$breakpoint}:gap-row-#{$i} {
+                    row-gap: #{$i * spacing.$base-spacing}rem;
+                }
+
+                .#{$breakpoint}:gap-column-#{$i} {
+                    column-gap: #{$i * spacing.$base-spacing}rem;
+                }
+            }
+        }
+    }
+}
+
+@include generate-gap();
+
+@mixin generate-padding() {
+    @for $i from 0 through 12 {
+        .p-#{$i} {
+            padding: #{$i * spacing.$base-spacing}rem !important;
+        }
+
+        .px-#{$i} {
+            padding-left: #{$i * spacing.$base-spacing}rem !important;
+            padding-right: #{$i * spacing.$base-spacing}rem !important;
+        }
+
+        .py-#{$i} {
+            padding-top: #{$i * spacing.$base-spacing}rem !important;
+            padding-bottom: #{$i * spacing.$base-spacing}rem !important;
+        }
+
+        .pt-#{$i} {
+            padding-top: #{$i * spacing.$base-spacing}rem !important;
+        }
+
+        .pb-#{$i} {
+            padding-bottom: #{$i * spacing.$base-spacing}rem !important;
+        }
+
+        .pl-#{$i} {
+            padding-left: #{$i * spacing.$base-spacing}rem !important;
+        }
+
+        .pr-#{$i} {
+            padding-right: #{$i * spacing.$base-spacing}rem !important;
+        }
+    }
+
+    // Responsive grid-cols classes for each breakpoint
+    @each $breakpoint, $width in breakpoint.$breakpoints {
+        @media (min-width: #{$width}) {
+            @for $i from 0 through 12 {
+                .#{$breakpoint}:p-#{$i} {
+                    padding: #{$i * spacing.$base-spacing}rem !important;
+                }
+
+                .#{$breakpoint}:px-#{$i} {
+                    padding-left: #{$i * spacing.$base-spacing}rem !important;
+                    padding-right: #{$i * spacing.$base-spacing}rem !important;
+                }
+
+                .#{$breakpoint}:py-#{$i} {
+                    padding-top: #{$i * spacing.$base-spacing}rem !important;
+                    padding-bottom: #{$i * spacing.$base-spacing}rem !important;
+                }
+
+                .#{$breakpoint}:pt-#{$i} {
+                    padding-top: #{$i * spacing.$base-spacing}rem !important;
+                }
+
+                .#{$breakpoint}:pb-#{$i} {
+                    padding-bottom: #{$i * spacing.$base-spacing}rem !important;
+                }
+
+                .#{$breakpoint}:pl-#{$i} {
+                    padding-left: #{$i * spacing.$base-spacing}rem !important;
+                }
+
+                .#{$breakpoint}:pr-#{$i} {
+                    padding-right: #{$i * spacing.$base-spacing}rem !important;
+                }
+            }
+        }
+    }
+}
+
+@include generate-padding();
+
+@mixin generate-margin() {
+    @for $i from 0 through 12 {
+        .m-#{$i} {
+            margin: #{$i * spacing.$base-spacing}rem !important;
+        }
+
+        .mx-#{$i} {
+            margin-left: #{$i * spacing.$base-spacing}rem !important;
+            margin-right: #{$i * spacing.$base-spacing}rem !important;
+        }
+
+        .my-#{$i} {
+            margin-top: #{$i * spacing.$base-spacing}rem !important;
+            margin-bottom: #{$i * spacing.$base-spacing}rem !important;
+        }
+
+        .mt-#{$i} {
+            margin-top: #{$i * spacing.$base-spacing}rem !important;
+        }
+
+        .mb-#{$i} {
+            margin-bottom: #{$i * spacing.$base-spacing}rem !important;
+        }
+
+        .ml-#{$i} {
+            margin-left: #{$i * spacing.$base-spacing}rem !important;
+        }
+
+        .mr-#{$i} {
+            margin-right: #{$i * spacing.$base-spacing}rem !important;
+        }
+    }
+
+    // Responsive grid-cols classes for each breakpoint
+    @each $breakpoint, $width in breakpoint.$breakpoints {
+        @media (min-width: #{$width}) {
+            @for $i from 0 through 12 {
+                .#{$breakpoint}:m-#{$i} {
+                    margin: #{$i * spacing.$base-spacing}rem !important;
+                }
+
+                .#{$breakpoint}:mx-#{$i} {
+                    margin-left: #{$i * spacing.$base-spacing}rem !important;
+                    margin-right: #{$i * spacing.$base-spacing}rem !important;
+                }
+
+                .#{$breakpoint}:my-#{$i} {
+                    margin-top: #{$i * spacing.$base-spacing}rem !important;
+                    margin-bottom: #{$i * spacing.$base-spacing}rem !important;
+                }
+
+                .#{$breakpoint}:mt-#{$i} {
+                    margin-top: #{$i * spacing.$base-spacing}rem !important;
+                }
+
+                .#{$breakpoint}:mb-#{$i} {
+                    margin-bottom: #{$i * spacing.$base-spacing}rem !important;
+                }
+
+                .#{$breakpoint}:ml-#{$i} {
+                    margin-left: #{$i * spacing.$base-spacing}rem !important;
+                }
+
+                .#{$breakpoint}:mr-#{$i} {
+                    margin-right: #{$i * spacing.$base-spacing}rem !important;
+                }
+            }
+        }
+    }
+}
+
+@include generate-margin();

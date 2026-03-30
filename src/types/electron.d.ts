@@ -1,7 +1,7 @@
 interface ElectronAPI {
-  invoke: (channel: string, data: any) => Promise<any>;
-  on: (channel: string, callback: Function) => void;
-  off: (channel: string, callback: Function) => void;
+  invoke: (channel: string, data?: unknown) => Promise<unknown>;
+  on: (channel: string, callback: (...args: unknown[]) => void) => void;
+  off: (channel: string, callback: (...args: unknown[]) => void) => void;
 }
 
 declare global {
@@ -10,4 +10,4 @@ declare global {
   }
 }
 
-export { };
+export {};

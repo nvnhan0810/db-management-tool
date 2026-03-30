@@ -1,256 +1,170 @@
-import { app, BrowserWindow, ipcMain } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain } from 'electron';
+import fs from 'node:fs';
 import started from 'electron-squirrel-startup';
 import path from 'node:path';
 import { deleteSecret, getSecret, saveSecret } from './main-secrets';
-import { databaseService } from './services/database';
+import { databaseService } from './infrastructure/database/databaseService';
 
-// Handle creating/removing shortcuts on Windows when installing/uninstalling.
 if (started) {
   app.quit();
 }
 
 const createWindow = () => {
-  // Create the browser window.
   const mainWindow = new BrowserWindow({
     width: 1200,
     height: 800,
-    frame: false, // Completely disable default frame and title bar
-    // Don't use titleBarStyle when frame is false - it can cause conflicts
+    frame: false,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       nodeIntegration: false,
       contextIsolation: true,
     },
-    // Set background color based on platform
     backgroundColor: process.platform === 'darwin' ? '#f8f9fa' : '#1a202c',
-    // Enable vibrancy on macOS
     vibrancy: process.platform === 'darwin' ? 'under-window' : undefined,
   });
 
-  // and load the index.html of the app.
   if (MAIN_WINDOW_VITE_DEV_SERVER_URL) {
     mainWindow.loadURL(MAIN_WINDOW_VITE_DEV_SERVER_URL);
-
-    // Open the DevTools.
     mainWindow.webContents.openDevTools();
   } else {
-    mainWindow.loadFile(path.join(__dirname, `../renderer/${MAIN_WINDOW_VITE_NAME}/index.html`));
+    mainWindow.loadFile(
+      path.join(__dirname, `../renderer/${MAIN_WINDOW_VITE_NAME}/index.html`)
+    );
   }
 };
 
-// This method will be called when Electron has finished
-// initialization and is ready to create browser windows.
-// Some APIs can only be used after this event occurs.
 app.on('ready', createWindow);
 
-// Secrets IPC - store sensitive data in OS keychain via keytar
 ipcMain.handle('secrets:save', async (_event, args: { id: string; value: string }) => {
   const { id, value } = args;
-  if (!id || typeof value !== 'string') {
-    throw new Error('Invalid arguments for secrets:save');
-  }
+  if (!id || typeof value !== 'string') throw new Error('Invalid arguments for secrets:save');
   await saveSecret(id, value);
   return true;
 });
 
 ipcMain.handle('secrets:get', async (_event, args: { id: string }) => {
   const { id } = args;
-  if (!id) {
-    throw new Error('Invalid arguments for secrets:get');
-  }
-  const value = await getSecret(id);
-  return value;
+  if (!id) throw new Error('Invalid arguments for secrets:get');
+  return await getSecret(id);
 });
 
 ipcMain.handle('secrets:delete', async (_event, args: { id: string }) => {
   const { id } = args;
-  if (!id) {
-    throw new Error('Invalid arguments for secrets:delete');
-  }
+  if (!id) throw new Error('Invalid arguments for secrets:delete');
   await deleteSecret(id);
   return true;
 });
 
-// Disconnect all database connections before app quits
 app.on('before-quit', async (event) => {
   event.preventDefault();
-
   try {
-    console.log('App is quitting, disconnecting all database connections...');
     await databaseService.disconnectAll();
-    console.log('All database connections disconnected successfully');
-  } catch (error) {
-    console.error('Error disconnecting database connections on quit:', error);
+  } catch (err) {
+    console.error('Error disconnecting on quit:', err);
   }
-
-  // Force quit after disconnecting
   app.exit(0);
 });
 
-// Also handle window-all-closed event
 app.on('window-all-closed', async () => {
   try {
-    console.log('All windows closed, disconnecting all database connections...');
     await databaseService.disconnectAll();
-    console.log('All database connections disconnected successfully');
-  } catch (error) {
-    console.error('Error disconnecting database connections on window close:', error);
+  } catch (err) {
+    console.error('Error disconnecting on close:', err);
   }
-
-  if (process.platform !== 'darwin') {
-    app.quit();
-  }
+  if (process.platform !== 'darwin') app.quit();
 });
 
 app.on('activate', () => {
-  // On OS X it's common to re-create a window in the app when the
-  // dock icon is clicked and there are no other windows open.
-  if (BrowserWindow.getAllWindows().length === 0) {
-    createWindow();
-  }
+  if (BrowserWindow.getAllWindows().length === 0) createWindow();
 });
 
-// In this file you can include the rest of your app's specific main process
-// code. You can also put them in separate files and import them here.
-
-// Database handlers
-ipcMain.handle('database:connect', async (event, connection) => {
+ipcMain.handle('database:connect', async (_event, connection) => {
   try {
     const result = await databaseService.connect(connection);
     return { success: result, error: null };
   } catch (error) {
-    console.error('IPC database:connect error:', error);
-    const errorMessage = error instanceof Error ? error.message : 'Failed to connect to database';
-    return { success: false, error: errorMessage };
+    const msg = error instanceof Error ? error.message : 'Failed to connect';
+    return { success: false, error: msg };
   }
 });
 
-ipcMain.handle('database:disconnect', (event, connectionId) => {
-  return databaseService.disconnect(connectionId);
+ipcMain.handle('database:disconnect', (_event, connectionId) =>
+  databaseService.disconnect(connectionId)
+);
+ipcMain.handle('database:disconnectAll', () => databaseService.disconnectAll());
+ipcMain.handle('database:hasActiveConnections', () =>
+  databaseService.hasActiveConnections()
+);
+
+ipcMain.handle('database:query', (_event, { connectionId, query }) =>
+  databaseService.query(connectionId, query)
+);
+ipcMain.handle('database:getTables', async (_event, { connectionId }) =>
+  databaseService.getTables(connectionId)
+);
+ipcMain.handle('database:getTableStructure', async (_event, { connectionId, tableName }) => {
+  if (!connectionId || !tableName) throw new Error('Missing connectionId or tableName');
+  return databaseService.getTableStructure(connectionId, tableName);
+});
+ipcMain.handle('database:getDatabases', async (_event, { connectionId }) => {
+  if (!connectionId) throw new Error('Missing connectionId');
+  return databaseService.getDatabases(connectionId);
+});
+ipcMain.handle('database:executeQuery', async (_event, { connectionId, query }) => {
+  if (!connectionId || !query) throw new Error('Missing connectionId or query');
+  return databaseService.executeQuery(connectionId, query);
 });
 
-ipcMain.handle('database:disconnectAll', () => {
-  return databaseService.disconnectAll();
-});
-
-ipcMain.handle('database:hasActiveConnections', () => {
-  return databaseService.hasActiveConnections();
-});
-
-// Handle reload prevention message
 ipcMain.handle('reload:prevent', (event, message) => {
   const window = BrowserWindow.getFocusedWindow();
-  if (window) {
-    window.webContents.send('reload-prevented', message);
-  }
+  if (window) window.webContents.send('reload-prevented', message);
 });
 
-ipcMain.handle('database:query', (event, { connectionId, query }) => {
-  return databaseService.query(connectionId, query);
-});
-
-ipcMain.handle('database:getTables', async (event, { connectionId }) => {
-  return databaseService.getTables(connectionId);
-});
-
-ipcMain.handle('database:getTableStructure', async (event, { connectionId, tableName }) => {
-  try {
-    // Validate parameters
-    if (!connectionId || !tableName) {
-      throw new Error('Missing connectionId or tableName');
-    }
-
-    const result = await databaseService.getTableStructure(connectionId, tableName);
-
-    if (result === undefined) {
-      throw new Error('Database service returned undefined');
-    }
-
-    return result;
-  } catch (error) {
-    console.error('IPC getTableStructure error:', error);
-    throw error;
-  }
-});
-
-ipcMain.handle('database:getDatabases', async (event, { connectionId }) => {
-  try {
-    // Validate parameters
-    if (!connectionId) {
-      throw new Error('Missing connectionId');
-    }
-
-    const result = await databaseService.getDatabases(connectionId);
-
-    if (result === undefined) {
-      throw new Error('Database service returned undefined');
-    }
-
-    return result;
-  } catch (error) {
-    console.error('IPC getDatabases error:', error);
-    throw error;
-  }
-});
-
-ipcMain.handle('database:executeQuery', async (event, { connectionId, query }) => {
-  try {
-    // Validate parameters
-    if (!connectionId || !query) {
-      throw new Error('Missing connectionId or query');
-    }
-
-    const result = await databaseService.executeQuery(connectionId, query);
-
-    if (result === undefined) {
-      throw new Error('Database service returned undefined');
-    }
-
-    return result;
-  } catch (error) {
-    console.error('IPC executeQuery error:', error);
-    throw error;
-  }
-});
-
-// Window control handlers
 ipcMain.handle('window:minimize', () => {
-  console.log('IPC: window:minimize called');
-  const window = BrowserWindow.getFocusedWindow();
-  if (window) {
-    window.minimize();
+  const win = BrowserWindow.getFocusedWindow();
+  if (win) {
+    win.minimize();
     return { success: true };
   }
   return { success: false, error: 'No focused window' };
 });
 
 ipcMain.handle('window:maximize', () => {
-  console.log('IPC: window:maximize called');
-  const window = BrowserWindow.getFocusedWindow();
-  if (window) {
-    if (window.isMaximized()) {
-      window.unmaximize();
-    } else {
-      window.maximize();
-    }
+  const win = BrowserWindow.getFocusedWindow();
+  if (win) {
+    win.isMaximized() ? win.unmaximize() : win.maximize();
     return { success: true };
   }
   return { success: false, error: 'No focused window' };
 });
 
-ipcMain.handle('window:close', () => {
-  console.log('IPC: window:close called');
-  const window = BrowserWindow.getFocusedWindow() || BrowserWindow.getAllWindows()[0];
-  if (window) {
-    // Use destroy() instead of close() to force close
-    // close() might be prevented by before-quit handlers
-    window.destroy();
-    return { success: true };
+ipcMain.handle('dialog:showOpenFile', async (_event, options?: { title?: string }) => {
+  const win = BrowserWindow.getFocusedWindow();
+  const result = await dialog.showOpenDialog(win ?? BrowserWindow.getAllWindows()[0], {
+    title: options?.title ?? 'Select SSH Private Key',
+    properties: ['openFile'],
+    filters: [
+      { name: 'Private Key', extensions: ['pem', 'key', 'id_rsa'] },
+      { name: 'All Files', extensions: ['*'] },
+    ],
+  });
+  if (result.canceled || result.filePaths.length === 0) {
+    return { canceled: true, content: null };
   }
-  console.error('No window found to close');
-  return { success: false, error: 'No window found' };
+  try {
+    const content = fs.readFileSync(result.filePaths[0], 'utf-8');
+    return { canceled: false, content, path: result.filePaths[0] };
+  } catch (err) {
+    console.error('Failed to read private key file:', err);
+    return { canceled: false, content: null, error: err instanceof Error ? err.message : 'Failed to read file' };
+  }
 });
 
-ipcMain.handle('app:quit', () => {
-  app.quit();
+ipcMain.handle('window:close', () => {
+  const win = BrowserWindow.getFocusedWindow() || BrowserWindow.getAllWindows()[0];
+  if (win) {
+    win.destroy();
+    return { success: true };
+  }
+  return { success: false, error: 'No window found' };
 });

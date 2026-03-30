@@ -1,8 +1,7 @@
-// See the Electron documentation for details on how to use preload scripts:
-// https://www.electronjs.org/docs/latest/tutorial/process-model#preload-scripts
 import { contextBridge, ipcRenderer } from 'electron';
 
 const invokeChannels = [
+  'dialog:showOpenFile',
   'database:connect',
   'database:disconnect',
   'database:disconnectAll',
@@ -16,29 +15,25 @@ const invokeChannels = [
   'window:minimize',
   'window:maximize',
   'window:close',
-  // Secrets (keychain) APIs
   'secrets:save',
   'secrets:get',
   'secrets:delete',
 ];
 
-contextBridge.exposeInMainWorld(
-  'electron',
-  {
-    invoke: async (channel: string, data: any) => {
-      if (invokeChannels.includes(channel)) {
-        return await ipcRenderer.invoke(channel, data);
-      }
-    },
-    on: (channel: string, callback: Function) => {
-      if (channel === 'reload-prevented') {
-        ipcRenderer.on(channel, (event, ...args) => callback(...args));
-      }
-    },
-    off: (channel: string, callback: Function) => {
-      if (channel === 'reload-prevented') {
-        ipcRenderer.removeListener(channel, callback as any);
-      }
-    },
-  }
-)
+contextBridge.exposeInMainWorld('electron', {
+  invoke: async (channel: string, data?: unknown) => {
+    if (invokeChannels.includes(channel)) {
+      return await ipcRenderer.invoke(channel, data);
+    }
+  },
+  on: (channel: string, callback: (...args: unknown[]) => void) => {
+    if (channel === 'reload-prevented') {
+      ipcRenderer.on(channel, (_event, ...args) => callback(...args));
+    }
+  },
+  off: (channel: string, callback: (...args: unknown[]) => void) => {
+    if (channel === 'reload-prevented') {
+      ipcRenderer.removeListener(channel, callback as () => void);
+    }
+  },
+});
