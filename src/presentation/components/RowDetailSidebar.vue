@@ -67,15 +67,8 @@ const updateField = (field: string, newValue: string) => {
   }
 };
 
-const saveField = (field: string) => {
-  // Save is now handled by updateField on every change
-  // This method is kept for keyboard shortcuts
-  console.log(`Field ${field} saved`);
-};
-
 const cancelEdit = () => {
   // Cancel functionality can be implemented if needed
-  console.log('Edit cancelled');
 };
 
 // Watch for changes in selectedRow

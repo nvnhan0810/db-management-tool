@@ -778,6 +778,10 @@ const buildWhereClause = (filters: Filter[] | null, rawSql: string | null): stri
   }
 
   const conditions = filters.map(filter => {
+    if (filter.operator === 'RAW SQL') {
+      return `(${filter.value})`;
+    }
+
     const column = dbType === 'postgresql' ? `"${filter.column}"` :
                    dbType === 'mysql' ? `\`${filter.column}\`` :
                    filter.column;

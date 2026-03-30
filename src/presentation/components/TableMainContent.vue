@@ -226,14 +226,12 @@ const saveCell = (row: any, field: string) => {
 const handleDeleteRow = (row: any) => {
   if (selectedRow.value === row) {
     deletedRows.value.add(row);
-    console.log('Row marked for deletion:', row);
   }
 };
 
 // Handle save delete
 const handleSaveDelete = () => {
   if (selectedRow.value && deletedRows.value.has(selectedRow.value)) {
-    console.log('Deleting row:', selectedRow.value);
     emit('row-deleted', selectedRow.value);
     deletedRows.value.delete(selectedRow.value);
     selectedRow.value = null;

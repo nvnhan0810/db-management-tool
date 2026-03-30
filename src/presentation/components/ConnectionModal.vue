@@ -293,7 +293,6 @@ const loadConnectionForEdit = async (savedConnection: SavedConnection) => {
         passphrase: decryptedConnection.ssh.passphrase || '',
       };
       sshAuthMethod.value = decryptedConnection.ssh.privateKey ? 'key' : 'password';
-      console.log('Loaded SSH config:', form.ssh);
     } else {
       form.ssh = {
         enabled: false,
@@ -396,7 +395,6 @@ const handleSave = async () => {
 
   try {
     const cleanConnection = buildCleanConnection();
-    console.log('Saving connection with SSH config:', cleanConnection.ssh);
 
     // Save or update connection
     await connectionsStore.saveConnection(cleanConnection, form.name!.trim());
@@ -441,7 +439,6 @@ const handleConnect = async () => {
 
       // Add to workspace tabs for multiple connections support
       const tabId = await connectionStore.addConnection(connectionWithName, connectionName);
-      console.log('Added connection with tabId:', tabId);
 
       // If name provided, also save the connection
       if (form.name && form.name.trim()) {

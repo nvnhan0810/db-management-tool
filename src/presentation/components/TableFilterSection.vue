@@ -56,7 +56,7 @@
     </div>
 
     <div class="filter-actions">
-      <el-button size="small" @click="addFilterRow">
+      <el-button v-if="filterRows.length > 0" size="small" @click="addFilterRow">
         <el-icon><Plus /></el-icon>
         Add Filter
       </el-button>
@@ -74,7 +74,7 @@
 
 <script setup lang="ts">
 import { Close, Plus } from '@element-plus/icons-vue';
-import { ref, watch } from 'vue';
+import { onMounted, onUnmounted, ref, watch } from 'vue';
 
 interface TableColumn {
   name: string;
@@ -122,6 +122,26 @@ const applyFilters = () => {
 watch(filterRows, (newFilters) => {
   emit('update:filters', newFilters);
 }, { deep: true });
+
+function handleKeydown(e: KeyboardEvent) {
+  const key = e.key?.toLowerCase();
+  if (!key) return;
+  if (!(e.ctrlKey || e.metaKey)) return;
+  if (key !== 'f') return;
+  e.preventDefault();
+  e.stopPropagation();
+  addFilterRow();
+}
+
+const keydownListenerOptions: AddEventListenerOptions = { capture: true };
+
+onMounted(() => {
+  document.addEventListener('keydown', handleKeydown, keydownListenerOptions);
+});
+
+onUnmounted(() => {
+  document.removeEventListener('keydown', handleKeydown, keydownListenerOptions);
+});
 </script>
 
 <style scoped>

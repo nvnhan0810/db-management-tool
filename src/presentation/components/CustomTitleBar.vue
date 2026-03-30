@@ -297,7 +297,6 @@ const closeWindow = async (event?: Event) => {
 
     if (window.electron) {
       const result = await window.electron.invoke('window:close', {});
-      console.log('Close window result:', result);
     } else {
       console.error('window.electron is not available');
     }

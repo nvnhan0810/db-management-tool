@@ -290,6 +290,18 @@ interface Tab {
   whereClause?: string | null;
 }
 
+type DatabaseQueryResult = {
+  success: boolean;
+  data?: Array<Record<string, unknown>>;
+  error?: string;
+};
+
+type TableStructureResult = {
+  columns: NonNullable<Tab['structure']>['columns'];
+  indexes?: NonNullable<Tab['structure']>['indexes'];
+  rows?: number;
+};
+
 const connectionStore = useConnectionStore();
 const { dataSidebarOpen, rowDetailPanelEnabled, currentConnection, activeConnections, currentTabId } =
   storeToRefs(connectionStore);
@@ -299,18 +311,6 @@ const { getTables, getTableStructure, executeQuery } = useDatabase();
 // Use currentConnection, but fallback to first active connection if currentConnection is null
 const connection = computed(() => {
   const conn = currentConnection.value || (activeConnections.value.length > 0 ? activeConnections.value[0] : null);
-
-  console.log('ConnectionContent - Computing connection:', {
-    hasCurrentConnection: !!currentConnection.value,
-    currentTabId: currentTabId.value,
-    activeConnectionsCount: activeConnections.value.length,
-    connection: conn ? {
-      id: conn.id,
-      name: conn.name,
-      database: conn.database,
-      type: conn.type
-    } : null
-  });
 
   return conn;
 });
@@ -482,10 +482,11 @@ function clearDataSidebarState(tabId: string) {
   s.deletedRows = [];
 }
 
-const tableDataViewRefs: Record<string, { runSave: () => Promise<void> } | null> = {};
+type TableDataViewRef = { runSave: () => Promise<void>; addRow?: () => void };
+const tableDataViewRefs: Record<string, TableDataViewRef | null> = {};
 const dataSidebarRef = ref<{ flushEditsFromDom: () => void } | null>(null);
 
-function setTableDataViewRef(tabId: string, el: { runSave: () => Promise<void> } | null) {
+function setTableDataViewRef(tabId: string, el: TableDataViewRef | null) {
   if (el) {
     tableDataViewRefs[tabId] = el;
   } else {
@@ -555,30 +556,13 @@ const dataSidebarColumnTypes = computed(() => {
 // Define loadTables function before watch to avoid "Cannot access before initialization" error
 const loadTables = async () => {
   if (!connection.value?.id || !connection.value?.database) {
-    console.log('Cannot load tables - missing connection or database:', {
-      hasConnection: !!connection.value,
-      hasId: !!connection.value?.id,
-      hasDatabase: !!connection.value?.database,
-      connection: connection.value
-    });
     // Clear current connection's tables in-place to keep per-connection state object
     tables.value.splice(0, tables.value.length);
     return;
   }
-
-  console.log('Loading tables for connection:', {
-    id: connection.value.id,
-    database: connection.value.database,
-    type: connection.value.type
-  });
   isLoadingTables.value = true;
   try {
     const tableList = await getTables(connection.value.id);
-    console.log('Loaded tables result:', {
-      count: tableList?.length || 0,
-      tables: tableList,
-      isArray: Array.isArray(tableList)
-    });
     // Replace tables in-place to preserve reference used by connectionViewState
     tables.value.splice(0, tables.value.length, ...((tableList || []) as Table[]));
   } catch (error) {
@@ -594,7 +578,6 @@ watch(
   activeConnections,
   (newConnections) => {
     if (newConnections.length > 0 && !currentTabId.value) {
-      console.log('No currentTabId, switching to first connection');
       switchToConnection(newConnections[0].tabId);
     }
   },
@@ -605,13 +588,6 @@ watch(
 watch(
   () => [connection.value?.id, connection.value?.database],
   async () => {
-    console.log('Connection changed:', {
-      hasConnection: !!connection.value,
-      connectionId: connection.value?.id,
-      database: connection.value?.database,
-      activeConnectionsCount: activeConnections.value.length
-    });
-
     if (connection.value?.database) {
       // Only load tables if this connection doesn't already have cached tables
       const connId = connection.value.id;
@@ -717,11 +693,7 @@ const loadTableStructure = async (tab: Tab) => {
   tab.structure = undefined; // Clear previous structure
 
   try {
-    console.log('Loading table structure for:', tab.tableName, 'connection:', connection.value.id);
-    const structure = await getTableStructure(connection.value.id, tab.tableName);
-    console.log('Table structure loaded:', structure);
-    console.log('Structure columns:', structure?.columns);
-    console.log('Structure columns length:', structure?.columns?.length);
+    const structure = (await getTableStructure(connection.value.id, tab.tableName)) as Partial<TableStructureResult> | null;
 
     if (structure && structure.columns && Array.isArray(structure.columns)) {
       // Find the tab in the array to ensure we're modifying the reactive object
@@ -730,19 +702,17 @@ const loadTableStructure = async (tab: Tab) => {
         // Modify the reactive object directly
         tabs.value[tabIndex].structure = {
           columns: structure.columns,
-          indexes: structure.indexes || [],
+          indexes: structure.indexes ?? [],
           rows: structure.rows,
         };
         tabs.value[tabIndex].isLoadingStructure = false;
-        console.log('Tab structure set via array index:', tabs.value[tabIndex].structure);
       } else {
         // Fallback: direct assignment
         tab.structure = {
           columns: structure.columns,
-          indexes: structure.indexes || [],
+          indexes: structure.indexes ?? [],
           rows: structure.rows,
         };
-        console.log('Tab structure set directly:', tab.structure);
       }
     } else {
       tab.structureError = 'No structure data returned';
@@ -762,7 +732,6 @@ const loadTableStructure = async (tab: Tab) => {
       tab.isLoadingStructure = false;
     }
     await nextTick(); // Wait for Vue to update
-    console.log('Loading finished. isLoadingStructure:', tab.isLoadingStructure, 'hasStructure:', !!tab.structure, 'columnsCount:', tab.structure?.columns?.length);
   }
 };
 
@@ -799,8 +768,6 @@ const loadTableData = async (tab: Tab, page: number = 1, perPage: number = 50) =
       tableName = tab.tableName;
     }
 
-    console.log('Loading table data:', tab.tableName, 'page:', page, 'perPage:', perPage, 'whereClause:', tab.whereClause, 'sortBy:', targetTab.sortBy, 'sortOrder:', targetTab.sortOrder);
-
     // Build WHERE clause
     const whereClause = targetTab.whereClause ? ` WHERE ${targetTab.whereClause}` : '';
 
@@ -819,12 +786,10 @@ const loadTableData = async (tab: Tab, page: number = 1, perPage: number = 50) =
 
     // Get total count first
     const countQuery = `SELECT COUNT(*) as total FROM ${tableName}${whereClause}`;
-    const countResult = await window.electron?.invoke('database:query', {
+    const countResult = (await window.electron?.invoke('database:query', {
       connectionId: connection.value.id,
       query: countQuery
-    });
-
-    console.log('Count result:', countResult);
+    })) as DatabaseQueryResult | undefined;
 
     const total = countResult?.success && countResult.data?.[0]?.total
       ? parseInt(String(countResult.data[0].total), 10)
@@ -832,15 +797,10 @@ const loadTableData = async (tab: Tab, page: number = 1, perPage: number = 50) =
 
     // Get data
     const queryStr = `SELECT * FROM ${tableName}${whereClause}${orderClause} LIMIT ${perPage} OFFSET ${offset}`;
-    const result = await window.electron?.invoke('database:query', {
+    const result = (await window.electron?.invoke('database:query', {
       connectionId: connection.value.id,
       query: queryStr
-    });
-
-    console.log('Table data query result:', result);
-    console.log('Result data:', result?.data);
-    console.log('Result data type:', Array.isArray(result?.data));
-    console.log('Result data length:', result?.data?.length);
+    })) as DatabaseQueryResult | undefined;
 
     if (result?.success && result.data) {
       const dataRows = Array.isArray(result.data) ? result.data : [];
@@ -859,8 +819,6 @@ const loadTableData = async (tab: Tab, page: number = 1, perPage: number = 50) =
         tab.data = dataObj;
         tab.isLoadingData = false;
       }
-
-      console.log('Data set:', dataObj);
       await nextTick();
     } else {
       const errorMsg = result?.error || 'Failed to load table data';
@@ -924,8 +882,8 @@ const handlePerPageChange = async (tab: Tab, perPage: number) => {
 // Handle add row
 const handleAddRow = (tab: Tab) => {
   const comp = tableDataViewRefs[tab.id];
-  if (comp && typeof (comp as { addRow?: () => void }).addRow === 'function') {
-    (comp as { addRow: () => void }).addRow();
+  if (comp?.addRow) {
+    comp.addRow();
   }
 };
 
@@ -982,11 +940,6 @@ function areDbValuesEqual(a: unknown, b: unknown): boolean {
 
 // Handle add new query tab
 const handleAddQuery = () => {
-  console.log('ConnectionContent: handleAddQuery called', {
-    hasConnection: !!connection.value,
-    connectionId: connection.value?.id
-  });
-
   if (!connection.value?.id) {
     ElMessage.warning('Please connect to a database first');
     return;
@@ -1008,8 +961,6 @@ const handleAddQuery = () => {
 
   tabs.value.push(newQueryTab);
   activeTabId.value = newQueryTab.id;
-
-  console.log('ConnectionContent: New query tab created', newQueryTab);
 };
 
 // Get column names from data rows
@@ -1040,13 +991,6 @@ function handleDataSidebarClickOutside(e: MouseEvent) {
 onMounted(() => {
   document.addEventListener('click', handleDataSidebarClickOutside);
   document.addEventListener('keydown', handleSaveKeydown, { capture: true });
-  console.log('ConnectionContent mounted:', {
-    hasConnection: !!connection.value,
-    connection: connection.value,
-    currentConnection: currentConnection,
-    activeConnections: activeConnections,
-    currentTabId: currentTabId
-  });
 });
 onUnmounted(() => {
   document.removeEventListener('click', handleDataSidebarClickOutside);

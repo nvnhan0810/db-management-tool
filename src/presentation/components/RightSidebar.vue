@@ -155,7 +155,6 @@ const addQueryTab = () => {
 const addTableTab = async (tableData: any) => {
   // This method is now handled by the store
   // The store will automatically load table data
-  console.log('addTableTab called - this should be handled by store');
 };
 
 const closeTab = (tabId: string) => {
@@ -407,7 +406,6 @@ const handleRetryLoadData = async () => {
 // Handle query execution from SqlEditor
 const handleQueryExecuted = (result: any) => {
   // Query result is already handled by the store
-  console.log('Query executed:', result);
 };
 
 // Handle row selection from table
@@ -437,8 +435,6 @@ const handleRowUpdated = (row: any, field: string, newValue: any) => {
 
 // Handle row deleted
 const handleRowDeleted = (row: any) => {
-  console.log('handleRowDeleted called with:', row);
-  
   // Remove the row from table data
   if (tableStore.activeTableState) {
     // Try to find row by reference first
@@ -452,11 +448,8 @@ const handleRowDeleted = (row: any) => {
       });
     }
     
-    console.log('Found row index:', rowIndex);
-    
     if (rowIndex !== -1) {
       tableStore.activeTableState.tableData.splice(rowIndex, 1);
-      console.log('Row removed from table data');
     }
   }
   
