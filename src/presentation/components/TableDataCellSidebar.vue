@@ -4,14 +4,6 @@
       <h3>Cell / Row</h3>
       <div class="header-actions">
         <el-button
-          v-if="selectedRow && !isDeleted"
-          type="danger"
-          size="small"
-          @click="$emit('mark-deleted')"
-        >
-          Mark deleted
-        </el-button>
-        <el-button
           v-if="selectedRow && isDeleted"
           size="small"
           @click="$emit('unmark-deleted')"
@@ -65,7 +57,7 @@
         </div>
         <div v-if="isDeleted" class="row-status deleted">
           <el-icon><Delete /></el-icon>
-          Row marked for delete (Ctrl+S to apply)
+          Row marked for delete (Delete/Backspace to undo, Ctrl/Cmd+S to apply)
         </div>
         <div v-else-if="hasModifications" class="row-status modified">
           <el-icon><Edit /></el-icon>
@@ -81,7 +73,7 @@
 
 <script setup lang="ts">
 import { Close, Delete, Edit } from '@element-plus/icons-vue';
-import { computed, ref, watch } from 'vue';
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 
 const props = withDefaults(
   defineProps<{
@@ -130,6 +122,39 @@ const emit = defineEmits<{
   'mark-deleted': [];
   'unmark-deleted': [];
 }>();
+
+function isEditableElement(target: EventTarget | null): boolean {
+  const el = target as HTMLElement | null;
+  if (!el) return false;
+  const tag = el.tagName?.toLowerCase();
+  return (
+    tag === 'input' ||
+    tag === 'textarea' ||
+    el.isContentEditable === true ||
+    // Extra guard for contenteditable wrappers/divs
+    el.closest?.('[contenteditable="true"]') != null
+  );
+}
+
+function onSidebarKeydown(e: KeyboardEvent) {
+  if (!props.visible) return;
+  if (!props.selectedRow) return;
+
+  const key = e.key;
+  const isToggleKey = key === 'Delete' || key === 'Backspace';
+  if (!isToggleKey) return;
+
+  // Don't hijack Delete/Backspace when user is actively editing text.
+  if (isEditableElement(e.target)) return;
+
+  {
+    e.preventDefault();
+    e.stopPropagation();
+
+    if (props.isDeleted) emit('unmark-deleted');
+    else emit('mark-deleted');
+  }
+}
 
 const displayRow = computed(() => {
   if (!props.selectedRow) return {};
@@ -246,6 +271,15 @@ function flushEditsFromDom() {
 }
 
 defineExpose({ flushEditsFromDom });
+
+onMounted(() => {
+  // Capture so we can prevent other Delete handlers (e.g. in table views) from firing.
+  window.addEventListener('keydown', onSidebarKeydown, true);
+});
+
+onUnmounted(() => {
+  window.removeEventListener('keydown', onSidebarKeydown, true);
+});
 </script>
 
 <style scoped lang="scss">
