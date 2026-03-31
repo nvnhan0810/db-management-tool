@@ -4,20 +4,17 @@ import { ref, watch } from 'vue';
 const THEME_KEY = 'theme';
 
 function getInitialTheme(): boolean {
-  const saved = localStorage.getItem(THEME_KEY);
-  if (saved) return saved === 'dark';
-  return window.matchMedia('(prefers-color-scheme: dark)').matches;
+  // App uses a fixed dark theme (black background, white text).
+  // Keep the key for backward compatibility, but always start in dark mode.
+  return true;
 }
 
-function applyTheme(isDark: boolean) {
+function applyTheme(_isDark: boolean) {
   const html = document.documentElement;
-  if (isDark) {
-    html.classList.add('dark');
-    html.setAttribute('data-theme', 'dark');
-  } else {
-    html.classList.remove('dark');
-    html.setAttribute('data-theme', 'light');
-  }
+  // Force dark theme regardless of the flag to avoid any accidental light mode.
+  html.classList.add('dark');
+  html.setAttribute('data-theme', 'dark');
+  localStorage.setItem(THEME_KEY, 'dark');
 }
 
 export const useThemeStore = defineStore('theme', () => {

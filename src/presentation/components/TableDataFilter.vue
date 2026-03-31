@@ -183,8 +183,8 @@ onUnmounted(() => {
   background-color: var(--el-bg-color-page);
 
   .dark & {
-    background-color: rgba(26, 32, 44, 0.8);
-    border-color: rgba(74, 85, 104, 0.5);
+    background-color: var(--el-bg-color-overlay);
+    border-color: var(--el-border-color-light);
   }
 
   [data-theme="light"] & {
@@ -213,7 +213,7 @@ onUnmounted(() => {
       border-radius: 6px;
 
       .dark & {
-        background-color: rgba(45, 55, 72, 0.6);
+        background-color: var(--el-fill-color-light);
       }
 
       .raw-sql-input {
@@ -224,9 +224,9 @@ onUnmounted(() => {
           font-size: 13px;
 
           .dark & {
-            background-color: rgba(26, 32, 44, 0.8);
-            color: #e2e8f0;
-            border-color: rgba(74, 85, 104, 0.6);
+            background-color: var(--el-bg-color-overlay);
+            color: var(--el-text-color-primary);
+            border-color: var(--el-border-color);
           }
         }
       }
@@ -242,7 +242,7 @@ onUnmounted(() => {
         border-radius: 6px;
 
         .dark & {
-          background-color: rgba(45, 55, 72, 0.6);
+          background-color: var(--el-fill-color-light);
         }
 
         &:last-child {

@@ -88,8 +88,8 @@ const handleSelectConnection = (tabId: string) => {
   overflow: hidden;
 
   .dark & {
-    background-color: rgba(45, 55, 72, 0.6);
-    border-right-color: rgba(74, 85, 104, 0.5);
+    background-color: var(--el-bg-color);
+    border-right-color: var(--el-border-color);
   }
 
   [data-theme="light"] & {
@@ -164,12 +164,12 @@ const handleSelectConnection = (tabId: string) => {
 
       .dark & {
         background-color: rgba(64, 158, 255, 0.2);
-        color: #66b1ff;
+        color: var(--el-color-primary-light-3);
       }
 
       [data-theme="light"] & {
         background-color: rgba(64, 158, 255, 0.1);
-        color: #409eff;
+        color: var(--el-color-primary);
       }
     }
 

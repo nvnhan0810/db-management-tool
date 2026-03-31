@@ -313,8 +313,8 @@ const clearEditor = () => {
   background-color: var(--el-bg-color-page);
 
   .dark & {
-    background-color: rgba(26, 32, 44, 0.8);
-    border-bottom-color: rgba(74, 85, 104, 0.5);
+    background-color: var(--el-bg-color-overlay);
+    border-bottom-color: var(--el-border-color-light);
   }
 
   .editor-toolbar {
@@ -343,9 +343,9 @@ const clearEditor = () => {
       resize: vertical;
 
       .dark & {
-        background-color: rgba(26, 32, 44, 0.8);
-        color: #e2e8f0;
-        border-color: rgba(74, 85, 104, 0.6);
+        background-color: var(--el-bg-color-overlay);
+        color: var(--el-text-color-primary);
+        border-color: var(--el-border-color);
       }
     }
   }
@@ -370,8 +370,8 @@ const clearEditor = () => {
   border: 1px solid var(--el-border-color-light);
 
   .dark & {
-    background-color: rgba(26, 32, 44, 0.8);
-    border-color: rgba(74, 85, 104, 0.5);
+    background-color: var(--el-bg-color-overlay);
+    border-color: var(--el-border-color-light);
   }
 
   .result-header {
@@ -385,8 +385,8 @@ const clearEditor = () => {
     gap: 12px;
 
     .dark & {
-      background-color: rgba(45, 55, 72, 0.6);
-      border-bottom-color: rgba(74, 85, 104, 0.5);
+      background-color: var(--el-fill-color-light);
+      border-bottom-color: var(--el-border-color-light);
     }
 
     .result-info {
@@ -394,14 +394,14 @@ const clearEditor = () => {
       color: var(--el-text-color-regular);
 
       .dark & {
-        color: #cbd5e0;
+        color: var(--el-text-color-regular);
       }
 
       strong {
         color: var(--el-color-primary);
 
         .dark & {
-          color: #66b1ff;
+          color: var(--el-color-primary-light-3);
         }
       }
 
@@ -411,7 +411,7 @@ const clearEditor = () => {
         color: var(--el-text-color-secondary);
 
         .dark & {
-          color: #a0aec0;
+          color: var(--el-text-color-secondary);
         }
       }
     }
@@ -424,13 +424,13 @@ const clearEditor = () => {
       :deep(.el-select) {
         .el-input__wrapper {
           .dark & {
-            background-color: rgba(26, 32, 44, 0.8) !important;
-            border-color: rgba(74, 85, 104, 0.6) !important;
+            background-color: var(--el-bg-color-overlay) !important;
+            border-color: var(--el-border-color) !important;
           }
 
           .el-input__inner {
             .dark & {
-              color: #e2e8f0 !important;
+              color: var(--el-text-color-primary) !important;
             }
           }
         }
@@ -439,13 +439,13 @@ const clearEditor = () => {
       :deep(.el-pagination) {
         .el-pager li {
           .dark & {
-            background-color: rgba(45, 55, 72, 0.8);
-            color: #e2e8f0;
-            border-color: rgba(74, 85, 104, 0.6);
+            background-color: var(--el-fill-color);
+            color: var(--el-text-color-primary);
+            border-color: var(--el-border-color);
 
             &.is-active {
-              background-color: #409eff;
-              color: #ffffff;
+              background-color: var(--el-color-primary);
+              color: var(--el-color-white);
             }
           }
         }
@@ -453,9 +453,9 @@ const clearEditor = () => {
         .btn-prev,
         .btn-next {
           .dark & {
-            background-color: rgba(45, 55, 72, 0.8);
-            color: #e2e8f0;
-            border-color: rgba(74, 85, 104, 0.6);
+            background-color: var(--el-fill-color);
+            color: var(--el-text-color-primary);
+            border-color: var(--el-border-color);
           }
         }
       }
@@ -472,42 +472,42 @@ const clearEditor = () => {
 
       .dark & {
         background-color: transparent;
-        color: #e2e8f0;
+        color: var(--el-text-color-primary);
       }
 
       .el-table__header {
         background-color: var(--el-fill-color-lighter);
 
         .dark & {
-          background-color: rgba(45, 55, 72, 0.8);
-          color: #e2e8f0;
+          background-color: var(--el-fill-color);
+          color: var(--el-text-color-primary);
         }
 
         th {
           .dark & {
-            background-color: rgba(45, 55, 72, 0.8) !important;
-            color: #e2e8f0 !important;
-            border-bottom-color: rgba(74, 85, 104, 0.6) !important;
+            background-color: var(--el-fill-color) !important;
+            color: var(--el-text-color-primary) !important;
+            border-bottom-color: var(--el-border-color) !important;
           }
         }
       }
 
       .el-table__body {
         .dark & {
-          color: #e2e8f0;
+          color: var(--el-text-color-primary);
         }
 
         tr {
           .dark & {
-            background-color: rgba(26, 32, 44, 0.6);
-            color: #e2e8f0;
+            background-color: var(--el-bg-color);
+            color: var(--el-text-color-primary);
           }
 
           &:hover {
             background-color: var(--el-fill-color-light);
 
             .dark & {
-              background-color: rgba(45, 55, 72, 0.6) !important;
+              background-color: var(--el-fill-color-light) !important;
             }
           }
 
@@ -515,15 +515,15 @@ const clearEditor = () => {
             background-color: var(--el-fill-color-lighter);
 
             .dark & {
-              background-color: rgba(45, 55, 72, 0.4) !important;
+              background-color: var(--el-fill-color-lighter) !important;
             }
           }
 
           td {
             .dark & {
               background-color: transparent !important;
-              color: #e2e8f0 !important;
-              border-bottom-color: rgba(74, 85, 104, 0.4) !important;
+              color: var(--el-text-color-primary) !important;
+              border-bottom-color: var(--el-border-color-lighter) !important;
             }
           }
         }

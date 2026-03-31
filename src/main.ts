@@ -19,7 +19,8 @@ const createWindow = () => {
       nodeIntegration: false,
       contextIsolation: true,
     },
-    backgroundColor: process.platform === 'darwin' ? '#f8f9fa' : '#1a202c',
+    // Keep the window background dark to match the fixed dark theme.
+    backgroundColor: '#1e1e1e',
     vibrancy: process.platform === 'darwin' ? 'under-window' : undefined,
   });
 

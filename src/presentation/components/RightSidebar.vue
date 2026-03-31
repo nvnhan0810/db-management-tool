@@ -28,7 +28,7 @@
 
 
             <!-- 2. Main Content Section -->
-            <TableMainContent 
+            <TableMainContent
               ref="tableMainContentRef"
               :display-mode="displayMode"
               :columns="(getActiveTabContent()?.data as TableData)?.columns || []"
@@ -63,9 +63,9 @@
         <el-empty description="Click on a table to view its information" />
       </div>
     </div>
-    
+
     <!-- Row Detail Sidebar -->
-    <RowDetailSidebar 
+    <RowDetailSidebar
       :visible="props.showRowDetail && !!selectedRow"
       :selected-row="selectedRow"
       @close="emit('close-sidebar')"
@@ -75,17 +75,17 @@
 </template>
 
 <script setup lang="ts">
-import { Close } from '@element-plus/icons-vue';
-import { computed, ref, watch } from 'vue';
-import { useTableStore } from '@/presentation/stores/tableStore';
-import { useConnectionStore } from '@/presentation/stores/connectionStore';
-import { storeToRefs } from 'pinia';
 import RowDetailSidebar from '@/presentation/components/RowDetailSidebar.vue';
 import SqlEditor from '@/presentation/components/SqlEditor.vue';
 import TableFilterSection from '@/presentation/components/TableFilterSection.vue';
 import TableMainContent from '@/presentation/components/TableMainContent.vue';
 import TableSettings from '@/presentation/components/TableSettings.vue';
 import TableSqlHistory from '@/presentation/components/TableSqlHistory.vue';
+import { useConnectionStore } from '@/presentation/stores/connectionStore';
+import { useTableStore } from '@/presentation/stores/tableStore';
+import { Close } from '@element-plus/icons-vue';
+import { storeToRefs } from 'pinia';
+import { computed, ref, watch } from 'vue';
 
 // Use types from Pinia store
 import type { QueryData, TableData } from '@/presentation/stores/tableStore';
@@ -436,7 +436,7 @@ const handleRowUpdated = (row: any, field: string, newValue: any) => {
       activeState.tableData[rowIndex][field] = newValue;
     }
   }
-  
+
   // Update selected row if it's the same row
   if (selectedRow.value === row) {
     selectedRow.value = { ...selectedRow.value, [field]: newValue };
@@ -449,7 +449,7 @@ const handleRowDeleted = (row: any) => {
   if (tableStore.activeTableState) {
     // Try to find row by reference first
     let rowIndex = tableStore.activeTableState.tableData.findIndex((r: any) => r === row);
-    
+
     // If not found by reference, try to find by content
     if (rowIndex === -1) {
       rowIndex = tableStore.activeTableState.tableData.findIndex((r: any) => {
@@ -457,12 +457,12 @@ const handleRowDeleted = (row: any) => {
         return JSON.stringify(r) === JSON.stringify(row);
       });
     }
-    
+
     if (rowIndex !== -1) {
       tableStore.activeTableState.tableData.splice(rowIndex, 1);
     }
   }
-  
+
   // Clear selected row
   selectedRow.value = null;
   emit('row-selected', null);
@@ -500,6 +500,7 @@ defineExpose({
   width: 100%;
   height: calc(100vh - 32px);
   background-color: var(--el-bg-color-page);
+  border-left: 1px solid var(--el-fill-color-lighter);
   display: flex;
   flex-direction: column;
 }
@@ -730,39 +731,39 @@ defineExpose({
 
 /* Dark mode styles */
 .dark .tab-item {
-  background-color: #2d3748;
-  border-color: #4a5568;
+  background-color: var(--el-fill-color);
+  border-color: var(--el-border-color);
   color: var(--el-text-color-primary);
 }
 
 .dark .tab-item:hover {
-  background-color: #4a5568;
-  border-color: #718096;
+  background-color: var(--el-border-color);
+  border-color: var(--el-border-color-hover);
 }
 
 .dark .tab-item.active {
-  background-color: #1a202c;
-  border-color: #409eff;
-  border-bottom: 2px solid #409eff;
-  color: #409eff;
+  background-color: var(--el-bg-color-overlay);
+  border-color: var(--el-color-primary);
+  border-bottom: 2px solid var(--el-color-primary);
+  color: var(--el-color-primary);
 }
 
 .dark .tabs-container {
-  background-color: #2d3748;
-  border-bottom-color: #4a5568;
+  background-color: var(--el-fill-color);
+  border-bottom-color: var(--el-border-color);
 }
 
 .dark .content-container {
-  background-color: #1a202c;
-  border-color: #4a5568;
+  background-color: var(--el-bg-color-overlay);
+  border-color: var(--el-border-color);
 }
 
 .dark .column-item {
-  background-color: #2d3748;
-  border-color: #4a5568;
+  background-color: var(--el-fill-color);
+  border-color: var(--el-border-color);
 }
 
 .dark .detail-item {
-  border-bottom-color: #4a5568;
+  border-bottom-color: var(--el-border-color);
 }
 </style>

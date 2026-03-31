@@ -19,17 +19,17 @@
 
 /* macOS Styling */
 .custom-title-bar.macos {
-  background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
-  color: #212529;
+  background: var(--el-bg-color);
+  color: var(--el-text-color-primary);
   padding-left: 80px;
   /* Space for macOS traffic lights */
-  border-bottom: 1px solid rgba(0, 0, 0, 0.1);
+  border-bottom: 1px solid var(--el-border-color-darker);
 }
 
 /* Windows Styling */
 .custom-title-bar.windows {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  color: white;
+  background: var(--el-bg-color);
+  color: var(--el-text-color-primary);
   /* Space for Windows controls */
 }
 
@@ -164,7 +164,7 @@
 .nav-divider {
   width: 1px;
   height: 20px;
-  background-color: rgba(0, 0, 0, 0.2);
+  background-color: rgba(255, 255, 255, 0.2);
   margin: 0 4px;
 }
 
@@ -184,21 +184,22 @@
   -webkit-app-region: no-drag;
 }
 
+/* Hover states */
 .nav-tab:hover {
-  background-color: rgba(0, 0, 0, 0.1);
+  background-color: var(--el-fill-color-light);
 }
 
 .custom-title-bar.windows .nav-tab:hover {
-  background-color: rgba(255, 255, 255, 0.1);
+  background-color: var(--el-fill-color-light);
 }
 
 .nav-tab.active {
-  background-color: rgba(0, 0, 0, 0.15);
+  background-color: var(--el-fill-color);
   font-weight: 500;
 }
 
 .custom-title-bar.windows .nav-tab.active {
-  background-color: rgba(255, 255, 255, 0.2);
+  background-color: var(--el-fill-color);
 }
 
 .title-bar-right {
@@ -235,11 +236,11 @@
 }
 
 .control-btn:hover {
-  background-color: rgba(0, 0, 0, 0.1);
+  background-color: var(--el-fill-color-light);
 }
 
 .custom-title-bar.windows .control-btn:hover {
-  background-color: rgba(255, 255, 255, 0.1);
+  background-color: var(--el-fill-color-light);
 }
 
 .control-btn.close:hover {
@@ -255,41 +256,12 @@
 
 .control-btn.theme-toggle:hover,
 .control-btn.sidebar-toggle:hover {
-  background-color: rgba(0, 0, 0, 0.1);
+  background-color: var(--el-fill-color-light);
 }
 
 .custom-title-bar.windows .control-btn.theme-toggle:hover,
 .custom-title-bar.windows .control-btn.sidebar-toggle:hover {
-  background-color: rgba(255, 255, 255, 0.1);
-}
-
-/* Dark theme support */
-.dark .custom-title-bar.macos {
-  background: linear-gradient(135deg, #1a202c 0%, #2d3748 100%);
-  color: #e2e8f0;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-}
-
-.dark .custom-title-bar.windows {
-  background: linear-gradient(135deg, #1a202c 0%, #2d3748 100%);
-  color: #e2e8f0;
-}
-
-.dark .nav-tab:hover {
-  background-color: rgba(255, 255, 255, 0.05);
-}
-
-.dark .nav-tab.active {
-  background-color: rgba(255, 255, 255, 0.1);
-}
-
-.dark .control-btn:hover {
-  background-color: rgba(255, 255, 255, 0.1);
-}
-
-.dark .control-btn.theme-toggle:hover,
-.dark .control-btn.sidebar-toggle:hover {
-  background-color: rgba(255, 255, 255, 0.1);
+  background-color: var(--el-fill-color-light);
 }
 
 /* Responsive adjustments */

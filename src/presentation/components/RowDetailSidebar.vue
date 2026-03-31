@@ -169,13 +169,13 @@ watch(() => props.selectedRow, () => {
 
 /* Dark mode styles */
 .dark .row-detail-sidebar {
-  background-color: #1a202c;
-  border-left-color: #4a5568;
+  background-color: var(--el-bg-color-overlay);
+  border-left-color: var(--el-border-color);
 }
 
 .dark .sidebar-header {
-  background-color: #2d3748;
-  border-bottom-color: #4a5568;
+  background-color: var(--el-fill-color);
+  border-bottom-color: var(--el-border-color);
 }
 
 .dark .sidebar-header h3 {
@@ -188,13 +188,13 @@ watch(() => props.selectedRow, () => {
 
 /* Input styles for dark mode */
 .dark :deep(.el-textarea__inner) {
-  background-color: #2d3748;
-  border-color: #4a5568;
+  background-color: var(--el-fill-color);
+  border-color: var(--el-border-color);
   color: var(--el-text-color-primary);
 }
 
 .dark :deep(.el-textarea__inner:focus) {
-  border-color: #409eff;
-  background-color: #2d3748;
+  border-color: var(--el-color-primary);
+  background-color: var(--el-fill-color);
 }
 </style>

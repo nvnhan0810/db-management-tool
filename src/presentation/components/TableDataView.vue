@@ -927,8 +927,8 @@ defineExpose({ runSave, addRow, hasUnsavedChanges, clearUnsavedChanges });
   }
 
   .dark & {
-    background-color: rgba(26, 32, 44, 0.8);
-    border: 1px solid rgba(74, 85, 104, 0.5);
+    background-color: var(--el-bg-color);
+    border: 1px solid var(--el-border-color);
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
   }
 
@@ -950,7 +950,7 @@ defineExpose({ runSave, addRow, hasUnsavedChanges, clearUnsavedChanges });
 
     .dark & {
       background-color: transparent;
-      color: #e2e8f0;
+      color: var(--el-text-color-primary);
     }
 
     .el-table__header {
@@ -963,28 +963,28 @@ defineExpose({ runSave, addRow, hasUnsavedChanges, clearUnsavedChanges });
       }
 
       .dark & {
-        background-color: rgba(45, 55, 72, 0.8);
-        color: #e2e8f0;
+        background-color: var(--el-fill-color-light);
+        color: var(--el-text-color-primary);
       }
 
       th {
         .dark & {
-          background-color: rgba(45, 55, 72, 0.8) !important;
-          color: #e2e8f0 !important;
-          border-bottom-color: rgba(74, 85, 104, 0.6) !important;
+          background-color: var(--el-fill-color-light) !important;
+          color: var(--el-text-color-primary) !important;
+          border-bottom-color: var(--el-border-color-darker) !important;
         }
       }
     }
 
     .el-table__body {
       .dark & {
-        color: #e2e8f0;
+        color: var(--el-text-color-primary);
       }
 
       tr {
         .dark & {
-          background-color: rgba(26, 32, 44, 0.6);
-          color: #e2e8f0;
+          background-color: var(--el-bg-color);
+          color: var(--el-text-color-primary);
         }
 
         &:hover > td {
@@ -999,15 +999,15 @@ defineExpose({ runSave, addRow, hasUnsavedChanges, clearUnsavedChanges });
           background-color: var(--el-fill-color-lighter);
 
           .dark & {
-            background-color: rgba(45, 55, 72, 0.4) !important;
+            background-color: var(--el-fill-color-lighter) !important;
           }
         }
 
         td {
           .dark & {
-            background-color: rgba(26, 32, 44, 0.6);
-            color: #e2e8f0;
-            border-bottom-color: rgba(74, 85, 104, 0.4) !important;
+            background-color: var(--el-bg-color);
+            color: var(--el-text-color-primary);
+            border-bottom-color: var(--el-border-color-darker) !important;
           }
         }
       }
@@ -1051,7 +1051,7 @@ defineExpose({ runSave, addRow, hasUnsavedChanges, clearUnsavedChanges });
     background-color: rgba(245, 108, 108, 0.2) !important;
     td {
       background-color: rgba(245, 108, 108, 0.15) !important;
-      border-color: rgba(245, 108, 108, 0.4);
+      border-color: var(--el-border-color-darker);
     }
   }
 
@@ -1067,7 +1067,7 @@ defineExpose({ runSave, addRow, hasUnsavedChanges, clearUnsavedChanges });
 
   :deep(.cell-modified) {
     background-color: rgba(230, 162, 60, 0.25) !important;
-    border-color: rgba(230, 162, 60, 0.5);
+    border-color: var(--el-border-color-darker);
   }
 
   .cell-edit-wrap {
@@ -1133,8 +1133,8 @@ defineExpose({ runSave, addRow, hasUnsavedChanges, clearUnsavedChanges });
   :deep(.cell-editing .cell-edit-input .el-input__wrapper) {
     border: none !important;
     box-shadow: none !important;
-    background-color: #1a202c !important;
-    color: #e2e8f0 !important;
+    background-color: var(--el-bg-color-overlay) !important;
+    color: var(--el-text-color-primary) !important;
     padding: 0 8px !important;
     height: 100% !important;
   }
@@ -1142,8 +1142,8 @@ defineExpose({ runSave, addRow, hasUnsavedChanges, clearUnsavedChanges });
   :deep(.cell-editing .cell-edit-input.editable-div) {
     border: none !important;
     box-shadow: none !important;
-    background-color: #1a202c !important;
-    color: #e2e8f0 !important;
+    background-color: var(--el-bg-color-overlay) !important;
+    color: var(--el-text-color-primary) !important;
   }
 
   :deep(.cell-editing .cell-edit-input .el-input__wrapper) {

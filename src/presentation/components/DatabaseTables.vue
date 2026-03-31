@@ -120,8 +120,8 @@ defineEmits<{
 /* Dark mode active table styles */
 .dark .table-item.active {
   background-color: rgba(64, 158, 255, 0.2);
-  border-color: #409eff;
-  color: #409eff;
+  border-color: var(--el-color-primary);
+  color: var(--el-color-primary);
 }
 
 .dark .table-item:hover {

@@ -162,28 +162,28 @@ const formatDate = (dateString: string) => {
 
 /* Dark mode styles for saved connections */
 .dark .connection-item {
-  background-color: #2d3748 !important;
-  border-color: #4a5568 !important;
-  color: #f7fafc !important;
+  background-color: var(--el-fill-color) !important;
+  border-color: var(--el-border-color) !important;
+  color: var(--el-text-color-primary) !important;
 }
 
 .dark .connection-item:hover {
-  background-color: #4a5568 !important;
-  border-color: #409eff !important;
+  background-color: var(--el-border-color) !important;
+  border-color: var(--el-color-primary) !important;
   transform: translateY(-1px);
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3) !important;
 }
 
 .dark .connection-name {
-  color: #f7fafc !important;
+  color: var(--el-text-color-primary) !important;
 }
 
 .dark .connection-details {
-  color: #a0aec0 !important;
+  color: var(--el-text-color-secondary) !important;
 }
 
 .dark .header h3 {
-  color: #f7fafc !important;
+  color: var(--el-text-color-primary) !important;
 }
 
 .connection-info {

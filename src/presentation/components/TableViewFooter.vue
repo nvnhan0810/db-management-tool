@@ -86,8 +86,8 @@ const handlePerPageChange = (perPage: number) => {
   box-shadow: 0 -2px 4px rgba(0, 0, 0, 0.05);
 
   .dark & {
-    background-color: rgba(26, 32, 44, 0.95);
-    border-top-color: rgba(74, 85, 104, 0.6);
+    background-color: var(--el-bg-color-overlay);
+    border-top-color: var(--el-border-color);
     box-shadow: 0 -2px 8px rgba(0, 0, 0, 0.3);
   }
 
@@ -118,9 +118,9 @@ const handlePerPageChange = (perPage: number) => {
           transition: all 0.2s ease;
 
           .dark & {
-            background-color: rgba(45, 55, 72, 0.8);
-            border-color: rgba(74, 85, 104, 0.6);
-            color: #e2e8f0;
+            background-color: var(--el-fill-color);
+            border-color: var(--el-border-color);
+            color: var(--el-text-color-primary);
           }
         }
 
@@ -131,9 +131,9 @@ const handlePerPageChange = (perPage: number) => {
             box-shadow: 0 2px 4px rgba(64, 158, 255, 0.3);
 
             .dark & {
-              background-color: #409eff;
-              border-color: #409eff;
-              color: #ffffff;
+              background-color: var(--el-color-primary);
+              border-color: var(--el-color-primary);
+              color: var(--el-color-white);
               box-shadow: 0 2px 4px rgba(64, 158, 255, 0.4);
             }
           }
@@ -156,9 +156,9 @@ const handlePerPageChange = (perPage: number) => {
       border-radius: 6px;
 
       .dark & {
-        background-color: rgba(45, 55, 72, 0.8);
-        color: #cbd5e0;
-        border: 1px solid rgba(74, 85, 104, 0.5);
+        background-color: var(--el-fill-color);
+        color: var(--el-text-color-regular);
+        border: 1px solid var(--el-border-color-light);
       }
     }
 
@@ -169,12 +169,12 @@ const handlePerPageChange = (perPage: number) => {
 
       .dark & {
         .el-input__wrapper {
-          background-color: rgba(26, 32, 44, 0.8) !important;
-          border-color: rgba(74, 85, 104, 0.6) !important;
+          background-color: var(--el-bg-color-overlay) !important;
+          border-color: var(--el-border-color) !important;
         }
 
         .el-input__inner {
-          color: #e2e8f0 !important;
+          color: var(--el-text-color-primary) !important;
         }
       }
     }
@@ -185,13 +185,13 @@ const handlePerPageChange = (perPage: number) => {
         margin: 0 2px;
 
         .dark & {
-          background-color: rgba(45, 55, 72, 0.8);
-          color: #e2e8f0;
-          border-color: rgba(74, 85, 104, 0.6);
+          background-color: var(--el-fill-color);
+          color: var(--el-text-color-primary);
+          border-color: var(--el-border-color);
 
           &.is-active {
-            background-color: #409eff;
-            color: #ffffff;
+            background-color: var(--el-color-primary);
+            color: var(--el-color-white);
           }
         }
       }
@@ -201,9 +201,9 @@ const handlePerPageChange = (perPage: number) => {
         border-radius: 4px;
 
         .dark & {
-          background-color: rgba(45, 55, 72, 0.8);
-          color: #e2e8f0;
-          border-color: rgba(74, 85, 104, 0.6);
+          background-color: var(--el-fill-color);
+          color: var(--el-text-color-primary);
+          border-color: var(--el-border-color);
         }
       }
     }

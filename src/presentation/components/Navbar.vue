@@ -122,10 +122,10 @@ const handleCommand = (command: string) => {
   align-items: center;
   justify-content: space-between;
   height: 60px;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  color: white;
+  background: var(--el-bg-color-page);
+  color: var(--el-text-color-primary);
   padding: 0 24px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  border-bottom: 1px solid var(--el-border-color-darker);
 }
 
 .navbar-brand {
@@ -176,11 +176,11 @@ const handleCommand = (command: string) => {
 }
 
 .nav-item:hover {
-  background-color: rgba(255, 255, 255, 0.1);
+  background-color: var(--el-fill-color-light);
 }
 
 .nav-item.active {
-  background-color: rgba(255, 255, 255, 0.2);
+  background-color: var(--el-fill-color);
   font-weight: 600;
 }
 
@@ -188,12 +188,5 @@ const handleCommand = (command: string) => {
   display: flex;
   align-items: center;
   gap: 12px;
-}
-
-/* Dark theme support */
-@media (prefers-color-scheme: dark) {
-  .navbar {
-    background: linear-gradient(135deg, #2d3748 0%, #4a5568 100%);
-  }
 }
 </style>

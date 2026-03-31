@@ -1151,20 +1151,10 @@ const formatDate = (date: Date | string) => {
     height: 100%;
     display: flex;
     flex-direction: column;
-    background-color: var(--el-bg-color-page);
+    background-color: var(--el-bg-color);
     border-right: 1px solid var(--el-border-color);
     overflow: hidden;
     flex-shrink: 0;
-
-    .dark & {
-      background-color: rgba(45, 55, 72, 0.6);
-      border-right-color: rgba(74, 85, 104, 0.5);
-    }
-
-    [data-theme="light"] & {
-      background-color: rgba(255, 255, 255, 0.8);
-      border-right-color: rgba(226, 232, 240, 0.8);
-    }
 
     .sidebar-header {
       padding: 16px;
@@ -1256,20 +1246,20 @@ const formatDate = (date: Date | string) => {
           background-color: rgba(64, 158, 255, 0.1);
           .table-name,
           .table-icon {
-            color: #303133;
+            color: var(--el-text-color-primary);
           }
           .dark & {
             background-color: rgba(64, 158, 255, 0.18);
             .table-name,
             .table-icon {
-              color: #e5e7eb;
+              color: var(--el-text-color-primary);
             }
           }
           [data-theme="light"] & {
             background-color: rgba(64, 158, 255, 0.08);
             .table-name,
             .table-icon {
-              color: #303133;
+              color: var(--el-text-color-primary);
             }
           }
         }
@@ -1343,8 +1333,8 @@ const formatDate = (date: Date | string) => {
         box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
 
         .dark & {
-          background-color: rgba(45, 55, 72, 0.8);
-          border-color: rgba(74, 85, 104, 0.5);
+          background-color: var(--el-fill-color);
+          border-color: var(--el-border-color-light);
           box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
         }
 
@@ -1404,7 +1394,7 @@ const formatDate = (date: Date | string) => {
           background-color: var(--el-fill-color-lighter);
 
           .dark & {
-            background-color: rgba(74, 85, 104, 0.3);
+            background-color: var(--el-border-color-lighter);
           }
 
           [data-theme="light"] & {
@@ -1492,7 +1482,7 @@ const formatDate = (date: Date | string) => {
         .el-tabs__header {
           margin: 0;
           padding: 0 16px;
-          background-color: var(--el-bg-color-page);
+          background-color: var(--el-bg-color);
           border-bottom: 1px solid var(--el-border-color-light);
         }
 
