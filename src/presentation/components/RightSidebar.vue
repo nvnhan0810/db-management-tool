@@ -224,7 +224,7 @@ const generateSelectQuery = () => {
     tableStore.addQueryTab();
     const newTab = tableStore.getActiveTabContent();
     if (newTab?.type === 'query' && newTab.data) {
-      newTab.data.query = `SELECT * FROM ${tableData.name}`;
+      (newTab.data as any).query = `SELECT * FROM ${tableData.name}`;
     }
   }
 };
@@ -237,7 +237,7 @@ const generateDescribeQuery = () => {
     tableStore.addQueryTab();
     const newTab = tableStore.getActiveTabContent();
     if (newTab?.type === 'query' && newTab.data) {
-      newTab.data.query = `DESCRIBE ${tableData.name}`;
+      (newTab.data as any).query = `DESCRIBE ${tableData.name}`;
     }
   }
 };
@@ -354,7 +354,7 @@ const handleRetryLoadData = async () => {
     return;
   }
 
-  const tableState = tableStore.tableTabStates.get(tableStore.activeTab)!;
+  const tableState = tableStore.tableTabStates.get(tableStore.activeTab)! as any;
   const tableData = getActiveTabContent()?.data as any;
 
   if (!tableData) {
@@ -367,12 +367,21 @@ const handleRetryLoadData = async () => {
 
     // Generate SQL for loading data with pagination
     const offset = (tableState.currentPage - 1) * tableState.recordsPerPage;
-    const sql = `SELECT * FROM ${tableData.name} LIMIT ${tableState.recordsPerPage} OFFSET ${offset}`;
+    const validFilters = filterRows.value.filter((f: any) => f.apply && f.column && f.operator && f.value);
+
+    let sql = `SELECT * FROM ${tableData.name}`;
+    if (validFilters.length > 0) {
+      sql +=
+        ' WHERE ' +
+        validFilters.map((f: any) => `${f.column} ${f.operator} '${f.value}'`).join(' AND ');
+    }
+
+    sql += ` LIMIT ${tableState.recordsPerPage} OFFSET ${offset}`;
 
     // Execute query to get actual data
     const connectionId = props.connectionId ?? currentConnection.value?.id;
 
-    const result = await window.electron.invoke('database:query', {
+    const result: any = await window.electron.invoke('database:query', {
       connectionId: connectionId,
       query: sql
     });
@@ -421,9 +430,10 @@ const handleRowSelected = (row: any) => {
 const handleRowUpdated = (row: any, field: string, newValue: any) => {
   // Update the row in the table data
   if (tableStore.activeTableState) {
-    const rowIndex = tableStore.activeTableState.tableData.findIndex((r: any) => r === row);
+    const activeState = tableStore.activeTableState as any;
+    const rowIndex = activeState.tableData.findIndex((r: any) => r === row);
     if (rowIndex !== -1) {
-      tableStore.activeTableState.tableData[rowIndex][field] = newValue;
+      activeState.tableData[rowIndex][field] = newValue;
     }
   }
   

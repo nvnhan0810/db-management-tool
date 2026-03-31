@@ -230,18 +230,18 @@
 </template>
 
 <script setup lang="ts">
-import { useDatabase } from '@/presentation/composables/useDatabase';
-import { useConnectionStore } from '@/presentation/stores/connectionStore';
-import { Connection, Document, Folder, Search } from '@element-plus/icons-vue';
-import { ElMessage } from 'element-plus';
-import { storeToRefs } from 'pinia';
-import { computed, nextTick, onMounted, onUnmounted, reactive, ref, watch } from 'vue';
 import DatabaseSelectModal from '@/presentation/components/DatabaseSelectModal.vue';
 import QueryEditorTab from '@/presentation/components/QueryEditorTab.vue';
 import TableDataCellSidebar from '@/presentation/components/TableDataCellSidebar.vue';
 import TableDataView from '@/presentation/components/TableDataView.vue';
 import TableStructureView from '@/presentation/components/TableStructureView.vue';
 import TableViewFooter from '@/presentation/components/TableViewFooter.vue';
+import { useDatabase } from '@/presentation/composables/useDatabase';
+import { useConnectionStore } from '@/presentation/stores/connectionStore';
+import { Connection, Document, Folder, Search } from '@element-plus/icons-vue';
+import { ElMessage, ElMessageBox } from 'element-plus';
+import { storeToRefs } from 'pinia';
+import { computed, nextTick, onMounted, onUnmounted, reactive, ref, watch } from 'vue';
 
 interface Table {
   name: string;
@@ -482,7 +482,12 @@ function clearDataSidebarState(tabId: string) {
   s.deletedRows = [];
 }
 
-type TableDataViewRef = { runSave: () => Promise<void>; addRow?: () => void };
+type TableDataViewRef = {
+  runSave: () => Promise<void>;
+  addRow?: () => void;
+  hasUnsavedChanges?: () => boolean;
+  clearUnsavedChanges?: () => void;
+};
 const tableDataViewRefs: Record<string, TableDataViewRef | null> = {};
 const dataSidebarRef = ref<{ flushEditsFromDom: () => void } | null>(null);
 
@@ -496,6 +501,54 @@ function setTableDataViewRef(tabId: string, el: TableDataViewRef | null) {
 
 async function handleSaveKeydown(e: KeyboardEvent) {
   const key = e.key?.toLowerCase();
+  // Ctrl/Cmd + R reload data currently shown in "data" mode
+  if ((e.ctrlKey || e.metaKey) && key === 'r') {
+    e.preventDefault();
+    e.stopPropagation();
+
+    const tab = tabs.value.find(t => t.id === activeTabId.value);
+    if (tab && tab.tabType !== 'query' && tab.viewMode === 'data') {
+      const page = tab.data?.page ?? 1;
+      const perPage = tab.data?.perPage ?? 50;
+      const comp = tableDataViewRefs[tab.id];
+      const sidebarState = getDataSidebarState(tab.id);
+      const hasSidebarChanges =
+        Object.keys(sidebarState.modifiedRows ?? {}).length > 0 || sidebarState.deletedRows.length > 0;
+      const hasUiChanges = comp?.hasUnsavedChanges ? comp.hasUnsavedChanges() : false;
+
+      if (hasSidebarChanges || hasUiChanges) {
+        try {
+          await ElMessageBox.confirm(
+            'Bạn có thay đổi chưa lưu (bao gồm mark deleted). Reload sẽ hủy thay đổi này. Bạn có chắc không?',
+            'Discard & Reload',
+            {
+              confirmButtonText: 'Reload',
+              cancelButtonText: 'Cancel',
+              type: 'warning',
+              distinguishCancelAndClose: true
+            }
+          );
+        } catch {
+          return;
+        }
+
+        // Discard UI edits in table view
+        comp?.clearUnsavedChanges?.();
+
+        // Discard sidebar mark-deleted + modified fields
+        clearDataSidebarState(tab.id);
+      }
+
+      try {
+        await loadTableData(tab, page, perPage);
+        ElMessage.success('Data reloaded');
+      } catch {
+        ElMessage.error('Reload failed');
+      }
+    }
+    return;
+  }
+
   if ((e.ctrlKey || e.metaKey) && key === 's') {
     e.preventDefault();
     e.stopPropagation();
@@ -736,7 +789,7 @@ const loadTableStructure = async (tab: Tab) => {
 };
 
 // Load table data
-const loadTableData = async (tab: Tab, page: number = 1, perPage: number = 50) => {
+async function loadTableData(tab: Tab, page: number = 1, perPage: number = 50) {
   if (!connection.value?.id) {
     const tabIndex = tabs.value.findIndex(t => t.id === tab.id);
     if (tabIndex !== -1) {
@@ -841,7 +894,7 @@ const loadTableData = async (tab: Tab, page: number = 1, perPage: number = 50) =
       tab.isLoadingData = false;
     }
   }
-};
+}
 
 // Switch view mode
 const switchViewMode = async (tab: Tab, mode: 'structure' | 'data') => {

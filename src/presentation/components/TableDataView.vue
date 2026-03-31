@@ -859,7 +859,30 @@ function scrollTableToBottom() {
   });
 }
 
-defineExpose({ runSave, addRow });
+function hasUnsavedChanges(): boolean {
+  if (editingCell.value) return true;
+  if (pendingNewRows.value.length > 0) return true;
+  if (Object.keys(modifiedRows.value ?? {}).length > 0) return true;
+  return deletedRows.value.size > 0;
+}
+
+function clearUnsavedChanges() {
+  // Discard UI editing state
+  editingCell.value = null;
+  editDraftValue.value = '';
+  isMultilineEditable.value = false;
+
+  // Discard new rows draft
+  pendingNewRows.value = [];
+
+  // Discard internal sidebar state when uncontrolled
+  internalModifiedRows.value = {};
+  internalDeletedRows.value = new Set();
+  internalSelectedRowIndex.value = null;
+  internalSelectedColumn.value = null;
+}
+
+defineExpose({ runSave, addRow, hasUnsavedChanges, clearUnsavedChanges });
 </script>
 
 <style scoped lang="scss">
