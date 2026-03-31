@@ -20,10 +20,59 @@ const invokeChannels = [
   'secrets:delete',
 ];
 
+type SqlHistoryEventDetail = {
+  channel: 'database:query' | 'database:executeQuery';
+  connectionId?: string;
+  query?: string;
+  success?: boolean;
+  error?: string | null;
+  executionTime?: number;
+  timestamp: string;
+};
+
 contextBridge.exposeInMainWorld('electron', {
   invoke: async (channel: string, data?: unknown) => {
     if (invokeChannels.includes(channel)) {
-      return await ipcRenderer.invoke(channel, data);
+      const shouldTrackSql =
+        channel === 'database:query' || channel === 'database:executeQuery';
+
+      const start = shouldTrackSql ? performance.now() : 0;
+      try {
+        const result = await ipcRenderer.invoke(channel, data);
+
+        if (shouldTrackSql) {
+          const execMs = Math.max(0, Math.round(performance.now() - start));
+          const payload = (data ?? {}) as { connectionId?: string; query?: string };
+          const detail: SqlHistoryEventDetail = {
+            channel: channel as SqlHistoryEventDetail['channel'],
+            connectionId: payload.connectionId,
+            query: payload.query,
+            success: (result as { success?: boolean } | undefined)?.success,
+            error: (result as { error?: string } | undefined)?.error ?? null,
+            executionTime: execMs,
+            timestamp: new Date().toISOString(),
+          };
+          window.dispatchEvent(new CustomEvent('sql:executed', { detail }));
+        }
+
+        return result;
+      } catch (err) {
+        if (shouldTrackSql) {
+          const execMs = Math.max(0, Math.round(performance.now() - start));
+          const payload = (data ?? {}) as { connectionId?: string; query?: string };
+          const detail: SqlHistoryEventDetail = {
+            channel: channel as SqlHistoryEventDetail['channel'],
+            connectionId: payload.connectionId,
+            query: payload.query,
+            success: false,
+            error: err instanceof Error ? err.message : 'Unknown error',
+            executionTime: execMs,
+            timestamp: new Date().toISOString(),
+          };
+          window.dispatchEvent(new CustomEvent('sql:executed', { detail }));
+        }
+        throw err;
+      }
     }
   },
   on: (channel: string, callback: (...args: unknown[]) => void) => {

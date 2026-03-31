@@ -111,104 +111,122 @@
           </el-card>
         </div>
 
-        <!-- Tabs View + Data sidebar (inside content-area) -->
-        <div v-else ref="contentAreaInnerRef" class="content-area-inner">
-          <div class="tabs-container">
-            <el-tabs v-model="activeTabId" type="card" closable @tab-remove="handleRemoveTab" @tab-click="handleTabClick">
-            <el-tab-pane
-              v-for="tab in tabs"
-              :key="tab.id"
-              :label="tab.tableName"
-              :name="tab.id"
-            >
-              <div class="tab-content-wrapper">
-                <!-- Main Content Area -->
-                <div class="tab-main-content">
-                  <!-- Query Editor Tab -->
-                  <QueryEditorTab
-                    v-if="tab.tabType === 'query'"
-                    :connection-id="connection?.id"
-                    :db-type="connection?.type || 'postgresql'"
-                  />
-
-                  <!-- Table Tabs -->
-                  <template v-else>
-                    <!-- Structure View -->
-                    <TableStructureView
-                      v-if="tab.viewMode === 'structure'"
-                      :structure="tab.structure"
-                      :is-loading="tab.isLoadingStructure === true"
-                      :error="tab.structureError || null"
+        <!-- Tabs View + Data sidebar + bottom SQL panel (resizable) -->
+        <div v-else class="content-split" ref="splitRef">
+          <div ref="contentAreaInnerRef" class="content-area-inner">
+            <div class="tabs-container">
+              <el-tabs v-model="activeTabId" type="card" closable @tab-remove="handleRemoveTab" @tab-click="handleTabClick">
+              <el-tab-pane
+                v-for="tab in tabs"
+                :key="tab.id"
+                :label="tab.tableName"
+                :name="tab.id"
+              >
+                <div class="tab-content-wrapper">
+                  <!-- Main Content Area -->
+                  <div class="tab-main-content">
+                    <!-- Query Editor Tab -->
+                    <QueryEditorTab
+                      v-if="tab.tabType === 'query'"
+                      :connection-id="connection?.id"
+                      :db-type="connection?.type || 'postgresql'"
                     />
 
-          <!-- Data View -->
-          <TableDataView
-            v-else-if="tab.viewMode === 'data'"
-            :ref="(el: any) => setTableDataViewRef(tab.id, el)"
-            :data="tab.data"
-            :is-loading="tab.isLoadingData === true"
-            :error="tab.dataError || null"
-            :db-type="connection?.type || 'postgresql'"
-            :table-name="tab.tableName"
-            :connection-id="connection?.id"
-            :column-types="(tab.structure?.columns) ? Object.fromEntries(tab.structure.columns.map((c: { name: string; type: string }) => [c.name, c.type])) : {}"
-            :columns-from-structure="tab.structure?.columns?.map((c: { name: string }) => c.name) ?? []"
-            :sidebar-panel-open="dataSidebarVisible"
-            :sidebar-selected-row-index="getDataSidebarState(tab.id).selectedRowIndex"
-            :sidebar-selected-column="getDataSidebarState(tab.id).selectedColumn"
-            :sidebar-modified-rows="getDataSidebarState(tab.id).modifiedRows"
-            :sidebar-deleted-rows="getDataSidebarState(tab.id).deletedRows"
-            :sort-by="tab.sortBy || null"
-            :sort-order="tab.sortOrder || null"
-            @filter-apply="(whereClause: string | null) => handleFilterApply(tab, whereClause)"
-            @refresh="() => { loadTableData(tab); clearDataSidebarState(tab.id); }"
-            @cell-select="(e: { rowIndex: number; columnKey: string | null }) => onDataCellSelect(tab.id, e)"
-            @sidebar-close="onDataSidebarClose(tab.id)"
-            @update-field="(e: { field: string; value: unknown }) => onDataUpdateField(tab.id, e)"
-            @mark-deleted="onDataMarkDeleted(tab.id)"
-            @unmark-deleted="onDataUnmarkDeleted(tab.id)"
-            @sort-change="(payload: { prop: string | null; order: 'ascending' | 'descending' | null }) => handleSortChange(tab, payload)"
+                    <!-- Table Tabs -->
+                    <template v-else>
+                      <!-- Structure View -->
+                      <TableStructureView
+                        v-if="tab.viewMode === 'structure'"
+                        :structure="tab.structure"
+                        :is-loading="tab.isLoadingStructure === true"
+                        :error="tab.structureError || null"
+                      />
+
+            <!-- Data View -->
+            <TableDataView
+              v-else-if="tab.viewMode === 'data'"
+              :ref="(el: any) => setTableDataViewRef(tab.id, el)"
+              :data="tab.data"
+              :is-loading="tab.isLoadingData === true"
+              :error="tab.dataError || null"
+              :db-type="connection?.type || 'postgresql'"
+              :table-name="tab.tableName"
+              :connection-id="connection?.id"
+              :column-types="(tab.structure?.columns) ? Object.fromEntries(tab.structure.columns.map((c: { name: string; type: string }) => [c.name, c.type])) : {}"
+              :columns-from-structure="tab.structure?.columns?.map((c: { name: string }) => c.name) ?? []"
+              :sidebar-panel-open="dataSidebarVisible"
+              :sidebar-selected-row-index="getDataSidebarState(tab.id).selectedRowIndex"
+              :sidebar-selected-column="getDataSidebarState(tab.id).selectedColumn"
+              :sidebar-modified-rows="getDataSidebarState(tab.id).modifiedRows"
+              :sidebar-deleted-rows="getDataSidebarState(tab.id).deletedRows"
+              :sort-by="tab.sortBy || null"
+              :sort-order="tab.sortOrder || null"
+              @filter-apply="(whereClause: string | null) => handleFilterApply(tab, whereClause)"
+              @refresh="() => { loadTableData(tab); clearDataSidebarState(tab.id); }"
+              @cell-select="(e: { rowIndex: number; columnKey: string | null }) => onDataCellSelect(tab.id, e)"
+              @sidebar-close="onDataSidebarClose(tab.id)"
+              @update-field="(e: { field: string; value: unknown }) => onDataUpdateField(tab.id, e)"
+              @mark-deleted="onDataMarkDeleted(tab.id)"
+              @unmark-deleted="onDataUnmarkDeleted(tab.id)"
+              @sort-change="(payload: { prop: string | null; order: 'ascending' | 'descending' | null }) => handleSortChange(tab, payload)"
+            />
+
+                      <!-- Fallback if no view mode -->
+                      <div v-else class="no-view-mode">
+                        <el-empty description="No view mode selected" />
+                      </div>
+                    </template>
+                  </div>
+
+                  <!-- Footer (only for table tabs) -->
+                  <TableViewFooter
+                    v-if="tab.tabType !== 'query'"
+                    :view-mode="tab.viewMode || 'data'"
+                    :data="tab.data"
+                    @update:view-mode="(val: 'structure' | 'data') => switchViewMode(tab, val)"
+                    @page-change="(page: number) => handlePageChange(tab, page)"
+                    @per-page-change="(perPage: number) => handlePerPageChange(tab, perPage)"
+                    @add-row="handleAddRow(tab)"
+                  />
+                </div>
+              </el-tab-pane>
+            </el-tabs>
+            </div>
+            <!-- Data table cell sidebar (inside content-area, full height) -->
+            <div
+              v-if="dataSidebarVisible"
+              class="data-detail-sidebar-wrap"
+            >
+              <TableDataCellSidebar
+                ref="dataSidebarRef"
+                :visible="true"
+                :selected-row="dataSidebarSelectedRow"
+                :selected-column="dataSidebarSelectedColumn"
+                :modified-fields="dataSidebarModifiedFields"
+                :is-deleted="dataSidebarIsDeleted"
+                :column-types="dataSidebarColumnTypes"
+                @close="onDataSidebarClose(activeTabId)"
+                @update-field="(field: string, value: unknown) => onDataUpdateField(activeTabId, { field, value })"
+                @mark-deleted="onDataMarkDeleted(activeTabId)"
+                @unmark-deleted="onDataUnmarkDeleted(activeTabId)"
+              />
+            </div>
+          </div>
+
+          <div
+            v-if="sqlHistoryPanelOpen"
+            class="splitter-bar"
+            role="separator"
+            aria-orientation="horizontal"
+            @mousedown.prevent="startSqlPanelResize"
           />
 
-                    <!-- Fallback if no view mode -->
-                    <div v-else class="no-view-mode">
-                      <el-empty description="No view mode selected" />
-                    </div>
-                  </template>
-                </div>
-
-                <!-- Footer (only for table tabs) -->
-                <TableViewFooter
-                  v-if="tab.tabType !== 'query'"
-                  :view-mode="tab.viewMode || 'data'"
-                  :data="tab.data"
-                  @update:view-mode="(val: 'structure' | 'data') => switchViewMode(tab, val)"
-                  @page-change="(page: number) => handlePageChange(tab, page)"
-                  @per-page-change="(perPage: number) => handlePerPageChange(tab, perPage)"
-                  @add-row="handleAddRow(tab)"
-                />
-              </div>
-            </el-tab-pane>
-          </el-tabs>
-          </div>
-          <!-- Data table cell sidebar (inside content-area, full height) -->
           <div
-            v-if="dataSidebarVisible"
-            class="data-detail-sidebar-wrap"
+            v-if="sqlHistoryPanelOpen"
+            class="bottom-sql-panel-wrap"
+            :style="{ height: `${sqlPanelHeight}px` }"
           >
-            <TableDataCellSidebar
-              ref="dataSidebarRef"
-              :visible="true"
-              :selected-row="dataSidebarSelectedRow"
-              :selected-column="dataSidebarSelectedColumn"
-              :modified-fields="dataSidebarModifiedFields"
-              :is-deleted="dataSidebarIsDeleted"
-              :column-types="dataSidebarColumnTypes"
-              @close="onDataSidebarClose(activeTabId)"
-              @update-field="(field: string, value: unknown) => onDataUpdateField(activeTabId, { field, value })"
-              @mark-deleted="onDataMarkDeleted(activeTabId)"
-              @unmark-deleted="onDataUnmarkDeleted(activeTabId)"
-            />
+            <BottomSqlHistoryPanel />
           </div>
         </div>
       </div>
@@ -230,6 +248,7 @@
 </template>
 
 <script setup lang="ts">
+import BottomSqlHistoryPanel from '@/presentation/components/BottomSqlHistoryPanel.vue';
 import DatabaseSelectModal from '@/presentation/components/DatabaseSelectModal.vue';
 import QueryEditorTab from '@/presentation/components/QueryEditorTab.vue';
 import TableDataCellSidebar from '@/presentation/components/TableDataCellSidebar.vue';
@@ -303,7 +322,7 @@ type TableStructureResult = {
 };
 
 const connectionStore = useConnectionStore();
-const { dataSidebarOpen, rowDetailPanelEnabled, currentConnection, activeConnections, currentTabId } =
+const { dataSidebarOpen, rowDetailPanelEnabled, sqlHistoryPanelOpen, currentConnection, activeConnections, currentTabId } =
   storeToRefs(connectionStore);
 const { switchToConnection } = connectionStore;
 const { getTables, getTableStructure, executeQuery } = useDatabase();
@@ -490,6 +509,46 @@ type TableDataViewRef = {
 };
 const tableDataViewRefs: Record<string, TableDataViewRef | null> = {};
 const dataSidebarRef = ref<{ flushEditsFromDom: () => void } | null>(null);
+
+const splitRef = ref<HTMLElement | null>(null);
+const sqlPanelHeight = ref(240);
+const resizingSqlPanel = ref(false);
+let resizeStartY = 0;
+let resizeStartHeight = 0;
+
+function clamp(n: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, n));
+}
+
+function onSqlPanelResizeMove(e: MouseEvent) {
+  if (!resizingSqlPanel.value) return;
+  const root = splitRef.value;
+  if (!root) return;
+  const max = Math.floor(root.clientHeight * 0.7);
+  const min = 120;
+  const delta = resizeStartY - e.clientY;
+  sqlPanelHeight.value = clamp(resizeStartHeight + delta, min, max);
+}
+
+function onSqlPanelResizeUp() {
+  if (!resizingSqlPanel.value) return;
+  resizingSqlPanel.value = false;
+  document.body.style.cursor = '';
+  document.body.style.userSelect = '';
+  window.removeEventListener('mousemove', onSqlPanelResizeMove);
+  window.removeEventListener('mouseup', onSqlPanelResizeUp);
+}
+
+function startSqlPanelResize(e: MouseEvent) {
+  if (!sqlHistoryPanelOpen.value) return;
+  resizingSqlPanel.value = true;
+  resizeStartY = e.clientY;
+  resizeStartHeight = sqlPanelHeight.value;
+  document.body.style.cursor = 'row-resize';
+  document.body.style.userSelect = 'none';
+  window.addEventListener('mousemove', onSqlPanelResizeMove);
+  window.addEventListener('mouseup', onSqlPanelResizeUp);
+}
 
 function setTableDataViewRef(tabId: string, el: TableDataViewRef | null) {
   if (el) {
@@ -1042,12 +1101,15 @@ function handleDataSidebarClickOutside(e: MouseEvent) {
 
 // Debug on mount
 onMounted(() => {
+  // Central SQL history listener (emitted from preload wrapper)
+  connectionStore.attachSqlHistoryListener();
   document.addEventListener('click', handleDataSidebarClickOutside);
   document.addEventListener('keydown', handleSaveKeydown, { capture: true });
 });
 onUnmounted(() => {
   document.removeEventListener('click', handleDataSidebarClickOutside);
   document.removeEventListener('keydown', handleSaveKeydown, { capture: true });
+  onSqlPanelResizeUp();
 });
 
 const formatDate = (date: Date | string) => {
@@ -1368,6 +1430,50 @@ const formatDate = (date: Date | string) => {
       flex: 1;
       display: flex;
       min-height: 0;
+      overflow: hidden;
+    }
+
+    .content-split {
+      flex: 1;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    .content-split > .content-area-inner {
+      flex: 1;
+      min-height: 0;
+    }
+
+    .splitter-bar {
+      height: 6px;
+      cursor: row-resize;
+      flex: 0 0 auto;
+      background: transparent;
+      position: relative;
+    }
+
+    .splitter-bar::before {
+      content: '';
+      position: absolute;
+      left: 16px;
+      right: 16px;
+      top: 2px;
+      height: 2px;
+      border-radius: 2px;
+      background-color: var(--el-border-color-light);
+      opacity: 0.9;
+    }
+
+    .splitter-bar:hover::before {
+      background-color: var(--el-color-primary);
+      opacity: 0.95;
+    }
+
+    .bottom-sql-panel-wrap {
+      flex: 0 0 auto;
+      min-height: 120px;
       overflow: hidden;
     }
 

@@ -181,7 +181,6 @@ onUnmounted(() => {
 <style scoped lang="scss">
 .table-data-filter {
   background-color: var(--el-bg-color-page);
-  margin-bottom: 20px;
 
   .dark & {
     background-color: rgba(26, 32, 44, 0.8);
@@ -199,6 +198,8 @@ onUnmounted(() => {
   }
 
   .filter-content {
+    margin-bottom: 20px;
+
     .filter-actions {
       display: flex;
       gap: 8px;

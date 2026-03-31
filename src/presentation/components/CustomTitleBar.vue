@@ -97,6 +97,24 @@
         </el-button>
       </el-tooltip>
 
+      <!-- Bottom SQL history panel toggle -->
+      <el-tooltip
+        v-if="hasActiveConnection"
+        :content="sqlHistoryPanelOpen ? 'SQL history: open' : 'SQL history: closed'"
+        placement="bottom"
+      >
+        <el-button
+          size="small"
+          class="control-btn sidebar-toggle"
+          @click="handleSqlHistoryToggle"
+        >
+          <span
+            class="codicon codicon-output row-detail-sidebar-codicon"
+            aria-hidden="true"
+          />
+        </el-button>
+      </el-tooltip>
+
       <!-- Theme toggle button (always visible) -->
       <el-button size="small" class="control-btn theme-toggle" @click="handleThemeToggle">
         <el-icon>
@@ -149,7 +167,7 @@ import { useRouter } from 'vue-router';
 const connectionStore = useConnectionStore();
 const connectionsStore = useConnectionsStore();
 const { disconnect } = useDatabase();
-const { rowDetailPanelEnabled } = storeToRefs(connectionStore);
+const { rowDetailPanelEnabled, sqlHistoryPanelOpen } = storeToRefs(connectionStore);
 const themeStore = useThemeStore();
 const { isDarkMode } = storeToRefs(themeStore);
 const { toggleTheme } = themeStore;
@@ -258,6 +276,10 @@ watch(
 
 const handleRowDetailPanelToggle = () => {
   connectionStore.toggleRowDetailPanel();
+};
+
+const handleSqlHistoryToggle = () => {
+  connectionStore.toggleSqlHistoryPanel();
 };
 
 

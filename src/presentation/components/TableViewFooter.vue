@@ -1,7 +1,7 @@
 <template>
   <div class="tab-footer">
     <div class="footer-left">
-      <el-radio-group :model-value="viewMode" @update:model-value="handleViewModeChange">
+      <el-radio-group size="small" :model-value="viewMode" @update:model-value="handleViewModeChange">
         <el-radio-button value="structure">Structure</el-radio-button>
         <el-radio-button value="data">Data</el-radio-button>
       </el-radio-group>
