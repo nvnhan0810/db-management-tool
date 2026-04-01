@@ -12,6 +12,16 @@ export interface ActiveConnection extends Omit<DatabaseConnection, 'id'> {
   rootConnectionId?: string;
 }
 
+export interface SqlHistoryItem {
+  channel: 'database:query' | 'database:executeQuery';
+  connectionId?: string;
+  sql: string;
+  timestamp: Date;
+  success: boolean;
+  error?: string | null;
+  executionTime?: number;
+}
+
 const STORAGE_KEY = 'connectionsState';
 const QUIT_TIME_KEY = 'lastQuitTime';
 
@@ -23,6 +33,10 @@ export const useConnectionStore = defineStore('connection', () => {
   const dataSidebarOpen = ref(false);
   /** When true (default), clicking a table row opens the cell/row detail panel. */
   const rowDetailPanelEnabled = ref(true);
+  /** Bottom SQL history panel visibility. */
+  const sqlHistoryPanelOpen = ref(true);
+  const sqlHistory = ref<SqlHistoryItem[]>([]);
+  let sqlHistoryListenerAttached = false;
   let stateLoaded = false;
 
   const isFreshStart = () => {
@@ -126,6 +140,55 @@ export const useConnectionStore = defineStore('connection', () => {
     if (!rowDetailPanelEnabled.value) {
       closeDataSidebar();
     }
+  };
+
+  const toggleSqlHistoryPanel = () => {
+    sqlHistoryPanelOpen.value = !sqlHistoryPanelOpen.value;
+  };
+
+  const closeSqlHistoryPanel = () => {
+    sqlHistoryPanelOpen.value = false;
+  };
+
+  const addSqlHistory = (item: Omit<SqlHistoryItem, 'timestamp'> & { timestamp: Date | string }) => {
+    const normalized: SqlHistoryItem = {
+      ...item,
+      timestamp: item.timestamp instanceof Date ? item.timestamp : new Date(item.timestamp),
+    };
+    // newest first
+    sqlHistory.value.unshift(normalized);
+    if (sqlHistory.value.length > 200) {
+      sqlHistory.value = sqlHistory.value.slice(0, 200);
+    }
+  };
+
+  const attachSqlHistoryListener = () => {
+    if (sqlHistoryListenerAttached) return;
+    sqlHistoryListenerAttached = true;
+
+    window.addEventListener('sql:executed', ((e: Event) => {
+      const ce = e as CustomEvent<{
+        channel: 'database:query' | 'database:executeQuery';
+        connectionId?: string;
+        query?: string;
+        success?: boolean;
+        error?: string | null;
+        executionTime?: number;
+        timestamp: string;
+      }>;
+      const d = ce.detail;
+      const sql = (d?.query ?? '').toString();
+      if (!sql.trim()) return;
+      addSqlHistory({
+        channel: d.channel,
+        connectionId: d.connectionId,
+        sql,
+        success: d.success ?? true,
+        error: d.error ?? null,
+        executionTime: d.executionTime,
+        timestamp: d.timestamp,
+      });
+    }) as EventListener);
   };
 
   const addConnection = async (
@@ -294,6 +357,8 @@ export const useConnectionStore = defineStore('connection', () => {
     currentConnection,
     dataSidebarOpen,
     rowDetailPanelEnabled,
+    sqlHistoryPanelOpen,
+    sqlHistory,
     sortedConnections,
     hasConnections,
     saveState,
@@ -310,6 +375,10 @@ export const useConnectionStore = defineStore('connection', () => {
     toggleDataSidebar,
     closeDataSidebar,
     toggleRowDetailPanel,
+    toggleSqlHistoryPanel,
+    closeSqlHistoryPanel,
+    attachSqlHistoryListener,
+    addSqlHistory,
     markAppQuit,
     isFreshStart,
   };

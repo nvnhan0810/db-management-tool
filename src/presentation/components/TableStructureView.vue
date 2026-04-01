@@ -122,8 +122,8 @@ withDefaults(defineProps<Props>(), {
     box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
 
     .dark & {
-      background-color: rgba(26, 32, 44, 0.8);
-      border: 1px solid rgba(74, 85, 104, 0.5);
+      background-color: var(--el-bg-color-overlay);
+      border: 1px solid var(--el-border-color-light);
       box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
     }
 
@@ -141,8 +141,8 @@ withDefaults(defineProps<Props>(), {
       border-bottom: 2px solid var(--el-border-color-light);
 
       .dark & {
-        color: #e2e8f0;
-        border-bottom-color: rgba(74, 85, 104, 0.6);
+        color: var(--el-text-color-primary);
+        border-bottom-color: var(--el-border-color);
       }
     }
 
@@ -151,50 +151,50 @@ withDefaults(defineProps<Props>(), {
 
       .dark & {
         background-color: transparent;
-        color: #e2e8f0;
+        color: var(--el-text-color-primary);
       }
 
       .el-table__header {
         background-color: var(--el-fill-color-lighter);
 
         .dark & {
-          background-color: rgba(45, 55, 72, 0.8);
-          color: #e2e8f0;
+          background-color: var(--el-fill-color);
+          color: var(--el-text-color-primary);
         }
 
         th {
           .dark & {
-            background-color: rgba(45, 55, 72, 0.8) !important;
-            color: #e2e8f0 !important;
-            border-bottom-color: rgba(74, 85, 104, 0.6) !important;
+            background-color: var(--el-fill-color) !important;
+            color: var(--el-text-color-primary) !important;
+            border-bottom-color: var(--el-border-color) !important;
           }
         }
       }
 
       .el-table__body {
         .dark & {
-          color: #e2e8f0;
+          color: var(--el-text-color-primary);
         }
 
         tr {
           .dark & {
-            background-color: rgba(26, 32, 44, 0.6);
-            color: #e2e8f0;
+            background-color: var(--el-bg-color);
+            color: var(--el-text-color-primary);
           }
 
           &:hover {
             background-color: var(--el-fill-color-light);
 
             .dark & {
-              background-color: rgba(45, 55, 72, 0.6) !important;
+              background-color: var(--el-fill-color-light) !important;
             }
           }
 
           td {
             .dark & {
               background-color: transparent !important;
-              color: #e2e8f0 !important;
-              border-bottom-color: rgba(74, 85, 104, 0.4) !important;
+              color: var(--el-text-color-primary) !important;
+              border-bottom-color: var(--el-border-color-lighter) !important;
             }
           }
         }
@@ -212,9 +212,9 @@ withDefaults(defineProps<Props>(), {
     border: 1px solid var(--el-color-primary-light-7);
 
     .dark & {
-      background: rgba(26, 32, 44, 0.9);
-      border: 1px solid rgba(74, 85, 104, 0.6);
-      color: #cbd5e0;
+      background: var(--el-bg-color-overlay);
+      border: 1px solid var(--el-border-color);
+      color: var(--el-text-color-regular);
     }
 
     strong {
@@ -223,7 +223,7 @@ withDefaults(defineProps<Props>(), {
       font-size: 16px;
 
       .dark & {
-        color: #66b1ff;
+        color: var(--el-color-primary-light-3);
       }
     }
   }

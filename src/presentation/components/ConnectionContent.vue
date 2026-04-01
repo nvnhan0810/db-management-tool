@@ -111,104 +111,122 @@
           </el-card>
         </div>
 
-        <!-- Tabs View + Data sidebar (inside content-area) -->
-        <div v-else ref="contentAreaInnerRef" class="content-area-inner">
-          <div class="tabs-container">
-            <el-tabs v-model="activeTabId" type="card" closable @tab-remove="handleRemoveTab" @tab-click="handleTabClick">
-            <el-tab-pane
-              v-for="tab in tabs"
-              :key="tab.id"
-              :label="tab.tableName"
-              :name="tab.id"
-            >
-              <div class="tab-content-wrapper">
-                <!-- Main Content Area -->
-                <div class="tab-main-content">
-                  <!-- Query Editor Tab -->
-                  <QueryEditorTab
-                    v-if="tab.tabType === 'query'"
-                    :connection-id="connection?.id"
-                    :db-type="connection?.type || 'postgresql'"
-                  />
-
-                  <!-- Table Tabs -->
-                  <template v-else>
-                    <!-- Structure View -->
-                    <TableStructureView
-                      v-if="tab.viewMode === 'structure'"
-                      :structure="tab.structure"
-                      :is-loading="tab.isLoadingStructure === true"
-                      :error="tab.structureError || null"
+        <!-- Tabs View + Data sidebar + bottom SQL panel (resizable) -->
+        <div v-else class="content-split" ref="splitRef">
+          <div ref="contentAreaInnerRef" class="content-area-inner">
+            <div class="tabs-container">
+              <el-tabs v-model="activeTabId" type="card" closable @tab-remove="handleRemoveTab" @tab-click="handleTabClick">
+              <el-tab-pane
+                v-for="tab in tabs"
+                :key="tab.id"
+                :label="tab.tableName"
+                :name="tab.id"
+              >
+                <div class="tab-content-wrapper">
+                  <!-- Main Content Area -->
+                  <div class="tab-main-content">
+                    <!-- Query Editor Tab -->
+                    <QueryEditorTab
+                      v-if="tab.tabType === 'query'"
+                      :connection-id="connection?.id"
+                      :db-type="connection?.type || 'postgresql'"
                     />
 
-          <!-- Data View -->
-          <TableDataView
-            v-else-if="tab.viewMode === 'data'"
-            :ref="(el: any) => setTableDataViewRef(tab.id, el)"
-            :data="tab.data"
-            :is-loading="tab.isLoadingData === true"
-            :error="tab.dataError || null"
-            :db-type="connection?.type || 'postgresql'"
-            :table-name="tab.tableName"
-            :connection-id="connection?.id"
-            :column-types="(tab.structure?.columns) ? Object.fromEntries(tab.structure.columns.map((c: { name: string; type: string }) => [c.name, c.type])) : {}"
-            :columns-from-structure="tab.structure?.columns?.map((c: { name: string }) => c.name) ?? []"
-            :sidebar-panel-open="dataSidebarVisible"
-            :sidebar-selected-row-index="getDataSidebarState(tab.id).selectedRowIndex"
-            :sidebar-selected-column="getDataSidebarState(tab.id).selectedColumn"
-            :sidebar-modified-rows="getDataSidebarState(tab.id).modifiedRows"
-            :sidebar-deleted-rows="getDataSidebarState(tab.id).deletedRows"
-            :sort-by="tab.sortBy || null"
-            :sort-order="tab.sortOrder || null"
-            @filter-apply="(whereClause: string | null) => handleFilterApply(tab, whereClause)"
-            @refresh="() => { loadTableData(tab); clearDataSidebarState(tab.id); }"
-            @cell-select="(e: { rowIndex: number; columnKey: string | null }) => onDataCellSelect(tab.id, e)"
-            @sidebar-close="onDataSidebarClose(tab.id)"
-            @update-field="(e: { field: string; value: unknown }) => onDataUpdateField(tab.id, e)"
-            @mark-deleted="onDataMarkDeleted(tab.id)"
-            @unmark-deleted="onDataUnmarkDeleted(tab.id)"
-            @sort-change="(payload: { prop: string | null; order: 'ascending' | 'descending' | null }) => handleSortChange(tab, payload)"
+                    <!-- Table Tabs -->
+                    <template v-else>
+                      <!-- Structure View -->
+                      <TableStructureView
+                        v-if="tab.viewMode === 'structure'"
+                        :structure="tab.structure"
+                        :is-loading="tab.isLoadingStructure === true"
+                        :error="tab.structureError || null"
+                      />
+
+            <!-- Data View -->
+            <TableDataView
+              v-else-if="tab.viewMode === 'data'"
+              :ref="(el: any) => setTableDataViewRef(tab.id, el)"
+              :data="tab.data"
+              :is-loading="tab.isLoadingData === true"
+              :error="tab.dataError || null"
+              :db-type="connection?.type || 'postgresql'"
+              :table-name="tab.tableName"
+              :connection-id="connection?.id"
+              :column-types="(tab.structure?.columns) ? Object.fromEntries(tab.structure.columns.map((c: { name: string; type: string }) => [c.name, c.type])) : {}"
+              :columns-from-structure="tab.structure?.columns?.map((c: { name: string }) => c.name) ?? []"
+              :sidebar-panel-open="dataSidebarVisible"
+              :sidebar-selected-row-index="getDataSidebarState(tab.id).selectedRowIndex"
+              :sidebar-selected-column="getDataSidebarState(tab.id).selectedColumn"
+              :sidebar-modified-rows="getDataSidebarState(tab.id).modifiedRows"
+              :sidebar-deleted-rows="getDataSidebarState(tab.id).deletedRows"
+              :sort-by="tab.sortBy || null"
+              :sort-order="tab.sortOrder || null"
+              @filter-apply="(whereClause: string | null) => handleFilterApply(tab, whereClause)"
+              @refresh="() => { loadTableData(tab); clearDataSidebarState(tab.id); }"
+              @cell-select="(e: { rowIndex: number; columnKey: string | null }) => onDataCellSelect(tab.id, e)"
+              @sidebar-close="onDataSidebarClose(tab.id)"
+              @update-field="(e: { field: string; value: unknown }) => onDataUpdateField(tab.id, e)"
+              @mark-deleted="onDataMarkDeleted(tab.id)"
+              @unmark-deleted="onDataUnmarkDeleted(tab.id)"
+              @sort-change="(payload: { prop: string | null; order: 'ascending' | 'descending' | null }) => handleSortChange(tab, payload)"
+            />
+
+                      <!-- Fallback if no view mode -->
+                      <div v-else class="no-view-mode">
+                        <el-empty description="No view mode selected" />
+                      </div>
+                    </template>
+                  </div>
+
+                  <!-- Footer (only for table tabs) -->
+                  <TableViewFooter
+                    v-if="tab.tabType !== 'query'"
+                    :view-mode="tab.viewMode || 'data'"
+                    :data="tab.data"
+                    @update:view-mode="(val: 'structure' | 'data') => switchViewMode(tab, val)"
+                    @page-change="(page: number) => handlePageChange(tab, page)"
+                    @per-page-change="(perPage: number) => handlePerPageChange(tab, perPage)"
+                    @add-row="handleAddRow(tab)"
+                  />
+                </div>
+              </el-tab-pane>
+            </el-tabs>
+            </div>
+            <!-- Data table cell sidebar (inside content-area, full height) -->
+            <div
+              v-if="dataSidebarVisible"
+              class="data-detail-sidebar-wrap"
+            >
+              <TableDataCellSidebar
+                ref="dataSidebarRef"
+                :visible="true"
+                :selected-row="dataSidebarSelectedRow"
+                :selected-column="dataSidebarSelectedColumn"
+                :modified-fields="dataSidebarModifiedFields"
+                :is-deleted="dataSidebarIsDeleted"
+                :column-types="dataSidebarColumnTypes"
+                @close="onDataSidebarClose(activeTabId)"
+                @update-field="(field: string, value: unknown) => onDataUpdateField(activeTabId, { field, value })"
+                @mark-deleted="onDataMarkDeleted(activeTabId)"
+                @unmark-deleted="onDataUnmarkDeleted(activeTabId)"
+              />
+            </div>
+          </div>
+
+          <div
+            v-if="sqlHistoryPanelOpen"
+            class="splitter-bar"
+            role="separator"
+            aria-orientation="horizontal"
+            @mousedown.prevent="startSqlPanelResize"
           />
 
-                    <!-- Fallback if no view mode -->
-                    <div v-else class="no-view-mode">
-                      <el-empty description="No view mode selected" />
-                    </div>
-                  </template>
-                </div>
-
-                <!-- Footer (only for table tabs) -->
-                <TableViewFooter
-                  v-if="tab.tabType !== 'query'"
-                  :view-mode="tab.viewMode || 'data'"
-                  :data="tab.data"
-                  @update:view-mode="(val: 'structure' | 'data') => switchViewMode(tab, val)"
-                  @page-change="(page: number) => handlePageChange(tab, page)"
-                  @per-page-change="(perPage: number) => handlePerPageChange(tab, perPage)"
-                  @add-row="handleAddRow(tab)"
-                />
-              </div>
-            </el-tab-pane>
-          </el-tabs>
-          </div>
-          <!-- Data table cell sidebar (inside content-area, full height) -->
           <div
-            v-if="dataSidebarVisible"
-            class="data-detail-sidebar-wrap"
+            v-if="sqlHistoryPanelOpen"
+            class="bottom-sql-panel-wrap"
+            :style="{ height: `${sqlPanelHeight}px` }"
           >
-            <TableDataCellSidebar
-              ref="dataSidebarRef"
-              :visible="true"
-              :selected-row="dataSidebarSelectedRow"
-              :selected-column="dataSidebarSelectedColumn"
-              :modified-fields="dataSidebarModifiedFields"
-              :is-deleted="dataSidebarIsDeleted"
-              :column-types="dataSidebarColumnTypes"
-              @close="onDataSidebarClose(activeTabId)"
-              @update-field="(field: string, value: unknown) => onDataUpdateField(activeTabId, { field, value })"
-              @mark-deleted="onDataMarkDeleted(activeTabId)"
-              @unmark-deleted="onDataUnmarkDeleted(activeTabId)"
-            />
+            <BottomSqlHistoryPanel />
           </div>
         </div>
       </div>
@@ -230,18 +248,19 @@
 </template>
 
 <script setup lang="ts">
-import { useDatabase } from '@/presentation/composables/useDatabase';
-import { useConnectionStore } from '@/presentation/stores/connectionStore';
-import { Connection, Document, Folder, Search } from '@element-plus/icons-vue';
-import { ElMessage, ElMessageBox } from 'element-plus';
-import { storeToRefs } from 'pinia';
-import { computed, nextTick, onMounted, onUnmounted, reactive, ref, watch } from 'vue';
+import BottomSqlHistoryPanel from '@/presentation/components/BottomSqlHistoryPanel.vue';
 import DatabaseSelectModal from '@/presentation/components/DatabaseSelectModal.vue';
 import QueryEditorTab from '@/presentation/components/QueryEditorTab.vue';
 import TableDataCellSidebar from '@/presentation/components/TableDataCellSidebar.vue';
 import TableDataView from '@/presentation/components/TableDataView.vue';
 import TableStructureView from '@/presentation/components/TableStructureView.vue';
 import TableViewFooter from '@/presentation/components/TableViewFooter.vue';
+import { useDatabase } from '@/presentation/composables/useDatabase';
+import { useConnectionStore } from '@/presentation/stores/connectionStore';
+import { Connection, Document, Folder, Search } from '@element-plus/icons-vue';
+import { ElMessage, ElMessageBox } from 'element-plus';
+import { storeToRefs } from 'pinia';
+import { computed, nextTick, onMounted, onUnmounted, reactive, ref, watch } from 'vue';
 
 interface Table {
   name: string;
@@ -290,8 +309,20 @@ interface Tab {
   whereClause?: string | null;
 }
 
+type DatabaseQueryResult = {
+  success: boolean;
+  data?: Array<Record<string, unknown>>;
+  error?: string;
+};
+
+type TableStructureResult = {
+  columns: NonNullable<Tab['structure']>['columns'];
+  indexes?: NonNullable<Tab['structure']>['indexes'];
+  rows?: number;
+};
+
 const connectionStore = useConnectionStore();
-const { dataSidebarOpen, rowDetailPanelEnabled, currentConnection, activeConnections, currentTabId } =
+const { dataSidebarOpen, rowDetailPanelEnabled, sqlHistoryPanelOpen, currentConnection, activeConnections, currentTabId } =
   storeToRefs(connectionStore);
 const { switchToConnection } = connectionStore;
 const { getTables, getTableStructure, executeQuery } = useDatabase();
@@ -299,18 +330,6 @@ const { getTables, getTableStructure, executeQuery } = useDatabase();
 // Use currentConnection, but fallback to first active connection if currentConnection is null
 const connection = computed(() => {
   const conn = currentConnection.value || (activeConnections.value.length > 0 ? activeConnections.value[0] : null);
-
-  console.log('ConnectionContent - Computing connection:', {
-    hasCurrentConnection: !!currentConnection.value,
-    currentTabId: currentTabId.value,
-    activeConnectionsCount: activeConnections.value.length,
-    connection: conn ? {
-      id: conn.id,
-      name: conn.name,
-      database: conn.database,
-      type: conn.type
-    } : null
-  });
 
   return conn;
 });
@@ -482,18 +501,56 @@ function clearDataSidebarState(tabId: string) {
   s.deletedRows = [];
 }
 
-const tableDataViewRefs: Record<
-  string,
-  {
-    runSave: () => Promise<void>;
-    addRow?: () => void;
-    hasUnsavedChanges?: () => boolean;
-    clearUnsavedChanges?: () => void;
-  } | null
-> = {};
+type TableDataViewRef = {
+  runSave: () => Promise<void>;
+  addRow?: () => void;
+  hasUnsavedChanges?: () => boolean;
+  clearUnsavedChanges?: () => void;
+};
+const tableDataViewRefs: Record<string, TableDataViewRef | null> = {};
 const dataSidebarRef = ref<{ flushEditsFromDom: () => void } | null>(null);
 
-function setTableDataViewRef(tabId: string, el: { runSave: () => Promise<void> } | null) {
+const splitRef = ref<HTMLElement | null>(null);
+const sqlPanelHeight = ref(240);
+const resizingSqlPanel = ref(false);
+let resizeStartY = 0;
+let resizeStartHeight = 0;
+
+function clamp(n: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, n));
+}
+
+function onSqlPanelResizeMove(e: MouseEvent) {
+  if (!resizingSqlPanel.value) return;
+  const root = splitRef.value;
+  if (!root) return;
+  const max = Math.floor(root.clientHeight * 0.7);
+  const min = 120;
+  const delta = resizeStartY - e.clientY;
+  sqlPanelHeight.value = clamp(resizeStartHeight + delta, min, max);
+}
+
+function onSqlPanelResizeUp() {
+  if (!resizingSqlPanel.value) return;
+  resizingSqlPanel.value = false;
+  document.body.style.cursor = '';
+  document.body.style.userSelect = '';
+  window.removeEventListener('mousemove', onSqlPanelResizeMove);
+  window.removeEventListener('mouseup', onSqlPanelResizeUp);
+}
+
+function startSqlPanelResize(e: MouseEvent) {
+  if (!sqlHistoryPanelOpen.value) return;
+  resizingSqlPanel.value = true;
+  resizeStartY = e.clientY;
+  resizeStartHeight = sqlPanelHeight.value;
+  document.body.style.cursor = 'row-resize';
+  document.body.style.userSelect = 'none';
+  window.addEventListener('mousemove', onSqlPanelResizeMove);
+  window.addEventListener('mouseup', onSqlPanelResizeUp);
+}
+
+function setTableDataViewRef(tabId: string, el: TableDataViewRef | null) {
   if (el) {
     tableDataViewRefs[tabId] = el;
   } else {
@@ -611,30 +668,13 @@ const dataSidebarColumnTypes = computed(() => {
 // Define loadTables function before watch to avoid "Cannot access before initialization" error
 const loadTables = async () => {
   if (!connection.value?.id || !connection.value?.database) {
-    console.log('Cannot load tables - missing connection or database:', {
-      hasConnection: !!connection.value,
-      hasId: !!connection.value?.id,
-      hasDatabase: !!connection.value?.database,
-      connection: connection.value
-    });
     // Clear current connection's tables in-place to keep per-connection state object
     tables.value.splice(0, tables.value.length);
     return;
   }
-
-  console.log('Loading tables for connection:', {
-    id: connection.value.id,
-    database: connection.value.database,
-    type: connection.value.type
-  });
   isLoadingTables.value = true;
   try {
     const tableList = await getTables(connection.value.id);
-    console.log('Loaded tables result:', {
-      count: tableList?.length || 0,
-      tables: tableList,
-      isArray: Array.isArray(tableList)
-    });
     // Replace tables in-place to preserve reference used by connectionViewState
     tables.value.splice(0, tables.value.length, ...((tableList || []) as Table[]));
   } catch (error) {
@@ -650,7 +690,6 @@ watch(
   activeConnections,
   (newConnections) => {
     if (newConnections.length > 0 && !currentTabId.value) {
-      console.log('No currentTabId, switching to first connection');
       switchToConnection(newConnections[0].tabId);
     }
   },
@@ -661,13 +700,6 @@ watch(
 watch(
   () => [connection.value?.id, connection.value?.database],
   async () => {
-    console.log('Connection changed:', {
-      hasConnection: !!connection.value,
-      connectionId: connection.value?.id,
-      database: connection.value?.database,
-      activeConnectionsCount: activeConnections.value.length
-    });
-
     if (connection.value?.database) {
       // Only load tables if this connection doesn't already have cached tables
       const connId = connection.value.id;
@@ -773,11 +805,7 @@ const loadTableStructure = async (tab: Tab) => {
   tab.structure = undefined; // Clear previous structure
 
   try {
-    console.log('Loading table structure for:', tab.tableName, 'connection:', connection.value.id);
-    const structure = await getTableStructure(connection.value.id, tab.tableName);
-    console.log('Table structure loaded:', structure);
-    console.log('Structure columns:', structure?.columns);
-    console.log('Structure columns length:', structure?.columns?.length);
+    const structure = (await getTableStructure(connection.value.id, tab.tableName)) as Partial<TableStructureResult> | null;
 
     if (structure && structure.columns && Array.isArray(structure.columns)) {
       // Find the tab in the array to ensure we're modifying the reactive object
@@ -786,19 +814,17 @@ const loadTableStructure = async (tab: Tab) => {
         // Modify the reactive object directly
         tabs.value[tabIndex].structure = {
           columns: structure.columns,
-          indexes: structure.indexes || [],
+          indexes: structure.indexes ?? [],
           rows: structure.rows,
         };
         tabs.value[tabIndex].isLoadingStructure = false;
-        console.log('Tab structure set via array index:', tabs.value[tabIndex].structure);
       } else {
         // Fallback: direct assignment
         tab.structure = {
           columns: structure.columns,
-          indexes: structure.indexes || [],
+          indexes: structure.indexes ?? [],
           rows: structure.rows,
         };
-        console.log('Tab structure set directly:', tab.structure);
       }
     } else {
       tab.structureError = 'No structure data returned';
@@ -818,7 +844,6 @@ const loadTableStructure = async (tab: Tab) => {
       tab.isLoadingStructure = false;
     }
     await nextTick(); // Wait for Vue to update
-    console.log('Loading finished. isLoadingStructure:', tab.isLoadingStructure, 'hasStructure:', !!tab.structure, 'columnsCount:', tab.structure?.columns?.length);
   }
 };
 
@@ -855,8 +880,6 @@ async function loadTableData(tab: Tab, page: number = 1, perPage: number = 50) {
       tableName = tab.tableName;
     }
 
-    console.log('Loading table data:', tab.tableName, 'page:', page, 'perPage:', perPage, 'whereClause:', tab.whereClause, 'sortBy:', targetTab.sortBy, 'sortOrder:', targetTab.sortOrder);
-
     // Build WHERE clause
     const whereClause = targetTab.whereClause ? ` WHERE ${targetTab.whereClause}` : '';
 
@@ -875,12 +898,10 @@ async function loadTableData(tab: Tab, page: number = 1, perPage: number = 50) {
 
     // Get total count first
     const countQuery = `SELECT COUNT(*) as total FROM ${tableName}${whereClause}`;
-    const countResult = await window.electron?.invoke('database:query', {
+    const countResult = (await window.electron?.invoke('database:query', {
       connectionId: connection.value.id,
       query: countQuery
-    });
-
-    console.log('Count result:', countResult);
+    })) as DatabaseQueryResult | undefined;
 
     const total = countResult?.success && countResult.data?.[0]?.total
       ? parseInt(String(countResult.data[0].total), 10)
@@ -888,15 +909,10 @@ async function loadTableData(tab: Tab, page: number = 1, perPage: number = 50) {
 
     // Get data
     const queryStr = `SELECT * FROM ${tableName}${whereClause}${orderClause} LIMIT ${perPage} OFFSET ${offset}`;
-    const result = await window.electron?.invoke('database:query', {
+    const result = (await window.electron?.invoke('database:query', {
       connectionId: connection.value.id,
       query: queryStr
-    });
-
-    console.log('Table data query result:', result);
-    console.log('Result data:', result?.data);
-    console.log('Result data type:', Array.isArray(result?.data));
-    console.log('Result data length:', result?.data?.length);
+    })) as DatabaseQueryResult | undefined;
 
     if (result?.success && result.data) {
       const dataRows = Array.isArray(result.data) ? result.data : [];
@@ -915,8 +931,6 @@ async function loadTableData(tab: Tab, page: number = 1, perPage: number = 50) {
         tab.data = dataObj;
         tab.isLoadingData = false;
       }
-
-      console.log('Data set:', dataObj);
       await nextTick();
     } else {
       const errorMsg = result?.error || 'Failed to load table data';
@@ -980,8 +994,8 @@ const handlePerPageChange = async (tab: Tab, perPage: number) => {
 // Handle add row
 const handleAddRow = (tab: Tab) => {
   const comp = tableDataViewRefs[tab.id];
-  if (comp && typeof (comp as { addRow?: () => void }).addRow === 'function') {
-    (comp as { addRow: () => void }).addRow();
+  if (comp?.addRow) {
+    comp.addRow();
   }
 };
 
@@ -1038,11 +1052,6 @@ function areDbValuesEqual(a: unknown, b: unknown): boolean {
 
 // Handle add new query tab
 const handleAddQuery = () => {
-  console.log('ConnectionContent: handleAddQuery called', {
-    hasConnection: !!connection.value,
-    connectionId: connection.value?.id
-  });
-
   if (!connection.value?.id) {
     ElMessage.warning('Please connect to a database first');
     return;
@@ -1064,8 +1073,6 @@ const handleAddQuery = () => {
 
   tabs.value.push(newQueryTab);
   activeTabId.value = newQueryTab.id;
-
-  console.log('ConnectionContent: New query tab created', newQueryTab);
 };
 
 // Get column names from data rows
@@ -1094,19 +1101,15 @@ function handleDataSidebarClickOutside(e: MouseEvent) {
 
 // Debug on mount
 onMounted(() => {
+  // Central SQL history listener (emitted from preload wrapper)
+  connectionStore.attachSqlHistoryListener();
   document.addEventListener('click', handleDataSidebarClickOutside);
   document.addEventListener('keydown', handleSaveKeydown, { capture: true });
-  console.log('ConnectionContent mounted:', {
-    hasConnection: !!connection.value,
-    connection: connection.value,
-    currentConnection: currentConnection,
-    activeConnections: activeConnections,
-    currentTabId: currentTabId
-  });
 });
 onUnmounted(() => {
   document.removeEventListener('click', handleDataSidebarClickOutside);
   document.removeEventListener('keydown', handleSaveKeydown, { capture: true });
+  onSqlPanelResizeUp();
 });
 
 const formatDate = (date: Date | string) => {
@@ -1148,20 +1151,10 @@ const formatDate = (date: Date | string) => {
     height: 100%;
     display: flex;
     flex-direction: column;
-    background-color: var(--el-bg-color-page);
+    background-color: var(--el-bg-color);
     border-right: 1px solid var(--el-border-color);
     overflow: hidden;
     flex-shrink: 0;
-
-    .dark & {
-      background-color: rgba(45, 55, 72, 0.6);
-      border-right-color: rgba(74, 85, 104, 0.5);
-    }
-
-    [data-theme="light"] & {
-      background-color: rgba(255, 255, 255, 0.8);
-      border-right-color: rgba(226, 232, 240, 0.8);
-    }
 
     .sidebar-header {
       padding: 16px;
@@ -1253,20 +1246,20 @@ const formatDate = (date: Date | string) => {
           background-color: rgba(64, 158, 255, 0.1);
           .table-name,
           .table-icon {
-            color: #303133;
+            color: var(--el-text-color-primary);
           }
           .dark & {
             background-color: rgba(64, 158, 255, 0.18);
             .table-name,
             .table-icon {
-              color: #e5e7eb;
+              color: var(--el-text-color-primary);
             }
           }
           [data-theme="light"] & {
             background-color: rgba(64, 158, 255, 0.08);
             .table-name,
             .table-icon {
-              color: #303133;
+              color: var(--el-text-color-primary);
             }
           }
         }
@@ -1340,8 +1333,8 @@ const formatDate = (date: Date | string) => {
         box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
 
         .dark & {
-          background-color: rgba(45, 55, 72, 0.8);
-          border-color: rgba(74, 85, 104, 0.5);
+          background-color: var(--el-fill-color);
+          border-color: var(--el-border-color-light);
           box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
         }
 
@@ -1401,7 +1394,7 @@ const formatDate = (date: Date | string) => {
           background-color: var(--el-fill-color-lighter);
 
           .dark & {
-            background-color: rgba(74, 85, 104, 0.3);
+            background-color: var(--el-border-color-lighter);
           }
 
           [data-theme="light"] & {
@@ -1430,6 +1423,50 @@ const formatDate = (date: Date | string) => {
       overflow: hidden;
     }
 
+    .content-split {
+      flex: 1;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    .content-split > .content-area-inner {
+      flex: 1;
+      min-height: 0;
+    }
+
+    .splitter-bar {
+      height: 6px;
+      cursor: row-resize;
+      flex: 0 0 auto;
+      background: transparent;
+      position: relative;
+    }
+
+    .splitter-bar::before {
+      content: '';
+      position: absolute;
+      left: 16px;
+      right: 16px;
+      top: 2px;
+      height: 2px;
+      border-radius: 2px;
+      background-color: var(--el-border-color-light);
+      opacity: 0.9;
+    }
+
+    .splitter-bar:hover::before {
+      background-color: var(--el-color-primary);
+      opacity: 0.95;
+    }
+
+    .bottom-sql-panel-wrap {
+      flex: 0 0 auto;
+      min-height: 120px;
+      overflow: hidden;
+    }
+
     .tabs-container {
       flex: 1;
       display: flex;
@@ -1445,7 +1482,7 @@ const formatDate = (date: Date | string) => {
         .el-tabs__header {
           margin: 0;
           padding: 0 16px;
-          background-color: var(--el-bg-color-page);
+          background-color: var(--el-bg-color);
           border-bottom: 1px solid var(--el-border-color-light);
         }
 

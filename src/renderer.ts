@@ -12,10 +12,8 @@ import './styles/theme-black.css';
 import './styles/index.scss';
 
 const initTheme = () => {
-  const saved = localStorage.getItem('theme');
-  const isDark =
-    saved === 'dark' ||
-    (!saved && window.matchMedia('(prefers-color-scheme: dark)').matches);
+  // App uses a fixed dark theme (black background, white text).
+  const isDark = true;
   const html = document.documentElement;
   if (isDark) {
     html.classList.add('dark');
@@ -24,6 +22,7 @@ const initTheme = () => {
     html.classList.remove('dark');
     html.setAttribute('data-theme', 'light');
   }
+  localStorage.setItem('theme', 'dark');
 };
 initTheme();
 

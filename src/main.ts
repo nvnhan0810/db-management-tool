@@ -1,9 +1,9 @@
 import { app, BrowserWindow, dialog, ipcMain } from 'electron';
-import fs from 'node:fs';
 import started from 'electron-squirrel-startup';
+import fs from 'node:fs';
 import path from 'node:path';
-import { deleteSecret, getSecret, saveSecret } from './main-secrets';
 import { databaseService } from './infrastructure/database/databaseService';
+import { deleteSecret, getSecret, saveSecret } from './main-secrets';
 
 if (started) {
   app.quit();
@@ -19,7 +19,8 @@ const createWindow = () => {
       nodeIntegration: false,
       contextIsolation: true,
     },
-    backgroundColor: process.platform === 'darwin' ? '#f8f9fa' : '#1a202c',
+    // Keep the window background dark to match the fixed dark theme.
+    backgroundColor: '#1e1e1e',
     vibrancy: process.platform === 'darwin' ? 'under-window' : undefined,
   });
 
@@ -96,9 +97,10 @@ ipcMain.handle('database:hasActiveConnections', () =>
   databaseService.hasActiveConnections()
 );
 
-ipcMain.handle('database:query', (_event, { connectionId, query }) =>
-  databaseService.query(connectionId, query)
-);
+ipcMain.handle('database:query', async (_event, { connectionId, query }) => {
+  console.log('[database:query]', { connectionId, query });
+  return await databaseService.query(connectionId, query);
+});
 ipcMain.handle('database:getTables', async (_event, { connectionId }) =>
   databaseService.getTables(connectionId)
 );
@@ -112,6 +114,7 @@ ipcMain.handle('database:getDatabases', async (_event, { connectionId }) => {
 });
 ipcMain.handle('database:executeQuery', async (_event, { connectionId, query }) => {
   if (!connectionId || !query) throw new Error('Missing connectionId or query');
+  console.log('[database:executeQuery]', { connectionId, query });
   return databaseService.executeQuery(connectionId, query);
 });
 

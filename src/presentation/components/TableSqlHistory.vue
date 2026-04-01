@@ -59,16 +59,6 @@ const props = defineProps<{
   executedQueries: ExecutedQuery[];
 }>();
 
-// Debug: Watch for changes in executedQueries
-import { watch } from 'vue';
-
-watch(() => props.executedQueries, (newQueries) => {
-  console.log('TableSqlHistory: executedQueries changed:', newQueries);
-  if (newQueries.length > 0) {
-    console.log('TableSqlHistory: Last query:', newQueries[0]);
-  }
-}, { deep: true });
-
 const showContent = ref(true);
 
 const toggleContent = () => {

@@ -516,38 +516,38 @@ const handleDialogOpen = () => {
 
 /* Dark mode adjustments */
 .dark .database-card {
-  background-color: #2d3748 !important;
-  border-color: #4a5568 !important;
-  color: #f7fafc !important;
+  background-color: var(--el-fill-color) !important;
+  border-color: var(--el-border-color) !important;
+  color: var(--el-text-color-primary) !important;
 }
 
 .dark .database-card:hover {
-  background-color: #4a5568 !important;
-  border-color: #409eff !important;
+  background-color: var(--el-border-color) !important;
+  border-color: var(--el-color-primary) !important;
   transform: translateY(-1px);
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3) !important;
 }
 
 .dark .database-card.active {
-  background-color: #4a5568 !important;
-  border-color: #409eff !important;
+  background-color: var(--el-border-color) !important;
+  border-color: var(--el-color-primary) !important;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3) !important;
 }
 
 .dark .database-name {
-  color: #f7fafc !important;
+  color: var(--el-text-color-primary) !important;
 }
 
 .dark .database-details {
-  color: #a0aec0 !important;
+  color: var(--el-text-color-secondary) !important;
 }
 
 .dark .database-icon {
-  color: #e2e8f0 !important;
+  color: var(--el-text-color-primary) !important;
 }
 
 .dark .database-list-header h4 {
-  color: #f7fafc !important;
+  color: var(--el-text-color-primary) !important;
 }
 
 /* Responsive adjustments */

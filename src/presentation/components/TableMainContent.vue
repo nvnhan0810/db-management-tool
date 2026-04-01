@@ -3,8 +3,8 @@
     <div v-if="displayMode === 'data'" class="data-view">
       <div v-if="tableData.length === 0 && !isLoadingData" class="no-data">
         <div class="no-data-content">
-          <el-empty 
-            description="This table has no data" 
+          <el-empty
+            description="This table has no data"
             :image-size="60"
           />
           <div class="load-data-button">
@@ -35,9 +35,9 @@
           show-overflow-tooltip
         >
           <template #default="scope">
-            <div 
-              class="cell-content" 
-              :class="{ 
+            <div
+              class="cell-content"
+              :class="{
                 'modified-cell': isCellModified(scope.row, column.name),
                 'deleted-row': isRowDeleted(scope.row)
               }"
@@ -65,8 +65,8 @@
       <div class="structure-section">
         <h4>Table Structure</h4>
         <div v-if="columns.length === 0" class="no-columns">
-          <el-empty 
-            description="No columns loaded - Database connection may be closed" 
+          <el-empty
+            description="No columns loaded - Database connection may be closed"
             :image-size="60"
           />
           <div class="error-message">
@@ -201,7 +201,7 @@ const startEditCell = async (row: any, field: string, value: any) => {
     field,
     value: String(value || '')
   };
-  
+
   await nextTick();
   if (cellInput.value) {
     // Handle both single element and array of elements
@@ -226,14 +226,12 @@ const saveCell = (row: any, field: string) => {
 const handleDeleteRow = (row: any) => {
   if (selectedRow.value === row) {
     deletedRows.value.add(row);
-    console.log('Row marked for deletion:', row);
   }
 };
 
 // Handle save delete
 const handleSaveDelete = () => {
   if (selectedRow.value && deletedRows.value.has(selectedRow.value)) {
-    console.log('Deleting row:', selectedRow.value);
     emit('row-deleted', selectedRow.value);
     deletedRows.value.delete(selectedRow.value);
     selectedRow.value = null;
@@ -267,11 +265,11 @@ const handleKeydown = (event: KeyboardEvent) => {
     event.preventDefault();
     return;
   }
-  
+
   // Handle Ctrl/Cmd + S only when we have pending changes
   if ((event.ctrlKey || event.metaKey) && event.key === 's') {
     const hasPendingChanges = editingCell.value || (selectedRow.value && deletedRows.value.has(selectedRow.value));
-    
+
     if (hasPendingChanges) {
       // Handle save for editing cell
       if (editingCell.value) {
@@ -279,7 +277,7 @@ const handleKeydown = (event: KeyboardEvent) => {
         event.preventDefault();
         return;
       }
-      
+
       // Handle save for deleted row
       if (selectedRow.value && deletedRows.value.has(selectedRow.value)) {
         handleSaveDelete();
@@ -300,8 +298,8 @@ const columnsWithFullType = computed(() => {
 
 // Check if there are unsaved changes
 const hasUnsavedChanges = () => {
-  return editingCell.value !== null || 
-         modifiedCells.value.size > 0 || 
+  return editingCell.value !== null ||
+         modifiedCells.value.size > 0 ||
          deletedRows.value.size > 0;
 };
 
@@ -676,7 +674,7 @@ onUnmounted(() => {
 }
 
 .dark .truncated-text:hover {
-  color: #409eff;
+  color: var(--el-color-primary);
 }
 
 /* Table header styles */
@@ -698,28 +696,28 @@ onUnmounted(() => {
 :deep(.el-table__body td) {
   background-color: var(--el-bg-color) !important;
   color: var(--el-text-color-primary) !important;
-  border-bottom: 1px solid var(--el-border-color-light);
+  border-bottom: 1px solid var(--el-border-color-darker);
 }
 
 /* Dark mode table styles */
 .dark :deep(.el-table__header-wrapper) {
-  background-color: #2d3748;
+  background-color: var(--el-fill-color);
 }
 
 .dark :deep(.el-table__header th) {
-  background-color: #2d3748 !important;
+  background-color: var(--el-fill-color) !important;
   color: var(--el-text-color-primary) !important;
-  border-bottom-color: #4a5568;
+  border-bottom-color: var(--el-border-color);
 }
 
 .dark :deep(.el-table__body-wrapper) {
-  background-color: #1a202c;
+  background-color: var(--el-bg-color-overlay);
 }
 
 .dark :deep(.el-table__body td) {
-  background-color: #1a202c !important;
+  background-color: var(--el-bg-color-overlay) !important;
   color: var(--el-text-color-primary) !important;
-  border-bottom-color: #4a5568;
+  border-bottom-color: var(--el-border-color);
 }
 
 </style>

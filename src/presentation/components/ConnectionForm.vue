@@ -167,8 +167,6 @@ const loadSavedConnection = async (savedConnection: any) => {
     // Set editing mode
     isEditing.value = true;
     originalConnectionId.value = savedConnection.id;
-
-    console.log('Loaded saved connection:', cleanConnection);
   } catch (err) {
     console.error('Failed to load saved connection:', err);
   }
