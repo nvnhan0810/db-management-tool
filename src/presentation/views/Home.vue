@@ -138,9 +138,9 @@ const handleLoadConnection = async (connection: SavedConnection) => {
   try {
     const loadingMessage = ElMessage({ message: 'Connecting...', type: 'info', duration: 0 });
     const decryptedConnection = await getDecryptedConnection(connection);
-    const success = await connect(decryptedConnection);
+    const resp = await connect(decryptedConnection);
 
-    if (success) {
+    if (resp.success) {
       await updateLastUsed(connection.id);
       const connectionWithName = { ...decryptedConnection, name: connection.name };
       connectionsStore.setActiveConnection(connectionWithName);
@@ -151,7 +151,7 @@ const handleLoadConnection = async (connection: SavedConnection) => {
       router.push({ name: 'workspace' });
     } else {
       loadingMessage.close();
-      ElMessage.error('Failed to connect to database');
+      ElMessage.error(resp.error || 'Failed to connect to database');
     }
   } catch (error) {
     ElMessage.error(error instanceof Error ? error.message : 'Failed to connect to database');

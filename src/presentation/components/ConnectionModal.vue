@@ -360,13 +360,14 @@ const handleTestConnection = async () => {
 
   try {
     const cleanConnection = buildCleanConnection();
-    const success = await connect(cleanConnection);
+    const resp = await connect(cleanConnection);
 
-    if (success) {
+    if (resp.success) {
       await disconnect(cleanConnection.id);
       ElMessage.success('Connection test successful!');
     } else {
-      error.value = 'Connection test failed. Please check your credentials and try again.';
+      error.value =
+        resp.error || 'Connection test failed. Please check your credentials and try again.';
       ElMessage.error(error.value);
     }
   } catch (err) {
@@ -426,9 +427,9 @@ const handleConnect = async () => {
   try {
     const cleanConnection = buildCleanConnection();
     // Connect to database
-    const success = await connect(cleanConnection);
+    const resp = await connect(cleanConnection);
 
-    if (success) {
+    if (resp.success) {
       // Set as active connection in store
       const connectionName = form.name || `${form.type} - ${form.host}`;
       const connectionWithName = {
@@ -462,7 +463,7 @@ const handleConnect = async () => {
       // Navigate to workspace page
       router.push({ name: 'workspace' });
     } else {
-      error.value = 'Failed to connect to database. Please check your credentials.';
+      error.value = resp.error || 'Failed to connect to database. Please check your credentials.';
       ElMessage.error(error.value);
     }
   } catch (err) {

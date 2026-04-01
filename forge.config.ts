@@ -3,6 +3,7 @@ import { MakerSquirrel } from '@electron-forge/maker-squirrel';
 import { MakerZIP } from '@electron-forge/maker-zip';
 import { MakerDeb } from '@electron-forge/maker-deb';
 import { MakerRpm } from '@electron-forge/maker-rpm';
+import path from 'node:path';
 import { VitePlugin } from '@electron-forge/plugin-vite';
 import { FusesPlugin } from '@electron-forge/plugin-fuses';
 import { FuseV1Options, FuseVersion } from '@electron/fuses';
@@ -12,10 +13,14 @@ const config: ForgeConfig = {
   packagerConfig: {
     asar: true,
     icon: 'assets/icons/icon', // Path to .icns file (without extension)
+    // Forge + Vite packages only the Vite bundle into `app.asar` (no `node_modules`).
+    // Ship native deps explicitly so runtime `require()` can find them.
+    extraResource: [path.resolve(__dirname, 'node_modules/keytar')],
   },
   rebuildConfig: {
     // Rebuild native modules for Electron
     force: true,
+    onlyModules: ['keytar'],
   },
   makers: [
     new MakerSquirrel({}),

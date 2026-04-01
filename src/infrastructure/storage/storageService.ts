@@ -19,6 +19,16 @@ export interface SavedConnection extends Omit<DatabaseConnection, 'password' | '
 const STORAGE_KEY = 'saved_connections';
 
 class StorageService {
+  private ensureOk(resp: unknown, fallbackMessage: string) {
+    if (resp === true) return;
+    if (resp && typeof resp === 'object' && 'success' in resp) {
+      const r = resp as { success?: boolean; error?: string };
+      if (r.success) return;
+      throw new Error(r.error || fallbackMessage);
+    }
+    throw new Error(fallbackMessage);
+  }
+
   async getSavedConnections(): Promise<SavedConnection[]> {
     try {
       const stored = localStorage.getItem(STORAGE_KEY);
@@ -64,26 +74,38 @@ class StorageService {
       };
     }
 
-    await window.electron.invoke('secrets:save', { id: passwordId, value: connection.password });
+    this.ensureOk(
+      await window.electron.invoke('secrets:save', { id: passwordId, value: connection.password }),
+      'Failed to save DB password'
+    );
 
     if (connection.ssh?.enabled) {
       if (connection.ssh.password && savedConnection.ssh?.passwordId) {
-        await window.electron.invoke('secrets:save', {
-          id: savedConnection.ssh.passwordId,
-          value: connection.ssh.password,
-        });
+        this.ensureOk(
+          await window.electron.invoke('secrets:save', {
+            id: savedConnection.ssh.passwordId,
+            value: connection.ssh.password,
+          }),
+          'Failed to save SSH password'
+        );
       }
       if (connection.ssh.privateKey && savedConnection.ssh?.privateKeyId) {
-        await window.electron.invoke('secrets:save', {
-          id: savedConnection.ssh.privateKeyId,
-          value: connection.ssh.privateKey,
-        });
+        this.ensureOk(
+          await window.electron.invoke('secrets:save', {
+            id: savedConnection.ssh.privateKeyId,
+            value: connection.ssh.privateKey,
+          }),
+          'Failed to save SSH private key'
+        );
       }
       if (connection.ssh.passphrase && savedConnection.ssh?.passphraseId) {
-        await window.electron.invoke('secrets:save', {
-          id: savedConnection.ssh.passphraseId,
-          value: connection.ssh.passphrase,
-        });
+        this.ensureOk(
+          await window.electron.invoke('secrets:save', {
+            id: savedConnection.ssh.passphraseId,
+            value: connection.ssh.passphrase,
+          }),
+          'Failed to save SSH passphrase'
+        );
       }
     }
 
@@ -112,19 +134,45 @@ class StorageService {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(filtered));
 
     if (conn) {
-      await window.electron.invoke('secrets:delete', { id: conn.passwordId });
-      if (conn.ssh?.passwordId) await window.electron.invoke('secrets:delete', { id: conn.ssh.passwordId });
-      if (conn.ssh?.privateKeyId) await window.electron.invoke('secrets:delete', { id: conn.ssh.privateKeyId });
-      if (conn.ssh?.passphraseId) await window.electron.invoke('secrets:delete', { id: conn.ssh.passphraseId });
+      this.ensureOk(
+        await window.electron.invoke('secrets:delete', { id: conn.passwordId }),
+        'Failed to delete DB password secret'
+      );
+      if (conn.ssh?.passwordId) {
+        this.ensureOk(
+          await window.electron.invoke('secrets:delete', { id: conn.ssh.passwordId }),
+          'Failed to delete SSH password secret'
+        );
+      }
+      if (conn.ssh?.privateKeyId) {
+        this.ensureOk(
+          await window.electron.invoke('secrets:delete', { id: conn.ssh.privateKeyId }),
+          'Failed to delete SSH private key secret'
+        );
+      }
+      if (conn.ssh?.passphraseId) {
+        this.ensureOk(
+          await window.electron.invoke('secrets:delete', { id: conn.ssh.passphraseId }),
+          'Failed to delete SSH passphrase secret'
+        );
+      }
     }
   }
 
   async getDecryptedConnection(
     saved: SavedConnection
   ): Promise<DatabaseConnection & { name?: string }> {
-    const decryptedPassword = (await window.electron.invoke('secrets:get', {
+    const dbPwdResp = (await window.electron.invoke('secrets:get', {
       id: saved.passwordId,
-    })) as string | null;
+    })) as { success?: boolean; value?: string | null; error?: string } | string | null;
+    const decryptedPassword =
+      typeof dbPwdResp === 'string' || dbPwdResp === null
+        ? dbPwdResp
+        : dbPwdResp.success
+          ? (dbPwdResp.value ?? null)
+          : (() => {
+              throw new Error(dbPwdResp.error || 'Failed to decrypt DB password');
+            })();
 
     const decrypted: DatabaseConnection & { name?: string } = {
       id: saved.id,
@@ -146,15 +194,27 @@ class StorageService {
       };
 
       if (saved.ssh.passwordId) {
-        const pwd = (await window.electron.invoke('secrets:get', { id: saved.ssh.passwordId })) as string | null;
+        const r = (await window.electron.invoke('secrets:get', { id: saved.ssh.passwordId })) as
+          | { success?: boolean; value?: string | null; error?: string }
+          | string
+          | null;
+        const pwd = typeof r === 'string' || r === null ? r : r.success ? (r.value ?? null) : (() => { throw new Error(r.error || 'Failed to decrypt SSH password'); })();
         if (pwd) decrypted.ssh!.password = pwd;
       }
       if (saved.ssh.privateKeyId) {
-        const key = (await window.electron.invoke('secrets:get', { id: saved.ssh.privateKeyId })) as string | null;
+        const r = (await window.electron.invoke('secrets:get', { id: saved.ssh.privateKeyId })) as
+          | { success?: boolean; value?: string | null; error?: string }
+          | string
+          | null;
+        const key = typeof r === 'string' || r === null ? r : r.success ? (r.value ?? null) : (() => { throw new Error(r.error || 'Failed to decrypt SSH private key'); })();
         if (key) decrypted.ssh!.privateKey = key;
       }
       if (saved.ssh.passphraseId) {
-        const phrase = (await window.electron.invoke('secrets:get', { id: saved.ssh.passphraseId })) as string | null;
+        const r = (await window.electron.invoke('secrets:get', { id: saved.ssh.passphraseId })) as
+          | { success?: boolean; value?: string | null; error?: string }
+          | string
+          | null;
+        const phrase = typeof r === 'string' || r === null ? r : r.success ? (r.value ?? null) : (() => { throw new Error(r.error || 'Failed to decrypt SSH passphrase'); })();
         if (phrase) decrypted.ssh!.passphrase = phrase;
       }
     }

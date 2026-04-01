@@ -2,9 +2,9 @@ import type { DatabaseConnection } from '@/domain/connection/types';
 import type { QueryResult } from '@/domain/query/types';
 import { getSsh2Client } from '@/utils/native-modules';
 import * as net from 'net';
+import mysql from 'mysql2/promise';
 
 // Lazy-load to avoid "Cannot access before initialization" with externalized modules
-const getMysql = () => require('mysql2/promise');
 const getPg = () => require('pg');
 
 class DatabaseService {
@@ -99,7 +99,6 @@ class DatabaseService {
 
     try {
       if (connection.type === 'mysql') {
-        const mysql = getMysql();
         const conn = await mysql.createConnection({
           host: dbHost,
           port: dbPort,
@@ -166,27 +165,26 @@ class DatabaseService {
 
   async query(connectionId: string, query: string): Promise<QueryResult> {
     const connection = this.connections.get(connectionId);
+    const info = this.connectionInfo.get(connectionId);
     if (!connection) throw new Error('No active connection found');
-
-    const { Pool } = getPg();
+    if (!info) throw new Error('No connection info found');
 
     try {
       let results: unknown;
       let fields: unknown;
 
-      if (connection instanceof Pool) {
-        const result = await connection.query(query);
+      if (info.type === 'postgresql') {
+        const pgPool = connection as import('pg').Pool;
+        const result = await pgPool.query(query);
         results = result.rows;
-        fields = result.fields?.map((f) => ({
+        fields = result.fields?.map((f: import('pg').FieldDef) => ({
           name: f.name,
           type: f.dataTypeID,
           length: f.dataTypeSize,
         }));
-      } else if (
-        connection &&
-        typeof (connection as { query?: unknown }).query === 'function'
-      ) {
-        const [rows, cols] = await (connection as { query: (q: string) => Promise<unknown[]> }).query(query);
+      } else if (info.type === 'mysql') {
+        const mysqlConn = connection as mysql.Connection;
+        const [rows, cols] = await mysqlConn.query(query);
         results = rows;
         fields = cols;
       } else {
@@ -212,11 +210,10 @@ class DatabaseService {
     const info = this.connectionInfo.get(connectionId);
     if (!connection || !info) return [];
 
-    const { Pool } = getPg();
-
     try {
-      if (connection instanceof Pool) {
-        const result = await connection.query(`
+      if (info.type === 'postgresql') {
+        const pgPool = connection as import('pg').Pool;
+        const result = await pgPool.query(`
           SELECT table_name as name, table_type as type
           FROM information_schema.tables
           WHERE table_schema = 'public' AND table_type IN ('BASE TABLE', 'VIEW')
@@ -228,7 +225,7 @@ class DatabaseService {
         }));
       }
 
-      const conn = connection as { query: (q: string, ...args: unknown[]) => Promise<unknown> };
+      const conn = connection as mysql.Connection;
       let dbName = info.database?.trim();
       if (!dbName) {
         const [dbResult] = await conn.query('SELECT DATABASE() as current_db');
@@ -274,8 +271,6 @@ class DatabaseService {
     const info = this.connectionInfo.get(connectionId);
     if (!connection || !info) throw new Error('No active connection found');
 
-    const { Pool } = getPg();
-
     const columns: Array<{
       name: string;
       type: string;
@@ -295,8 +290,9 @@ class DatabaseService {
       column_name: string;
     }> = [];
 
-    if (connection instanceof Pool) {
-      const colResult = await connection.query(
+    if (info.type === 'postgresql') {
+      const pgPool = connection as import('pg').Pool;
+      const colResult = await pgPool.query(
         `SELECT ordinal_position, column_name as name,
           CASE WHEN character_maximum_length IS NOT NULL THEN data_type || '(' || character_maximum_length || ')'
                WHEN numeric_precision IS NOT NULL AND numeric_scale IS NOT NULL THEN data_type || '(' || numeric_precision || ',' || numeric_scale || ')'
@@ -320,7 +316,7 @@ class DatabaseService {
         }))
       );
       try {
-        const countResult = await connection.query(
+        const countResult = await pgPool.query(
           `SELECT COUNT(*) as count FROM "${tableName}"`
         );
         rows = parseInt(String(countResult.rows[0]?.count || 0), 10);
@@ -328,7 +324,7 @@ class DatabaseService {
         /* ignore */
       }
     } else {
-      const conn = connection as { query: (q: string, ...args: unknown[]) => Promise<unknown> };
+      const conn = connection as mysql.Connection;
       const [colResults] = await conn.query(
         `SELECT ORDINAL_POSITION, COLUMN_NAME as name,
           CONCAT(DATA_TYPE, CASE WHEN CHARACTER_MAXIMUM_LENGTH IS NOT NULL THEN CONCAT('(', CHARACTER_MAXIMUM_LENGTH, ')')
@@ -367,12 +363,13 @@ class DatabaseService {
   ): Promise<Array<{ name: string; tableCount?: number }>> {
     const connection = this.connections.get(connectionId);
     if (!connection) return [];
-
-    const { Pool } = getPg();
+    const info = this.connectionInfo.get(connectionId);
+    if (!info) return [];
 
     try {
-      if (connection instanceof Pool) {
-        const result = await connection.query(
+      if (info.type === 'postgresql') {
+        const pgPool = connection as import('pg').Pool;
+        const result = await pgPool.query(
           `SELECT datname as name FROM pg_database WHERE datistemplate = false ORDER BY datname`
         );
         return (result.rows as Array<{ name: string }>).map((r) => ({
@@ -381,7 +378,7 @@ class DatabaseService {
         }));
       }
 
-      const conn = connection as { query: (q: string, ...args: unknown[]) => Promise<unknown> };
+      const conn = connection as mysql.Connection;
       const [results] = await conn.query('SHOW DATABASES');
       return (results as Array<{ Database: string }>).map((r) => ({
         name: r.Database,
@@ -395,15 +392,16 @@ class DatabaseService {
   async executeQuery(connectionId: string, query: string): Promise<QueryResult> {
     const connection = this.connections.get(connectionId);
     if (!connection) throw new Error('No active connection found');
+    const info = this.connectionInfo.get(connectionId);
+    if (!info) throw new Error('No connection info found');
 
-    const { Pool } = getPg();
-
-    if (connection instanceof Pool) {
-      const result = await connection.query(query);
+    if (info.type === 'postgresql') {
+      const pgPool = connection as import('pg').Pool;
+      const result = await pgPool.query(query);
       return {
         success: true,
         data: result.rows,
-        fields: result.fields?.map((f) => ({
+        fields: result.fields?.map((f: import('pg').FieldDef) => ({
           name: f.name,
           type: f.dataTypeID,
           length: f.dataTypeSize,
@@ -412,12 +410,12 @@ class DatabaseService {
       };
     }
 
-    const conn = connection as { query: (q: string) => Promise<[unknown, unknown]> };
+    const conn = connection as mysql.Connection;
     const [rows, fields] = await conn.query(query);
     return {
       success: true,
       data: rows as unknown[],
-      fields: (fields as unknown[])?.map((f: { name: string; type: number; length: number }) => ({
+      fields: (fields as Array<{ name: string; type: number; length: number }>)?.map((f) => ({
         name: f.name,
         type: f.type,
         length: f.length,

@@ -14,6 +14,11 @@ export function loadKeytar(): typeof import('keytar') {
     // Try to require from node_modules (dev) or unpacked location (packaged)
     return require('keytar');
   } catch (err) {
+    // When packaging with Forge+Vite, native deps may be shipped as extra resources:
+    // `<App>.app/Contents/Resources/keytar`
+    try {
+      return require(path.join(process.resourcesPath, 'keytar'));
+    } catch (err0) {
     // If direct require fails, try from app path
     try {
       const appPath = app.getAppPath();
@@ -26,8 +31,11 @@ export function loadKeytar(): typeof import('keytar') {
         const keytarPath = path.join(appPath, '..', 'app.asar.unpacked', 'node_modules', 'keytar');
         return require(keytarPath);
       } catch (err3) {
-        console.error('Failed to load keytar from all locations:', err, err2, err3);
-        throw new Error('keytar module not found. Please ensure keytar is installed and rebuilt for Electron.');
+        console.error('Failed to load keytar from all locations:', err, err0, err2, err3);
+        throw new Error(
+          'keytar module not found. Ensure keytar is shipped with the packaged app (Resources/keytar) and rebuilt for Electron.'
+        );
+      }
       }
     }
   }

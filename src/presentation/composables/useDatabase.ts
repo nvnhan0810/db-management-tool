@@ -2,13 +2,15 @@ import type { DatabaseConnection } from '@/domain/connection/types';
 import { toRaw } from 'vue';
 
 export function useDatabase() {
-  const connect = async (connection: DatabaseConnection): Promise<boolean> => {
+  const connect = async (
+    connection: DatabaseConnection
+  ): Promise<{ success: boolean; error?: string | null }> => {
     const plain = toRaw(connection);
     const result = (await window.electron?.invoke('database:connect', plain)) as {
       success: boolean;
       error?: string;
     };
-    return result?.success ?? false;
+    return { success: result?.success ?? false, error: result?.error ?? null };
   };
 
   const disconnect = async (connectionId: string) => {

@@ -62,9 +62,9 @@ const handleSelectSavedConnection = async (connection: SavedConnection) => {
   try {
     const loadingMessage = ElMessage({ message: 'Connecting...', type: 'info', duration: 0 });
     const decryptedConnection = await connectionsStore.getDecryptedConnection(connection);
-    const success = await connect(decryptedConnection);
+    const resp = await connect(decryptedConnection);
 
-    if (success) {
+    if (resp.success) {
       await connectionsStore.updateLastUsed(connection.id);
       const connectionWithName = { ...decryptedConnection, name: connection.name };
       connectionsStore.setActiveConnection(connectionWithName);
@@ -76,7 +76,7 @@ const handleSelectSavedConnection = async (connection: SavedConnection) => {
       router.push({ name: 'workspace' });
     } else {
       loadingMessage.close();
-      ElMessage.error('Failed to connect to database');
+      ElMessage.error(resp.error || 'Failed to connect to database');
     }
   } catch (err) {
     ElMessage.error(err instanceof Error ? err.message : 'Failed to connect');

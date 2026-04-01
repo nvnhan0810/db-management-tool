@@ -2,6 +2,7 @@ import { app, BrowserWindow, dialog, ipcMain } from 'electron';
 import started from 'electron-squirrel-startup';
 import fs from 'node:fs';
 import path from 'node:path';
+import util from 'node:util';
 import { databaseService } from './infrastructure/database/databaseService';
 import { deleteSecret, getSecret, saveSecret } from './main-secrets';
 
@@ -37,23 +38,45 @@ const createWindow = () => {
 app.on('ready', createWindow);
 
 ipcMain.handle('secrets:save', async (_event, args: { id: string; value: string }) => {
-  const { id, value } = args;
-  if (!id || typeof value !== 'string') throw new Error('Invalid arguments for secrets:save');
-  await saveSecret(id, value);
-  return true;
+  try {
+    const { id, value } = args ?? ({} as { id?: string; value?: string });
+    if (!id || typeof value !== 'string') {
+      return { success: false, error: 'Invalid arguments for secrets:save' };
+    }
+    await saveSecret(id, value);
+    return { success: true };
+  } catch (err) {
+    const inspected = util.inspect(err, { depth: 8, colors: false });
+    const message = err instanceof Error ? err.message : String(err);
+    console.error('[secrets:save] failed', { message, inspected });
+    return { success: false, error: `${message}\n${inspected}` };
+  }
 });
 
 ipcMain.handle('secrets:get', async (_event, args: { id: string }) => {
-  const { id } = args;
-  if (!id) throw new Error('Invalid arguments for secrets:get');
-  return await getSecret(id);
+  try {
+    const { id } = args ?? ({} as { id?: string });
+    if (!id) return { success: false, error: 'Invalid arguments for secrets:get' };
+    const value = await getSecret(id);
+    return { success: true, value };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.error('[secrets:get] failed', message);
+    return { success: false, error: message };
+  }
 });
 
 ipcMain.handle('secrets:delete', async (_event, args: { id: string }) => {
-  const { id } = args;
-  if (!id) throw new Error('Invalid arguments for secrets:delete');
-  await deleteSecret(id);
-  return true;
+  try {
+    const { id } = args ?? ({} as { id?: string });
+    if (!id) return { success: false, error: 'Invalid arguments for secrets:delete' };
+    await deleteSecret(id);
+    return { success: true };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.error('[secrets:delete] failed', message);
+    return { success: false, error: message };
+  }
 });
 
 app.on('before-quit', async (event) => {
@@ -85,6 +108,8 @@ ipcMain.handle('database:connect', async (_event, connection) => {
     return { success: result, error: null };
   } catch (error) {
     const msg = error instanceof Error ? error.message : 'Failed to connect';
+    const inspected = util.inspect(error, { depth: 8, colors: false });
+    console.error('[database:connect] failed', { msg, inspected, connection });
     return { success: false, error: msg };
   }
 });

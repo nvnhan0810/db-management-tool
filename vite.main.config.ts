@@ -5,6 +5,12 @@ export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '');
 
   return {
+    // Force-bundle certain dependencies into the main process build.
+    // Forge+Vite may not ship `node_modules` inside `app.asar`, so runtime `require('mysql2/...')`
+    // would fail in packaged builds unless bundled.
+    ssr: {
+      noExternal: ['mysql2'],
+    },
     build: {
       rollupOptions: {
         external: ['pg-native', 'ssh2', 'keytar', 'electron'],
