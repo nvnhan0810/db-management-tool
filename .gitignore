@@ -95,3 +95,5 @@ out/
 .cursor/
 
 db-data
+
+.env.prod

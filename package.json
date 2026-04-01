@@ -1,8 +1,8 @@
 {
-  "name": "db-new",
-  "productName": "db-new",
+  "name": "gl-database-client",
+  "productName": "GL Database Client",
   "version": "1.0.0",
-  "description": "My Electron application description",
+  "description": "GL Database Client is a database management tool.",
   "main": ".vite/build/main.js",
   "private": true,
   "scripts": {
