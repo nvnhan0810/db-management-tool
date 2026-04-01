@@ -1,7 +1,7 @@
 {
   "name": "gl-database-client",
   "productName": "GL Database Client",
-  "version": "1.0.5",
+  "version": "1.0.7",
   "description": "GL Database Client is a database management tool.",
   "main": ".vite/build/main.js",
   "private": true,
@@ -19,6 +19,13 @@
     "email": "nguyenvannhan0810@gmail.com"
   },
   "license": "MIT",
+  "overrides": {
+    "tar": "^7.5.13",
+    "esbuild": "^0.25.0",
+    "tmp": "^0.2.4",
+    "@tootallnate/once": "^3.0.1",
+    "http-proxy-agent": "^7.0.2"
+  },
   "devDependencies": {
     "@electron-forge/cli": "^7.11.1",
     "@electron-forge/maker-deb": "^7.11.1",

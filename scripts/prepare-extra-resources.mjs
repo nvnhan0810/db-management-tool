@@ -62,10 +62,13 @@ function main() {
   // by rollup/esbuild, so it must be shipped externally like ssh2.
   const roots = ['ssh2', 'pg'];
   const all = resolveDeps(roots);
+  // pg-cloudflare is only for Cloudflare Workers; desktop Node never loads it.
+  const skipCopy = new Set(['pg-cloudflare']);
 
   ensureDir(outNodeModulesDir);
 
   for (const name of all) {
+    if (skipCopy.has(name)) continue;
     const src = path.join(nodeModulesDir, name);
     const dest = path.join(outNodeModulesDir, name);
     copyDir(src, dest);

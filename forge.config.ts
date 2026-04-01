@@ -4,12 +4,24 @@ import { MakerZIP } from '@electron-forge/maker-zip';
 import { MakerDeb } from '@electron-forge/maker-deb';
 import { MakerRpm } from '@electron-forge/maker-rpm';
 import path from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { VitePlugin } from '@electron-forge/plugin-vite';
 import { FusesPlugin } from '@electron-forge/plugin-fuses';
 import { FuseV1Options, FuseVersion } from '@electron/fuses';
 import { AutoUnpackNativesPlugin } from '@electron-forge/plugin-auto-unpack-natives';
 
 const config: ForgeConfig = {
+  hooks: {
+    /**
+     * Chromium ships ~200+ UI locale packs inside Electron Framework (~40–50 MB on macOS).
+     * The app UI is Vue/Element; only English (+ vi for optional native strings) is kept.
+     */
+    postPackage: async (_forgeConfig, packageResult) => {
+      const scriptPath = path.join(process.cwd(), 'scripts', 'strip-packaged-app-fat.mjs');
+      const { stripForgeOutputPaths } = await import(pathToFileURL(scriptPath).href);
+      stripForgeOutputPaths(packageResult.outputPaths);
+    },
+  },
   packagerConfig: {
     // Unpack .node native binaries from the asar archive so Electron can load them.
     // Without this, native modules packed inside asar fail with MODULE_NOT_FOUND at runtime.
