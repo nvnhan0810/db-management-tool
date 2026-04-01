@@ -59,61 +59,27 @@ function fileStoreDelete(id: string): void {
   }
 }
 
-let useFileBackend = false;
-
-function getOrCreateMasterKeyId(): string {
-  const userDataPath = getUserDataPath();
-  const filePath = path.join(userDataPath, 'secrets.json');
-
-  try {
-    if (fs.existsSync(filePath)) {
-      const raw = fs.readFileSync(filePath, 'utf-8');
-      const parsed = JSON.parse(raw);
-      if (parsed.masterKeyId && typeof parsed.masterKeyId === 'string') {
-        return parsed.masterKeyId;
-      }
-    }
-  } catch (err) {
-    console.error('Failed to read secrets.json:', err);
-  }
-
-  const masterKeyId = crypto.randomUUID();
-  try {
-    fs.mkdirSync(userDataPath, { recursive: true });
-    fs.writeFileSync(filePath, JSON.stringify({ masterKeyId }), 'utf-8');
-  } catch (err) {
-    console.error('Failed to write secrets.json:', err);
-  }
-  return masterKeyId;
-}
+// Tracks whether the macOS Keychain (keytar) is known to be broken in this session.
+// Once set to true it stays true — we skip keytar for the rest of the session.
+let keychainBroken = false;
 
 let cachedMasterKey: Buffer | null = null;
 
+/**
+ * Returns the AES-256 master key used to encrypt/decrypt all secrets.
+ *
+ * Priority:
+ *  1. In-memory cache (fastest, same session)
+ *  2. File backend  (master.key in userData — reliable across rebuilds)
+ *  3. macOS Keychain via keytar  (legacy migration path — only read, not written)
+ *  4. Generate a fresh key and persist to file
+ */
 async function getOrCreateMasterKey(): Promise<Buffer> {
   if (cachedMasterKey) return cachedMasterKey;
 
-  // Prefer Keychain via keytar, but fall back to file storage if keytar is blocked in packaged builds.
-  if (!useFileBackend) {
-    try {
-      const keytar = getKeytar();
-      const existing = await keytar.getPassword(SERVICE_NAME, MASTER_KEY_ACCOUNT);
-      if (existing) {
-        cachedMasterKey = Buffer.from(existing, 'base64');
-        return cachedMasterKey;
-      }
-
-      const key = crypto.randomBytes(32);
-      await keytar.setPassword(SERVICE_NAME, MASTER_KEY_ACCOUNT, key.toString('base64'));
-      cachedMasterKey = key;
-      return key;
-    } catch (err) {
-      useFileBackend = true;
-      console.error('[secrets] keytar unavailable, falling back to file backend', err);
-    }
-  }
-
-  // File backend: store master key in userData (best-effort, not as strong as Keychain).
   fs.mkdirSync(secretsDir(), { recursive: true });
+
+  // 1. File backend is the source of truth for the master key.
   try {
     if (fs.existsSync(masterKeyFilePath())) {
       const raw = fs.readFileSync(masterKeyFilePath(), 'utf-8').trim();
@@ -126,16 +92,54 @@ async function getOrCreateMasterKey(): Promise<Buffer> {
     console.error('[secrets] failed reading master.key', err);
   }
 
+  // 2. Migration: key was previously stored only in the macOS Keychain.
+  //    Read it and immediately persist to file so future runs use the file.
+  if (!keychainBroken) {
+    try {
+      const keytar = getKeytar();
+      const existing = await keytar.getPassword(SERVICE_NAME, MASTER_KEY_ACCOUNT);
+      if (existing) {
+        cachedMasterKey = Buffer.from(existing, 'base64');
+        try {
+          fs.writeFileSync(masterKeyFilePath(), existing, { encoding: 'utf-8' });
+        } catch (writeErr) {
+          console.error('[secrets] failed persisting migrated master key to file', writeErr);
+        }
+        return cachedMasterKey;
+      }
+    } catch (err) {
+      keychainBroken = true;
+      console.error('[secrets] keytar unavailable for master key, using file backend only', err);
+    }
+  }
+
+  // 3. No existing key found — generate a new one and store in file.
   const key = crypto.randomBytes(32);
   try {
     fs.writeFileSync(masterKeyFilePath(), key.toString('base64'), { encoding: 'utf-8' });
   } catch (err) {
-    console.error('[secrets] failed writing master.key', err);
+    console.error('[secrets] failed writing new master.key', err);
+  }
+  // Best-effort: also store in Keychain so older app versions can still read if needed.
+  if (!keychainBroken) {
+    try {
+      const keytar = getKeytar();
+      await keytar.setPassword(SERVICE_NAME, MASTER_KEY_ACCOUNT, key.toString('base64'));
+    } catch {
+      keychainBroken = true;
+    }
   }
   cachedMasterKey = key;
   return key;
 }
 
+/**
+ * Encrypts `value` and persists it under `id`.
+ *
+ * The encrypted payload is ALWAYS written to the file backend so it survives
+ * app rebuilds and macOS Keychain access revocations.  If the Keychain is also
+ * available it is written there too as an additive security layer.
+ */
 export async function saveSecret(id: string, value: string): Promise<void> {
   const masterKey = await getOrCreateMasterKey();
   const iv = crypto.randomBytes(12);
@@ -143,33 +147,49 @@ export async function saveSecret(id: string, value: string): Promise<void> {
   const encrypted = Buffer.concat([cipher.update(value, 'utf8'), cipher.final()]);
   const tag = cipher.getAuthTag();
   const payload = Buffer.concat([iv, tag, encrypted]).toString('base64');
-  if (!useFileBackend) {
+
+  // Primary store: file backend (always reliable).
+  fileStoreSet(id, payload);
+
+  // Secondary store: macOS Keychain (additive, best-effort).
+  if (!keychainBroken) {
     try {
       const keytar = getKeytar();
       await keytar.setPassword(SERVICE_NAME, id, payload);
-      return;
     } catch (err) {
-      useFileBackend = true;
-      console.error('[secrets] keytar.setPassword failed, switching to file backend', err);
+      keychainBroken = true;
+      console.error('[secrets] keytar.setPassword failed, file backend will be used', err);
     }
   }
-  fileStoreSet(id, payload);
 }
 
+/**
+ * Retrieves and decrypts the secret stored under `id`.
+ *
+ * Lookup order:
+ *  1. File backend (primary — written by all recent saves)
+ *  2. macOS Keychain (fallback — for secrets saved before this change)
+ */
 export async function getSecret(id: string): Promise<string | null> {
-  let payload: string | null = null;
-  if (!useFileBackend) {
+  // 1. File backend first.
+  let payload = fileStoreGet(id);
+
+  // 2. Keychain fallback for secrets that existed before the file-first migration.
+  if (!payload && !keychainBroken) {
     try {
       const keytar = getKeytar();
-      payload = await keytar.getPassword(SERVICE_NAME, id);
+      const keychainPayload = await keytar.getPassword(SERVICE_NAME, id);
+      if (keychainPayload) {
+        payload = keychainPayload;
+        // Migrate to file backend so the next read doesn't need Keychain.
+        fileStoreSet(id, keychainPayload);
+      }
     } catch (err) {
-      useFileBackend = true;
-      console.error('[secrets] keytar.getPassword failed, switching to file backend', err);
+      keychainBroken = true;
+      console.error('[secrets] keytar.getPassword failed, file backend only', err);
     }
   }
-  if (useFileBackend) {
-    payload = fileStoreGet(id);
-  }
+
   if (!payload) return null;
 
   const masterKey = await getOrCreateMasterKey();
@@ -183,16 +203,21 @@ export async function getSecret(id: string): Promise<string | null> {
   return Buffer.concat([decipher.update(encrypted), decipher.final()]).toString('utf8');
 }
 
+/**
+ * Deletes the secret stored under `id` from all backends.
+ */
 export async function deleteSecret(id: string): Promise<void> {
-  if (!useFileBackend) {
+  // Primary store: always delete from file.
+  fileStoreDelete(id);
+
+  // Secondary store: best-effort keychain delete.
+  if (!keychainBroken) {
     try {
       const keytar = getKeytar();
       await keytar.deletePassword(SERVICE_NAME, id);
-      return;
     } catch (err) {
-      useFileBackend = true;
-      console.error('[secrets] keytar.deletePassword failed, switching to file backend', err);
+      keychainBroken = true;
+      console.error('[secrets] keytar.deletePassword failed', err);
     }
   }
-  fileStoreDelete(id);
 }

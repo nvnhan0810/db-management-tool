@@ -1,14 +1,15 @@
 {
   "name": "gl-database-client",
   "productName": "GL Database Client",
-  "version": "1.0.0",
+  "version": "1.0.5",
   "description": "GL Database Client is a database management tool.",
   "main": ".vite/build/main.js",
   "private": true,
   "scripts": {
     "start": "electron-forge start",
     "package": "electron-forge package",
-    "make": "electron-forge make",
+    "rebuild": "electron-rebuild -f -a",
+    "make": "npm run rebuild && node scripts/prepare-extra-resources.mjs && electron-forge make",
     "publish": "electron-forge publish",
     "lint": "eslint --ext .ts,.tsx ."
   },
@@ -28,6 +29,7 @@
     "@electron-forge/plugin-fuses": "^7.11.1",
     "@electron-forge/plugin-vite": "^7.11.1",
     "@electron/fuses": "^1.8.0",
+    "@electron/rebuild": "^4.0.3",
     "@types/electron-squirrel-startup": "^1.0.2",
     "@types/pg": "^8.16.0",
     "@types/ssh2": "^1.15.5",

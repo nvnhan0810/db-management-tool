@@ -11,16 +11,23 @@ import { AutoUnpackNativesPlugin } from '@electron-forge/plugin-auto-unpack-nati
 
 const config: ForgeConfig = {
   packagerConfig: {
-    asar: true,
-    icon: 'assets/icons/icon', // Path to .icns file (without extension)
+    // Unpack .node native binaries from the asar archive so Electron can load them.
+    // Without this, native modules packed inside asar fail with MODULE_NOT_FOUND at runtime.
+    asar: { unpack: '**/*.node' },
+    icon: 'assets/icons/icon',
     // Forge + Vite packages only the Vite bundle into `app.asar` (no `node_modules`).
-    // Ship native deps explicitly so runtime `require()` can find them.
-    extraResource: [path.resolve(__dirname, 'node_modules/keytar')],
+    // keytar, ssh2, pg and their deps are shipped as extra resources and loaded dynamically.
+    extraResource: [
+      path.resolve(__dirname, 'node_modules/keytar'),
+      path.resolve(__dirname, 'extraResources'),
+    ],
   },
   rebuildConfig: {
-    // Rebuild native modules for Electron
+    // Safety-net rebuild: `npm run rebuild` (via @electron/rebuild -f -a) already rebuilds
+    // everything before prepare-extra-resources.mjs runs, ensuring the copied .node files
+    // match Electron's ABI. This rebuildConfig handles keytar (shipped from node_modules
+    // directly) as a final pass inside electron-forge make.
     force: true,
-    onlyModules: ['keytar'],
   },
   makers: [
     new MakerSquirrel({}),

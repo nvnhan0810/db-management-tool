@@ -59,8 +59,9 @@ const handleOpenConnectionForm = () => {
 };
 
 const handleSelectSavedConnection = async (connection: SavedConnection) => {
+  let loadingMessage: ReturnType<typeof ElMessage> | null = null;
   try {
-    const loadingMessage = ElMessage({ message: 'Connecting...', type: 'info', duration: 0 });
+    loadingMessage = ElMessage({ message: 'Connecting...', type: 'info', duration: 0 });
     const decryptedConnection = await connectionsStore.getDecryptedConnection(connection);
     const resp = await connect(decryptedConnection);
 
@@ -76,10 +77,19 @@ const handleSelectSavedConnection = async (connection: SavedConnection) => {
       router.push({ name: 'workspace' });
     } else {
       loadingMessage.close();
-      ElMessage.error(resp.error || 'Failed to connect to database');
+      // Connection failed — open the edit form so the user can review/fix credentials.
+      showSavedConnectionsModal.value = false;
+      connectionToEdit.value = connection;
+      showConnectionModal.value = true;
+      ElMessage.warning(resp.error || 'Connection failed. Please check your credentials.');
     }
   } catch (err) {
-    ElMessage.error(err instanceof Error ? err.message : 'Failed to connect');
+    loadingMessage?.close();
+    // Unexpected error (e.g. decryption failed) — open edit form for the user to re-enter.
+    showSavedConnectionsModal.value = false;
+    connectionToEdit.value = connection;
+    showConnectionModal.value = true;
+    ElMessage.warning(err instanceof Error ? err.message : 'Connection failed. Please check your credentials.');
   }
 };
 

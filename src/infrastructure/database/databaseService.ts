@@ -1,11 +1,8 @@
 import type { DatabaseConnection } from '@/domain/connection/types';
 import type { QueryResult } from '@/domain/query/types';
-import { getSsh2Client } from '@/utils/native-modules';
-import * as net from 'net';
+import { getPg, getSsh2Client } from '@/utils/native-modules';
 import mysql from 'mysql2/promise';
-
-// Lazy-load to avoid "Cannot access before initialization" with externalized modules
-const getPg = () => require('pg');
+import * as net from 'net';
 
 class DatabaseService {
   private connections = new Map<string, unknown>();
@@ -109,7 +106,7 @@ class DatabaseService {
         this.connections.set(connection.id, conn);
         this.connectionInfo.set(connection.id, connection);
       } else if (connection.type === 'postgresql') {
-        const { Pool } = getPg();
+
         const pgConfig: Record<string, unknown> = {
           host: dbHost,
           port: dbPort,
@@ -120,6 +117,7 @@ class DatabaseService {
         if (connection.database?.trim()) {
           pgConfig.database = connection.database.trim();
         }
+        const { Pool } = getPg();
         const pgPool = new Pool(pgConfig as import('pg').PoolConfig);
         const client = await pgPool.connect();
         try {

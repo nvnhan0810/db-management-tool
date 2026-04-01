@@ -13,7 +13,10 @@ export default defineConfig(({ mode }) => {
     },
     build: {
       rollupOptions: {
-        external: ['pg-native', 'ssh2', 'keytar', 'electron'],
+        // pg is kept external because its internal circular dependencies cause a TDZ
+        // (Temporal Dead Zone) crash when force-bundled by rollup/esbuild.
+        // It is shipped as an extra resource and loaded dynamically at runtime.
+        external: ['pg-native', 'ssh2', 'keytar', 'electron', 'pg'],
       },
     },
     resolve: {
