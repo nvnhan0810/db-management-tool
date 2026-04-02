@@ -8,6 +8,7 @@ import { databaseService } from './infrastructure/database/databaseService';
 import { deleteSecret, getSecret, saveSecret } from './main-secrets';
 
 const exportJobs = new Map<string, { abort: AbortController; outPath: string }>();
+const importJobs = new Map<string, { abort: AbortController; filePath: string }>();
 
 if (started) {
   app.quit();
@@ -252,6 +253,23 @@ ipcMain.handle('shell:showItemInFolder', async (_event, args: { path: string }) 
 });
 
 ipcMain.handle(
+  'database:dropTable',
+  async (_event, args: { connectionId: string; tableName: string; tableType?: string }) => {
+    try {
+      const { connectionId, tableName, tableType } = args ?? {};
+      if (!connectionId || !tableName) {
+        return { success: false, error: 'Missing connectionId or tableName' };
+      }
+      await databaseService.dropTable(connectionId, tableName, tableType);
+      return { success: true };
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      return { success: false, error: msg };
+    }
+  }
+);
+
+ipcMain.handle(
   'database:importSqlScript',
   async (_event, args: { connectionId: string; sql: string }) => {
     const { connectionId, sql } = args ?? {};
@@ -304,6 +322,69 @@ ipcMain.handle('dialog:openSqlFile', async () => {
   }
   const content = fs.readFileSync(result.filePaths[0], 'utf-8');
   return { canceled: false, content, path: result.filePaths[0] };
+});
+
+ipcMain.handle('dialog:chooseOpenSqlPath', async () => {
+  const win = BrowserWindow.getFocusedWindow();
+  const result = await dialog.showOpenDialog(win ?? BrowserWindow.getAllWindows()[0], {
+    title: 'Open SQL file',
+    properties: ['openFile'],
+    filters: [
+      { name: 'SQL', extensions: ['sql'] },
+      { name: 'All Files', extensions: ['*'] },
+    ],
+  });
+  if (result.canceled || result.filePaths.length === 0) {
+    return { success: false, canceled: true };
+  }
+  return { success: true, path: result.filePaths[0] };
+});
+
+ipcMain.handle(
+  'database:importSqlFromPath',
+  async (_event, args: { connectionId: string; path: string; jobId: string }) => {
+    try {
+      const { connectionId, path: filePath, jobId } = args ?? {};
+      if (!connectionId || !filePath || !jobId) {
+        return { success: false, error: 'Missing connectionId, path, or jobId' };
+      }
+
+      const win = BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0];
+      const send = (payload: unknown) => {
+        try {
+          win?.webContents?.send('import:progress', payload);
+        } catch {
+          /* ignore */
+        }
+      };
+
+      const abort = new AbortController();
+      importJobs.set(jobId, { abort, filePath });
+
+      send({ stage: 'start', jobId });
+      const r = await databaseService.importSqlFromPath(
+        connectionId,
+        filePath,
+        (p) => send({ ...p, jobId }),
+        abort.signal
+      );
+      send({ stage: 'done', jobId, ...r, canceled: false });
+      importJobs.delete(jobId);
+      return { success: true, ...r };
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      const canceled = msg.toLowerCase().includes('canceled');
+      if (args?.jobId) importJobs.delete(args.jobId);
+      return canceled ? { success: true, canceled: true } : { success: false, error: msg };
+    }
+  }
+);
+
+ipcMain.handle('database:cancelImport', async (_event, args: { jobId: string }) => {
+  const job = importJobs.get(args?.jobId);
+  if (!job) return { success: false, error: 'Job not found' };
+  job.abort.abort();
+  return { success: true };
 });
 
 ipcMain.handle('reload:prevent', (event, message) => {

@@ -772,6 +772,155 @@ class DatabaseService {
     }
     return { success: true, executed };
   }
+
+  /**
+   * Import SQL by streaming a file on disk (avoids crashing on huge IPC payloads).
+   * Supports the same subset as our exporter: split on `;` outside single quotes.
+   */
+  async importSqlFromPath(
+    connectionId: string,
+    filePath: string,
+    onProgress?: (p: {
+      stage: 'scan' | 'read' | 'execute';
+      bytesRead: number;
+      totalBytes: number;
+      executed: number;
+      totalStatements?: number;
+    }) => void,
+    signal?: AbortSignal
+  ): Promise<{ executed: number; totalBytes: number }> {
+    const st = fs.statSync(filePath);
+    const totalBytes = st.size;
+
+    let bytesRead = 0;
+    let executed = 0;
+
+    const flushStatement = async (stmt: string, totalStatements?: number) => {
+      const trimmed = stmt.trim();
+      if (!trimmed) return;
+      if (trimmed.startsWith('--')) return;
+      if (signal?.aborted) throw new Error('Import canceled');
+      onProgress?.({ stage: 'execute', bytesRead, totalBytes, executed, totalStatements });
+      await this.executeQuery(connectionId, trimmed);
+      executed++;
+    };
+
+    const countStatements = async (): Promise<number> => {
+      const scanStream = fs.createReadStream(filePath, { encoding: 'utf8' });
+      let scanBytesRead = 0;
+      let buf = '';
+      let inSingle = false;
+      let totalStatements = 0;
+
+      const countMaybe = (stmt: string) => {
+        const trimmed = stmt.trim();
+        if (!trimmed) return;
+        if (trimmed.startsWith('--')) return;
+        totalStatements++;
+      };
+
+      for await (const chunk of scanStream as AsyncIterable<string>) {
+        if (signal?.aborted) throw new Error('Import canceled');
+        scanBytesRead += Buffer.byteLength(chunk, 'utf8');
+
+        for (let i = 0; i < chunk.length; i++) {
+          const c = chunk[i];
+          if (c === "'" && chunk[i + 1] === "'") {
+            buf += "''";
+            i++;
+            continue;
+          }
+          if (c === "'") {
+            inSingle = !inSingle;
+            buf += c;
+            continue;
+          }
+          if (!inSingle && c === ';') {
+            const stmt = buf;
+            buf = '';
+            countMaybe(stmt);
+            continue;
+          }
+          buf += c;
+        }
+
+        onProgress?.({
+          stage: 'scan',
+          bytesRead: scanBytesRead,
+          totalBytes,
+          executed,
+          totalStatements,
+        });
+      }
+
+      countMaybe(buf);
+      return totalStatements;
+    };
+
+    const totalStatements = await countStatements();
+
+    const stream = fs.createReadStream(filePath, { encoding: 'utf8' });
+    bytesRead = 0;
+    executed = 0;
+    let buf = '';
+    let inSingle = false;
+
+    for await (const chunk of stream as AsyncIterable<string>) {
+      if (signal?.aborted) throw new Error('Import canceled');
+      bytesRead += Buffer.byteLength(chunk, 'utf8');
+
+      for (let i = 0; i < chunk.length; i++) {
+        const c = chunk[i];
+        if (c === "'" && chunk[i + 1] === "'") {
+          buf += "''";
+          i++;
+          continue;
+        }
+        if (c === "'") {
+          inSingle = !inSingle;
+          buf += c;
+          continue;
+        }
+        if (!inSingle && c === ';') {
+          const stmt = buf;
+          buf = '';
+          await flushStatement(stmt, totalStatements);
+          continue;
+        }
+        buf += c;
+      }
+
+      onProgress?.({ stage: 'read', bytesRead, totalBytes, executed, totalStatements });
+    }
+
+    // last statement without trailing semicolon
+    await flushStatement(buf, totalStatements);
+    return { executed, totalBytes };
+  }
+
+  async dropTable(connectionId: string, tableName: string, tableType?: string): Promise<void> {
+    const connection = this.connections.get(connectionId);
+    const info = this.connectionInfo.get(connectionId);
+    if (!connection || !info) throw new Error('No active connection found');
+    const name = sanitizeTableIdent(tableName);
+    const isView = tableType === 'view';
+
+    if (info.type === 'postgresql') {
+      const pgPool = connection as import('pg').Pool;
+      const ident = pgQuoteIdent(name);
+      const sql = isView
+        ? `DROP VIEW IF EXISTS ${ident} CASCADE`
+        : `DROP TABLE IF EXISTS ${ident} CASCADE`;
+      await pgPool.query(sql);
+      return;
+    }
+
+    const conn = connection as mysql.Connection;
+    const sql = isView
+      ? `DROP VIEW IF EXISTS \`${name}\``
+      : `DROP TABLE IF EXISTS \`${name}\``;
+    await conn.query(sql);
+  }
 }
 
 function sanitizeTableIdent(name: string): string {

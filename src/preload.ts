@@ -5,6 +5,7 @@ const invokeChannels = [
   'dialog:chooseSavePath',
   'dialog:saveTextFile',
   'dialog:openSqlFile',
+  'dialog:chooseOpenSqlPath',
   'database:connect',
   'database:disconnect',
   'database:disconnectAll',
@@ -17,8 +18,11 @@ const invokeChannels = [
   'database:exportTablesSql',
   'database:exportTablesSqlToPath',
   'database:cancelExport',
+  'database:dropTable',
   'shell:showItemInFolder',
   'database:importSqlScript',
+  'database:importSqlFromPath',
+  'database:cancelImport',
   'reload:prevent',
   'window:minimize',
   'window:maximize',
@@ -85,12 +89,12 @@ contextBridge.exposeInMainWorld('electron', {
     throw new Error(`IPC channel not allowed: ${channel}`);
   },
   on: (channel: string, callback: (...args: unknown[]) => void) => {
-    if (channel === 'reload-prevented' || channel === 'export:progress') {
+    if (channel === 'reload-prevented' || channel === 'export:progress' || channel === 'import:progress') {
       ipcRenderer.on(channel, (_event, ...args) => callback(...args));
     }
   },
   off: (channel: string, callback: (...args: unknown[]) => void) => {
-    if (channel === 'reload-prevented' || channel === 'export:progress') {
+    if (channel === 'reload-prevented' || channel === 'export:progress' || channel === 'import:progress') {
       ipcRenderer.removeListener(channel, callback as () => void);
     }
   },

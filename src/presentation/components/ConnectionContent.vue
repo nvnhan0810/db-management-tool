@@ -44,6 +44,7 @@
             class="tables-list"
             tabindex="0"
             @keydown="onTablesSidebarKeydown"
+            @contextmenu.prevent.stop="onTablesSidebarContextMenu"
           >
             <template v-if="filteredTables.length > 0">
               <el-dropdown
@@ -70,6 +71,7 @@
                   <el-dropdown-menu>
                     <el-dropdown-item command="export">Export SQL…</el-dropdown-item>
                     <el-dropdown-item command="import">Import SQL</el-dropdown-item>
+                    <el-dropdown-item divided command="drop">Drop Table…</el-dropdown-item>
                   </el-dropdown-menu>
                 </template>
               </el-dropdown>
@@ -81,7 +83,7 @@
         </div>
 
         <!-- No Tables -->
-        <div v-else class="no-tables">
+        <div v-else class="no-tables" @contextmenu.prevent.stop="onTablesSidebarContextMenu">
           <el-empty description="No tables found" :image-size="80" />
         </div>
       </div>
@@ -353,6 +355,102 @@
         </div>
       </template>
     </el-dialog>
+
+    <!-- Import progress dialog -->
+    <el-dialog
+      v-model="importDialogVisible"
+      title="Import SQL"
+      width="520px"
+      :close-on-click-modal="false"
+      :close-on-press-escape="false"
+      :show-close="importStatus !== 'running'"
+    >
+      <div v-if="importStatus === 'running'">
+        <div style="margin-bottom: 8px; font-weight: 600;">
+          {{ importTitle }}
+        </div>
+        <div style="margin-bottom: 12px; color: var(--el-text-color-secondary); font-size: 12px;">
+          {{ importSubtitle }}
+        </div>
+        <el-progress :percentage="importPercent" />
+      </div>
+
+      <div v-else-if="importStatus === 'success'">
+        <el-result icon="success" title="Import completed">
+          <template #sub-title>
+            <div style="white-space: pre-wrap;">Executed statements: {{ importExecuted }}</div>
+          </template>
+        </el-result>
+      </div>
+
+      <div v-else-if="importStatus === 'error'">
+        <el-result icon="error" title="Import failed">
+          <template #sub-title>
+            <div style="white-space: pre-wrap;">{{ importError }}</div>
+          </template>
+        </el-result>
+      </div>
+
+      <template #footer>
+        <div style="display: flex; justify-content: flex-end; gap: 8px;">
+          <el-button
+            v-if="importStatus === 'error'"
+            @click="handleCopyImportError"
+          >
+            Copy error
+          </el-button>
+
+          <el-button
+            v-if="importStatus === 'running'"
+            type="danger"
+            :loading="importCanceling"
+            @click="handleCancelImport"
+          >
+            Cancel
+          </el-button>
+
+          <el-button
+            v-if="importStatus !== 'running'"
+            @click="importDialogVisible = false"
+          >
+            Close
+          </el-button>
+        </div>
+      </template>
+    </el-dialog>
+
+    <!-- Sidebar context menu (blank area) -->
+    <teleport to="body">
+      <div
+        v-if="tablesSidebarMenuVisible"
+        class="tables-sidebar-context-overlay"
+        @click="closeTablesSidebarMenu"
+        @contextmenu.prevent
+      >
+        <div
+          class="tables-sidebar-context-menu"
+          :style="{ left: `${tablesSidebarMenuX}px`, top: `${tablesSidebarMenuY}px` }"
+          @click.stop
+          @contextmenu.prevent
+        >
+          <div class="tables-sidebar-context-title">
+            {{
+              tables.length === 0
+                ? 'No tables'
+                : selectedTableNames.length > 0
+                  ? `Export ${selectedTableNames.length} table(s)`
+                  : `Export all tables`
+            }}
+          </div>
+          <el-button text class="tables-sidebar-context-item" @click="handleSidebarMenuExport">
+            Export SQL…
+          </el-button>
+          <el-button text class="tables-sidebar-context-item" @click="handleSidebarMenuImport">
+            Import SQL
+          </el-button>
+        </div>
+      </div>
+    </teleport>
   </div>
 </template>
 
@@ -443,9 +541,13 @@ const {
   chooseSavePath,
   cancelExport,
   showItemInFolder,
+  dropTable,
   importSqlScript,
   saveTextFile,
   openSqlFile,
+  chooseOpenSqlPath,
+  importSqlFromPathWithJob,
+  cancelImport,
 } = useDatabase();
 
 // Use currentConnection, but fallback to first active connection if currentConnection is null
@@ -506,6 +608,55 @@ const exportSubtitle = computed(() => {
 const exportModeVisible = ref(false);
 const exportMode = ref<'structure-data' | 'structure' | 'data'>('structure-data');
 let pendingExportConnectionId: string | null = null;
+
+// Import dialog state
+const importDialogVisible = ref(false);
+const importStatus = ref<'idle' | 'running' | 'success' | 'error'>('idle');
+const importJobId = ref<string | null>(null);
+const importPath = ref<string>('');
+const importError = ref<string>('');
+const importBytesRead = ref(0);
+const importTotalBytes = ref(0);
+const importExecuted = ref(0);
+const importTotalStatements = ref<number | null>(null);
+const importCanceling = ref(false);
+
+const importPercent = computed(() => {
+  const totalSt = importTotalStatements.value ?? 0;
+  if (totalSt > 0) {
+    const pct = (importExecuted.value / totalSt) * 100;
+    return Math.max(0, Math.min(100, Math.round(pct)));
+  }
+  const totalBytes = importTotalBytes.value || 0;
+  if (totalBytes <= 0) return 0;
+  const pct = (importBytesRead.value / totalBytes) * 100;
+  return Math.max(0, Math.min(100, Math.round(pct)));
+});
+
+const importTitle = computed(() => {
+  if (importStatus.value !== 'running') return '';
+  return 'Importing…';
+});
+
+const importSubtitle = computed(() => {
+  if (importStatus.value !== 'running') return '';
+  const parts: string[] = [];
+  if (importPath.value) parts.push(`File: ${importPath.value}`);
+  if (importTotalStatements.value != null && importTotalStatements.value > 0) {
+    parts.push(`Statements: ${importExecuted.value}/${importTotalStatements.value}`);
+  } else {
+    parts.push(`Executed: ${importExecuted.value}`);
+  }
+  if (importTotalBytes.value > 0) {
+    parts.push(`Read: ${importBytesRead.value}/${importTotalBytes.value} bytes`);
+  }
+  return parts.join('\n');
+});
+
+// Sidebar (blank area) context menu state
+const tablesSidebarMenuVisible = ref(false);
+const tablesSidebarMenuX = ref(0);
+const tablesSidebarMenuY = ref(0);
 
 const filteredTables = computed(() => {
   const q = tableNameFilter.value.trim().toLowerCase();
@@ -908,6 +1059,41 @@ function onTablesSidebarKeydown(e: KeyboardEvent) {
   }
 }
 
+function closeTablesSidebarMenu() {
+  tablesSidebarMenuVisible.value = false;
+}
+
+function onTablesSidebarContextMenu(e: MouseEvent) {
+  // Only for the blank area; table rows stop propagation themselves.
+  tablesSidebarMenuX.value = e.clientX;
+  tablesSidebarMenuY.value = e.clientY;
+  tablesSidebarMenuVisible.value = true;
+}
+
+async function handleSidebarMenuExport() {
+  closeTablesSidebarMenu();
+  const id = connection.value?.id;
+  if (!id) return;
+  if (tables.value.length === 0) {
+    ElMessage.warning('No tables to export');
+    return;
+  }
+  // If nothing selected, export all tables in this connection (not just filtered).
+  if (selectedTableNames.value.length === 0) {
+    selectedTableNames.value = tables.value.map((t) => t.name);
+  }
+  pendingExportConnectionId = id;
+  exportMode.value = 'structure-data';
+  exportModeVisible.value = true;
+}
+
+async function handleSidebarMenuImport() {
+  closeTablesSidebarMenu();
+  const id = connection.value?.id;
+  if (!id) return;
+  await runImportSql(id);
+}
+
 async function handleTableRowClick(e: MouseEvent, table: Table) {
   if (e.metaKey || e.ctrlKey) {
     e.preventDefault();
@@ -930,6 +1116,44 @@ async function onTableMenuCommand(cmd: string, table: Table) {
     exportModeVisible.value = true;
   } else if (cmd === 'import') {
     await runImportSql(id);
+  } else if (cmd === 'drop') {
+    await runDropTable(id, table);
+  }
+}
+
+async function runDropTable(connectionId: string, table: Table) {
+  try {
+    await ElMessageBox.confirm(
+      `This will permanently remove ${table.type === 'view' ? 'view' : 'table'} "${table.name}". Continue?`,
+      `Drop ${table.type === 'view' ? 'View' : 'Table'}`,
+      {
+        confirmButtonText: 'Drop',
+        cancelButtonText: 'Cancel',
+        type: 'warning',
+        distinguishCancelAndClose: true,
+      }
+    );
+  } catch {
+    return;
+  }
+
+  const loading = ElMessage({ message: 'Dropping…', type: 'info', duration: 0 });
+  try {
+    const r = await dropTable(connectionId, table.name, table.type);
+    loading.close();
+    if (!r.success) {
+      ElMessage.error(r.error || 'Drop failed');
+      return;
+    }
+    // Close tabs for this table if open
+    const toRemove = tabs.value.filter((t) => t.tableName === table.name).map((t) => t.id);
+    toRemove.forEach((id) => handleRemoveTab(id));
+    activeTableName.value = '';
+    ElMessage.success('Dropped');
+    await loadTables();
+  } catch (err) {
+    loading.close();
+    ElMessage.error(err instanceof Error ? err.message : 'Drop failed');
   }
 }
 
@@ -1033,21 +1257,108 @@ async function handleOpenExportPath() {
 }
 
 async function runImportSql(connectionId: string) {
-  const open = await openSqlFile();
-  if (open.canceled || open.content == null || open.content === '') return;
-  const loading = ElMessage({ message: 'Importing…', type: 'info', duration: 0 });
-  try {
-    const r = await importSqlScript(connectionId, open.content);
-    loading.close();
-    if (!r.success) {
-      ElMessage.error(r.error || 'Import failed');
+  const picked = await chooseOpenSqlPath();
+  if (!picked.success || picked.canceled || !picked.path) return;
+
+  importDialogVisible.value = true;
+  importStatus.value = 'running';
+  importCanceling.value = false;
+  importError.value = '';
+  importPath.value = picked.path;
+  importBytesRead.value = 0;
+  importTotalBytes.value = 0;
+  importExecuted.value = 0;
+  importTotalStatements.value = null;
+
+  const jobId = `imp_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+  importJobId.value = jobId;
+
+  const handler = (payloadRaw: unknown) => {
+    const payload = payloadRaw as
+      | { stage: 'start'; jobId: string }
+      | {
+      stage: 'scan' | 'read' | 'execute';
+      jobId: string;
+      bytesRead: number;
+      totalBytes: number;
+      executed: number;
+      totalStatements?: number;
+    }
+      | { stage: 'done'; jobId: string; executed: number; totalBytes: number };
+    if (!payload || payload.jobId !== jobId) return;
+
+    if (payload.stage === 'scan' || payload.stage === 'read' || payload.stage === 'execute') {
+      importBytesRead.value = payload.bytesRead ?? importBytesRead.value;
+      importTotalBytes.value = payload.totalBytes ?? importTotalBytes.value;
+      importExecuted.value = payload.executed ?? importExecuted.value;
+      if (typeof payload.totalStatements === 'number') {
+        importTotalStatements.value = payload.totalStatements;
+      }
       return;
     }
-    ElMessage.success(`Executed ${r.executed ?? 0} statement(s)`);
+    if (payload.stage === 'done') {
+      importExecuted.value = payload.executed ?? importExecuted.value;
+      importTotalBytes.value = payload.totalBytes ?? importTotalBytes.value;
+    }
+  };
+
+  window.electron?.on?.('import:progress', handler);
+  try {
+    const r = await importSqlFromPathWithJob({ connectionId, path: picked.path, jobId });
+    if ((r as any)?.canceled) {
+      importDialogVisible.value = false;
+      importStatus.value = 'idle';
+      await loadTables();
+      return;
+    }
+    if (!r?.success) {
+      importStatus.value = 'error';
+      importError.value = r?.error ?? 'Import failed';
+      return;
+    }
+    importStatus.value = 'success';
+    importExecuted.value = r.executed ?? importExecuted.value;
+    importTotalBytes.value = r.totalBytes ?? importTotalBytes.value;
     await loadTables();
   } catch (err) {
-    loading.close();
-    ElMessage.error(err instanceof Error ? err.message : 'Import failed');
+    const msg = err instanceof Error ? err.message : String(err);
+    if (msg.toLowerCase().includes('canceled')) {
+      importDialogVisible.value = false;
+      importStatus.value = 'idle';
+      await loadTables();
+      return;
+    }
+    importStatus.value = 'error';
+    importError.value = err instanceof Error ? err.stack ?? err.message : String(err);
+  } finally {
+    window.electron?.off?.('import:progress', handler);
+  }
+}
+
+async function handleCancelImport() {
+  if (importStatus.value !== 'running') return;
+  const jobId = importJobId.value;
+
+  // UX per request: close dialog immediately, then cancel + reload what was imported so far.
+  importDialogVisible.value = false;
+  importStatus.value = 'idle';
+  importCanceling.value = true;
+  try {
+    if (jobId) {
+      await cancelImport(jobId);
+    }
+  } finally {
+    importCanceling.value = false;
+    await loadTables();
+  }
+}
+
+async function handleCopyImportError() {
+  try {
+    await navigator.clipboard.writeText(importError.value || '');
+    ElMessage.success('Copied');
+  } catch {
+    ElMessage.error('Copy failed');
   }
 }
 
@@ -1643,6 +1954,41 @@ const formatDate = (date: Date | string) => {
           color: var(--el-text-color-primary);
         }
       }
+    }
+
+    // Note: menu is teleported to <body>, so we must style it globally.
+    :global(.tables-sidebar-context-overlay) {
+      position: fixed;
+      inset: 0;
+      z-index: 3000;
+    }
+
+    :global(.tables-sidebar-context-menu) {
+      position: fixed;
+      min-width: 190px;
+      padding: 6px;
+      border-radius: 8px;
+      border: 1px solid var(--el-border-color);
+      background: var(--el-bg-color);
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.18);
+    }
+
+    :global(.tables-sidebar-context-title) {
+      font-size: 12px;
+      color: var(--el-text-color-secondary);
+      padding: 4px 8px 6px;
+    }
+
+    :global(.tables-sidebar-context-item) {
+      width: 100%;
+      justify-content: flex-start;
+      padding: 6px 8px;
+      border-radius: 6px;
+      margin-left: 0 !important;
+    }
+
+    :global(.tables-sidebar-context-item:hover) {
+      background: rgba(64, 158, 255, 0.12);
     }
 
     .no-match {

@@ -111,6 +111,14 @@ export function useDatabase() {
     return r;
   };
 
+  const chooseOpenSqlPath = async (): Promise<{ success: boolean; canceled?: boolean; path?: string }> => {
+    const r = (await window.electron?.invoke('dialog:chooseOpenSqlPath')) as
+      | { success: boolean; canceled?: boolean; path?: string }
+      | undefined;
+    if (!r) return { success: false, canceled: true };
+    return r;
+  };
+
   const exportTablesSqlToPath = async (
     connectionId: string,
     tableNames: string[],
@@ -143,6 +151,26 @@ export function useDatabase() {
     return r;
   };
 
+  const importSqlFromPathWithJob = async (args: {
+    connectionId: string;
+    path: string;
+    jobId: string;
+  }): Promise<{ success: boolean; executed?: number; totalBytes?: number; error?: string }> => {
+    const r = (await window.electron?.invoke('database:importSqlFromPath', args)) as
+      | { success: boolean; executed?: number; totalBytes?: number; error?: string }
+      | undefined;
+    if (!r) return { success: false, error: 'Import failed (no response from main process)' };
+    return r;
+  };
+
+  const cancelImport = async (jobId: string): Promise<{ success: boolean; error?: string }> => {
+    const r = (await window.electron?.invoke('database:cancelImport', { jobId })) as
+      | { success: boolean; error?: string }
+      | undefined;
+    if (!r) return { success: false, error: 'Cancel failed' };
+    return r;
+  };
+
   const cancelExport = async (jobId: string): Promise<{ success: boolean; error?: string }> => {
     const r = (await window.electron?.invoke('database:cancelExport', { jobId })) as
       | { success: boolean; error?: string }
@@ -156,6 +184,20 @@ export function useDatabase() {
       | { success: boolean; error?: string }
       | undefined;
     if (!r) return { success: false, error: 'Open folder failed' };
+    return r;
+  };
+
+  const dropTable = async (
+    connectionId: string,
+    tableName: string,
+    tableType?: string
+  ): Promise<{ success: boolean; error?: string }> => {
+    const r = (await window.electron?.invoke('database:dropTable', {
+      connectionId,
+      tableName,
+      tableType,
+    })) as { success: boolean; error?: string } | undefined;
+    if (!r) return { success: false, error: 'Drop failed (no response)' };
     return r;
   };
 
@@ -205,11 +247,15 @@ export function useDatabase() {
     executeQuery,
     exportTablesSql,
     chooseSavePath,
+    chooseOpenSqlPath,
     exportTablesSqlToPath,
     exportTablesSqlToPathWithJob,
     cancelExport,
     showItemInFolder,
+    dropTable,
     importSqlScript,
+    importSqlFromPathWithJob,
+    cancelImport,
     saveTextFile,
     openSqlFile,
   };
