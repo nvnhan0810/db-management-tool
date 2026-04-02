@@ -307,6 +307,55 @@ ipcMain.handle(
   }
 );
 
+ipcMain.handle(
+  'dialog:saveJsonFile',
+  async (
+    _event,
+    args: { defaultFilename?: string; content: string; title?: string }
+  ) => {
+    const { content, defaultFilename, title } = args ?? {};
+    if (typeof content !== 'string') {
+      return { success: false, error: 'Invalid content' };
+    }
+    const win = BrowserWindow.getFocusedWindow();
+    const { canceled, filePath } = await dialog.showSaveDialog(win ?? BrowserWindow.getAllWindows()[0], {
+      title: title ?? 'Export connections',
+      defaultPath: defaultFilename ?? 'connections.json',
+      filters: [
+        { name: 'JSON', extensions: ['json'] },
+        { name: 'All Files', extensions: ['*'] },
+      ],
+    });
+    if (canceled || !filePath) {
+      return { success: false, canceled: true };
+    }
+    fs.writeFileSync(filePath, content, 'utf8');
+    return { success: true, path: filePath };
+  }
+);
+
+ipcMain.handle('dialog:openJsonFile', async () => {
+  const win = BrowserWindow.getFocusedWindow();
+  const result = await dialog.showOpenDialog(win ?? BrowserWindow.getAllWindows()[0], {
+    title: 'Import connections',
+    properties: ['openFile'],
+    filters: [
+      { name: 'JSON', extensions: ['json'] },
+      { name: 'All Files', extensions: ['*'] },
+    ],
+  });
+  if (result.canceled || result.filePaths.length === 0) {
+    return { canceled: true, content: null };
+  }
+  try {
+    const content = fs.readFileSync(result.filePaths[0], 'utf-8');
+    return { canceled: false, content, path: result.filePaths[0] };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : 'Failed to read file';
+    return { canceled: false, content: null, error: msg };
+  }
+});
+
 ipcMain.handle('dialog:openSqlFile', async () => {
   const win = BrowserWindow.getFocusedWindow();
   const result = await dialog.showOpenDialog(win ?? BrowserWindow.getAllWindows()[0], {
@@ -416,8 +465,8 @@ ipcMain.handle('dialog:showOpenFile', async (_event, options?: { title?: string 
     title: options?.title ?? 'Select SSH Private Key',
     properties: ['openFile'],
     filters: [
-      { name: 'Private Key', extensions: ['pem', 'key', 'id_rsa'] },
       { name: 'All Files', extensions: ['*'] },
+      { name: 'Private Key (common extensions)', extensions: ['pem', 'key', 'id_rsa', 'ppk'] },
     ],
   });
   if (result.canceled || result.filePaths.length === 0) {

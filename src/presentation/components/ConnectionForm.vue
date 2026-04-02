@@ -94,11 +94,10 @@
 </template>
 
 <script setup lang="ts">
-import { ElMessage } from 'element-plus';
-import { onMounted, reactive, ref, watch } from 'vue';
 import type { DatabaseConnection } from '@/domain/connection/types';
 import { useDatabase } from '@/presentation/composables/useDatabase';
 import { useConnectionsStore } from '@/presentation/stores/connectionsStore';
+import { onMounted, reactive, ref, watch } from 'vue';
 
 const { connect, disconnect, error } = useDatabase();
 const {
@@ -302,11 +301,11 @@ const handleSave = async () => {
     if (isEditing.value) {
       // Update existing connection
       await saveConnection(form, form.name!.trim());
-      ElMessage.success('Connection updated successfully!');
+      // success: no toast
     } else {
       // Save new connection
       await saveConnection(form, form.name!.trim());
-      ElMessage.success('Connection saved successfully!');
+      // success: no toast
     }
 
     // Reset form and editing state

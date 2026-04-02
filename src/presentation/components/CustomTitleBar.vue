@@ -160,7 +160,6 @@ import {
   Monitor,
   SwitchButton
 } from '@element-plus/icons-vue';
-import { ElMessage } from 'element-plus';
 import { storeToRefs } from 'pinia';
 import { computed, onMounted, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
@@ -230,7 +229,7 @@ const handleDisconnect = async () => {
       const currentConnection = connectionStore.currentConnection;
       if (currentConnection?.tabId) {
         await connectionStore.removeConnection(currentConnection.tabId);
-        ElMessage.success('Disconnected successfully');
+        // success: no toast
       }
       emit('disconnect');
       return;
@@ -250,7 +249,7 @@ const handleDisconnect = async () => {
         await connectionStore.removeConnection(connectionInStore.tabId);
       }
 
-      ElMessage.success('Disconnected successfully');
+      // success: no toast
 
       if (router.currentRoute.value.name === 'workspace') {
         router.push({ name: 'home' });

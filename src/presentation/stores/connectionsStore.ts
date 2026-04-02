@@ -30,6 +30,21 @@ export const useConnectionsStore = defineStore('savedConnections', () => {
     }
   };
 
+  const exportConnectionsJson = (subset?: SavedConnection[]): string => {
+    return storageService.exportConnectionsJson(subset ?? connections.value);
+  };
+
+  const importConnectionsJson = async (jsonText: string) => {
+    error.value = null;
+    try {
+      await storageService.importConnectionsJson(jsonText);
+      await loadSavedConnections();
+    } catch (err) {
+      error.value = err instanceof Error ? err.message : 'Failed to import connections';
+      throw err;
+    }
+  };
+
   const saveConnection = async (connection: DatabaseConnection, name: string) => {
     error.value = null;
     try {
@@ -64,6 +79,17 @@ export const useConnectionsStore = defineStore('savedConnections', () => {
       await loadSavedConnections();
     } catch {
       /* ignore */
+    }
+  };
+
+  const reorderConnections = async (idsInOrder: string[]) => {
+    error.value = null;
+    try {
+      await storageService.reorderSavedConnections(idsInOrder);
+      await loadSavedConnections();
+    } catch (err) {
+      error.value = err instanceof Error ? err.message : 'Failed to reorder connections';
+      throw err;
     }
   };
 
@@ -102,6 +128,9 @@ export const useConnectionsStore = defineStore('savedConnections', () => {
     deleteConnection,
     getDecryptedConnection,
     updateLastUsed,
+    reorderConnections,
+    exportConnectionsJson,
+    importConnectionsJson,
     setActiveConnection,
     setConnectionStatus,
     setError,

@@ -2,16 +2,16 @@
   <div class="database-list">
     <div class="database-list-header">
       <h4>Selected Databases</h4>
-      <el-button 
-        type="primary" 
-        size="small" 
+      <el-button
+        type="primary"
+        size="small"
         @click="showDatabaseManagerDialog = true"
         :icon="Plus"
       >
         Manage
       </el-button>
     </div>
-    
+
     <div v-if="databases.length === 0" class="no-databases">
       <div class="no-databases-content">
         <el-icon :size="48" class="database-icon">
@@ -21,15 +21,15 @@
         <p>Click "Manage" to select databases for this connection.</p>
       </div>
     </div>
-    
+
     <div v-else class="databases-grid">
-      <div 
-        v-for="database in databases" 
+      <div
+        v-for="database in databases"
         :key="database.name"
         class="database-card"
-        :class="{ 
+        :class="{
           'active': database.name === activeDatabase,
-          'connected': database.isConnected 
+          'connected': database.isConnected
         }"
         @click="selectDatabase(database.name)"
         @contextmenu.prevent="showContextMenu($event, database)"
@@ -38,7 +38,7 @@
           <el-icon :size="20">
             <Folder />
           </el-icon>
-          <div 
+          <div
             class="status-dot"
             :class="{ 'connected': database.isConnected }"
           ></div>
@@ -53,7 +53,7 @@
     </div>
 
     <!-- Context Menu -->
-    <el-dropdown 
+    <el-dropdown
       ref="contextMenuRef"
       trigger="contextmenu"
       :visible="contextMenuVisible"
@@ -89,9 +89,9 @@
               </el-icon>
               <p>No databases available. Create a new database below.</p>
             </div>
-            <div 
+            <div
               v-else
-              v-for="db in availableDatabases" 
+              v-for="db in availableDatabases"
               :key="db.name"
               class="database-item"
               :class="{ 'selected': isDatabaseSelected(db.name) }"
@@ -114,16 +114,16 @@
           <h4>Create New Database</h4>
           <el-form :model="newDatabaseForm" inline>
             <el-form-item>
-              <el-input 
-                v-model="newDatabaseForm.name" 
+              <el-input
+                v-model="newDatabaseForm.name"
                 placeholder="Enter database name"
                 @keyup.enter="createDatabase"
               />
             </el-form-item>
             <el-form-item>
-              <el-button 
-                type="primary" 
-                @click="createDatabase" 
+              <el-button
+                type="primary"
+                @click="createDatabase"
                 :loading="isCreatingDatabase"
               >
                 Create
@@ -132,7 +132,7 @@
           </el-form>
         </div>
       </div>
-      
+
       <template #footer>
         <div class="dialog-footer">
           <el-button @click="showDatabaseManagerDialog = false">Close</el-button>
@@ -146,9 +146,9 @@
 </template>
 
 <script setup lang="ts">
+import { showErrorDialog } from '@/presentation/utils/errorDialogs';
 import { Check, Close, Folder, Plus } from '@element-plus/icons-vue';
 import { ElMessage } from 'element-plus';
-import { showErrorDialog } from '@/presentation/utils/errorDialogs';
 import { reactive, ref } from 'vue';
 
 interface DatabaseInfo {
@@ -208,7 +208,7 @@ const showContextMenu = (event: MouseEvent, database: DatabaseInfo) => {
   event.preventDefault();
   selectedDatabase.value = database;
   contextMenuVisible.value = true;
-  
+
   // Position the context menu at the mouse position
   if (contextMenuRef.value) {
     const dropdown = contextMenuRef.value.$el;
@@ -262,12 +262,12 @@ const createDatabase = async () => {
       tableCount: 0,
       isConnected: false
     });
-    
+
     // Add to selected databases
     selectedDatabasesInManager.value.push(newDatabaseForm.name.trim());
-    
+
     newDatabaseForm.name = '';
-    ElMessage.success('Database created successfully');
+    // success: no toast
   } catch (error) {
     await showErrorDialog({
       title: 'Create database failed',
@@ -282,7 +282,7 @@ const createDatabase = async () => {
 const saveDatabaseSelection = () => {
   emit('update-selected-databases', selectedDatabasesInManager.value);
   showDatabaseManagerDialog.value = false;
-  ElMessage.success('Database selection updated');
+  // success: no toast
 };
 
 // Watch for dialog open to initialize selected databases
@@ -562,22 +562,22 @@ const handleDialogOpen = () => {
     gap: 0.5rem;
     padding: 0.5rem;
   }
-  
+
   .database-card {
     width: 100%;
     height: auto;
     max-width: 70px;
     padding: 0.5rem 0.25rem;
   }
-  
+
   .database-name {
     font-size: 0.7rem;
   }
-  
+
   .database-details {
     font-size: 0.6rem;
   }
-  
+
   .database-icon .el-icon {
     font-size: 18px;
   }

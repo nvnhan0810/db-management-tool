@@ -16,9 +16,9 @@
           </el-icon>
           <p>No databases available. Create a new database below.</p>
         </div>
-        <div 
+        <div
           v-else
-          v-for="db in availableDatabases" 
+          v-for="db in availableDatabases"
           :key="db.name"
           class="database-item"
           @click="selectDatabase(db.name)"
@@ -37,16 +37,16 @@
       <h4>Create New Database</h4>
       <el-form :model="newDatabaseForm" inline>
         <el-form-item>
-          <el-input 
-            v-model="newDatabaseForm.name" 
+          <el-input
+            v-model="newDatabaseForm.name"
             placeholder="Enter database name"
             @keyup.enter="createDatabase"
           />
         </el-form-item>
         <el-form-item>
-          <el-button 
-            type="primary" 
-            @click="createDatabase" 
+          <el-button
+            type="primary"
+            @click="createDatabase"
             :loading="isCreatingDatabase"
           >
             Create
@@ -58,11 +58,11 @@
 </template>
 
 <script setup lang="ts">
+import { useDatabase } from '@/presentation/composables/useDatabase';
+import { showErrorDialog } from '@/presentation/utils/errorDialogs';
 import { Folder, Loading } from '@element-plus/icons-vue';
 import { ElMessage } from 'element-plus';
 import { onMounted, reactive, ref } from 'vue';
-import { useDatabase } from '@/presentation/composables/useDatabase';
-import { showErrorDialog } from '@/presentation/utils/errorDialogs';
 
 interface DatabaseInfo {
   name: string;
@@ -106,24 +106,24 @@ const loadDatabases = async () => {
   if (!props.connectionId) {
     return;
   }
-  
+
   isLoadingDatabases.value = true;
   try {
     // Get databases from server
     const databases = await getDatabases(props.connectionId);
-    
+
     if (!databases || !Array.isArray(databases)) {
       availableDatabases.value = [];
       return;
     }
-    
+
     // Convert to DatabaseInfo format
     const formattedDatabases: DatabaseInfo[] = databases.map(db => ({
       name: db.name,
       tableCount: db.tableCount || 0,
       isConnected: false // Don't show active state in popup
     }));
-    
+
     availableDatabases.value = formattedDatabases;
   } catch (error) {
     console.error('Error loading databases:', error);
@@ -132,7 +132,7 @@ const loadDatabases = async () => {
       message: error instanceof Error ? error.message : 'Failed to load databases',
       details: error instanceof Error ? error.stack : undefined,
     });
-    
+
     // Fallback to empty array
     availableDatabases.value = [];
   } finally {
@@ -165,12 +165,12 @@ const createDatabase = async () => {
       tableCount: 0,
       isConnected: false
     });
-    
+
     // Add to selected databases
     selectedDatabasesInManager.value.push(newDatabaseForm.name.trim());
-    
+
     newDatabaseForm.name = '';
-    ElMessage.success('Database created successfully');
+    // success: no toast
   } catch (error) {
     await showErrorDialog({
       title: 'Create database failed',

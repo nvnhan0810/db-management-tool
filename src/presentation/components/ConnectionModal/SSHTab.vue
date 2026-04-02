@@ -7,7 +7,7 @@
         </el-checkbox>
       </el-form-item>
 
-      <el-form-item label="SSH Host" prop="ssh.host">
+      <el-form-item label="Host" prop="ssh.host">
         <el-input
           v-model="form.ssh!.host"
           placeholder="ssh.example.com"
@@ -15,7 +15,7 @@
         />
       </el-form-item>
 
-      <el-form-item label="SSH Port" prop="ssh.port">
+      <el-form-item label="Port" prop="ssh.port">
         <el-input-number
           v-model="form.ssh!.port"
           :min="1"
@@ -26,7 +26,7 @@
         <div class="field-hint">Default: 22</div>
       </el-form-item>
 
-      <el-form-item label="SSH Username" prop="ssh.username">
+      <el-form-item label="Username" prop="ssh.username">
         <el-input
           v-model="form.ssh!.username"
           placeholder="Enter SSH username"
@@ -34,7 +34,7 @@
         />
       </el-form-item>
 
-      <el-form-item label="SSH Authentication">
+      <el-form-item label="Authentication">
         <el-radio-group v-model="sshAuthMethod" :disabled="disabled || !form.ssh?.enabled">
           <el-radio label="password">Password</el-radio>
           <el-radio label="key">Private Key</el-radio>
@@ -52,7 +52,7 @@
       </el-form-item>
 
       <template v-if="sshAuthMethod === 'key'">
-        <el-form-item label="SSH Private Key" prop="ssh.privateKey">
+        <el-form-item label="Private Key" prop="ssh.privateKey">
           <div class="private-key-picker">
             <el-input
               :model-value="selectedKeyPath || (form.ssh?.privateKey ? '••• Key loaded' : '')"
@@ -79,7 +79,6 @@
               Clear
             </el-button>
           </div>
-          <div class="field-hint">Select your SSH private key file (.pem, .key or OpenSSH format)</div>
         </el-form-item>
 
         <el-form-item label="Key Passphrase" prop="ssh.passphrase">

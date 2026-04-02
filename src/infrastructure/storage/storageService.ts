@@ -35,18 +35,34 @@ class StorageService {
       if (!stored) return [];
 
       const connections: SavedConnection[] = JSON.parse(stored);
-      return connections.sort((a, b) => {
-        const aDate = a.lastUsed || a.createdAt;
-        const bDate = b.lastUsed || b.createdAt;
-        return new Date(bDate).getTime() - new Date(aDate).getTime();
-      });
+      // Preserve stored order; UI handles grouping/sorting/reordering.
+      return connections;
     } catch {
       return [];
     }
   }
 
+  async reorderSavedConnections(idsInOrder: string[]): Promise<void> {
+    const connections = await this.getSavedConnections();
+    if (!idsInOrder || idsInOrder.length === 0) return;
+    const byId = new Map(connections.map((c) => [c.id, c] as const));
+    const out: SavedConnection[] = [];
+    for (const id of idsInOrder) {
+      const c = byId.get(id);
+      if (c) out.push(c);
+      byId.delete(id);
+    }
+    // append remaining (unknown/unmentioned ids)
+    for (const c of connections) {
+      if (byId.has(c.id)) out.push(c);
+    }
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(out));
+  }
+
   async saveConnection(connection: DatabaseConnection, name: string): Promise<void> {
     const existingConnections = await this.getSavedConnections();
+    const existingIndex = existingConnections.findIndex((c) => c.id === connection.id);
+    const prev = existingIndex >= 0 ? existingConnections[existingIndex] : null;
     const passwordId = `conn:${connection.id}:dbPassword`;
 
     const savedConnection: SavedConnection = {
@@ -58,7 +74,7 @@ class StorageService {
       database: connection.database,
       username: connection.username,
       passwordId,
-      createdAt: new Date().toISOString(),
+      createdAt: prev?.createdAt ?? new Date().toISOString(),
       lastUsed: new Date().toISOString(),
     };
 
@@ -109,7 +125,6 @@ class StorageService {
       }
     }
 
-    const existingIndex = existingConnections.findIndex((c) => c.id === connection.id);
     if (existingIndex >= 0) {
       existingConnections[existingIndex] = savedConnection;
     } else {
@@ -157,6 +172,98 @@ class StorageService {
         );
       }
     }
+  }
+
+  exportConnectionsJson(connections: SavedConnection[]): string {
+    const exported = connections.map((c) => ({
+      id: c.id,
+      name: c.name,
+      type: c.type,
+      host: c.host,
+      port: c.port,
+      database: c.database,
+      username: c.username,
+      ssh: c.ssh?.enabled
+        ? {
+            enabled: true,
+            host: c.ssh.host,
+            port: c.ssh.port,
+            username: c.ssh.username,
+          }
+        : { enabled: false },
+      createdAt: c.createdAt,
+      lastUsed: c.lastUsed,
+    }));
+    return JSON.stringify(
+      { version: 1, exportedAt: new Date().toISOString(), connections: exported },
+      null,
+      2
+    );
+  }
+
+  async importConnectionsJson(jsonText: string): Promise<void> {
+    const parsed = JSON.parse(jsonText) as { connections?: any[] };
+    const incoming = Array.isArray(parsed?.connections) ? parsed.connections : [];
+    if (incoming.length === 0) return;
+
+    const existing = await this.getSavedConnections();
+    const byId = new Map(existing.map((c) => [c.id, c] as const));
+
+    for (const raw of incoming) {
+      if (!raw || typeof raw !== 'object') continue;
+      const id = String(raw.id || '').trim();
+      const name = String(raw.name || '').trim();
+      const type = String(raw.type || '').trim();
+      const host = String(raw.host || '').trim();
+      const port = Number(raw.port || 0);
+      const database = raw.database != null ? String(raw.database) : undefined;
+      const username = raw.username != null ? String(raw.username) : '';
+      if (!id || !name || !type || !host || !port) continue;
+
+      const passwordId = `conn:${id}:dbPassword`;
+      const sshEnabled = Boolean(raw.ssh?.enabled);
+      const saved: SavedConnection = {
+        id,
+        name,
+        type: type as SavedConnection['type'],
+        host,
+        port,
+        database,
+        username,
+        passwordId,
+        createdAt: typeof raw.createdAt === 'string' ? raw.createdAt : new Date().toISOString(),
+        lastUsed: typeof raw.lastUsed === 'string' ? raw.lastUsed : undefined,
+      };
+
+      if (sshEnabled) {
+        saved.ssh = {
+          enabled: true,
+          host: String(raw.ssh.host || ''),
+          port: Number(raw.ssh.port || 22),
+          username: String(raw.ssh.username || ''),
+          // Secrets will be re-entered by user when editing connection
+          passwordId: undefined,
+          privateKeyId: undefined,
+          passphraseId: undefined,
+        };
+      }
+
+      if (byId.has(id)) {
+        const prev = byId.get(id)!;
+        // keep existing secret ids (so imported metadata doesn't break saved secrets)
+        saved.passwordId = prev.passwordId;
+        if (prev.ssh?.enabled && saved.ssh?.enabled) {
+          saved.ssh.passwordId = prev.ssh.passwordId;
+          saved.ssh.privateKeyId = prev.ssh.privateKeyId;
+          saved.ssh.passphraseId = prev.ssh.passphraseId;
+        }
+        byId.set(id, { ...prev, ...saved });
+      } else {
+        byId.set(id, saved);
+      }
+    }
+
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(Array.from(byId.values())));
   }
 
   async getDecryptedConnection(

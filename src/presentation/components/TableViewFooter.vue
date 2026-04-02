@@ -18,7 +18,12 @@
     </div>
     <div v-if="viewMode === 'data' && data" class="footer-right">
       <span class="total-records">Total: {{ data.total.toLocaleString() }} records</span>
-      <el-select :model-value="data.perPage" @update:model-value="handlePerPageChange" style="width: 100px; margin: 0 10px;">
+      <el-select
+        size="small"
+        :model-value="data.perPage"
+        style="width: 60px; margin: 0 10px;"
+        @update:model-value="handlePerPageChange"
+      >
         <el-option label="25" :value="25" />
         <el-option label="50" :value="50" />
         <el-option label="100" :value="100" />

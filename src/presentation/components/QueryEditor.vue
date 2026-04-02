@@ -1,7 +1,7 @@
 <template>
   <div class="query-editor">
     <!-- Title Bar -->
-    <!-- <CustomTitleBar 
+    <!-- <CustomTitleBar
       :current-connection="props.connection"
       :active-tab="tableStore.activeTab || undefined"
       :sidebar-visible="showRowDetailSidebar"
@@ -12,7 +12,7 @@
       @select-database="handleSelectDatabase"
       @toggle-sidebar="handleToggleSidebar"
     /> -->
-    
+
     <div class="query-content">
       <!-- Show content only when connected and has database -->
       <template v-if="isConnected && props.connection?.database">
@@ -25,7 +25,7 @@
             @select-table="handleSelectTable"
           />
         </el-aside>
-        
+
         <!-- Main Content Area - RightSidebar is now the main content -->
         <el-main :class="{ 'with-row-detail': showRowDetailSidebar && hasSelectedRow }">
           <RightSidebar
@@ -42,7 +42,7 @@
           />
         </el-main>
       </template>
-      
+
       <!-- Show no database selected state when connected but no database -->
       <template v-else-if="isConnected && !props.connection?.database">
         <el-main class="no-database-main">
@@ -56,7 +56,7 @@
           </div>
         </el-main>
       </template>
-      
+
       <!-- Show not connected state -->
       <template v-else>
         <el-main class="not-connected-main">
@@ -74,16 +74,15 @@
 </template>
 
 <script setup lang="ts">
+import DatabaseTables from '@/presentation/components/DatabaseTables.vue';
+import RightSidebar from '@/presentation/components/RightSidebar.vue';
+import { useDatabase } from '@/presentation/composables/useDatabase';
+import type { ActiveConnection } from '@/presentation/stores/connectionStore';
+import { useTableStore } from '@/presentation/stores/tableStore';
+import { showErrorDialog } from '@/presentation/utils/errorDialogs';
 import { Connection, Folder } from '@element-plus/icons-vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
-import type { ActiveConnection } from '@/presentation/stores/connectionStore';
-import { useDatabase } from '@/presentation/composables/useDatabase';
-import { useTableStore } from '@/presentation/stores/tableStore';
-import { showErrorDialog } from '@/presentation/utils/errorDialogs';
-import CustomTitleBar from '@/presentation/components/CustomTitleBar.vue';
-import DatabaseTables from '@/presentation/components/DatabaseTables.vue';
-import RightSidebar from '@/presentation/components/RightSidebar.vue';
 
 const props = defineProps<{
   connection: ActiveConnection | null;
@@ -131,36 +130,36 @@ const handleSelectTable = async (table: { name: string; type?: string }) => {
 
         await refreshConnectionStatus();
       }
-      
+
       // Load real table structure from database
       const tableStructure = await loadTableStructure(table.name);
-      
+
       // Check if tableStructure is valid
       if (!tableStructure || typeof tableStructure !== 'object') {
         throw new Error(`Invalid table structure returned: ${JSON.stringify(tableStructure)}`);
       }
-      
+
       const tableData = {
         name: table.name,
         columns: tableStructure.columns || [],
         rows: tableStructure.rows || 0,
         indexes: tableStructure.indexes || []
       };
-      
+
       // Add table tab using store with connection ID
       const tableId = await tableStore.addTableTab(tableData, props.connection?.id);
-      
+
       // Load table structure and add to executed queries
       const structureQuery = `DESCRIBE ${table.name}`;
       tableStore.addExecutedQuery(structureQuery, true);
-      
+
       // Auto-load table data using store
       // The data will be loaded automatically when the tab is created
       showRightSidebar.value = true;
       activeTableName.value = table.name;
     } catch (error) {
       console.error('Error loading table structure:', error);
-      
+
       // Fallback to basic table data with some mock columns
       const tableData = {
         name: table.name,
@@ -171,15 +170,15 @@ const handleSelectTable = async (table: { name: string; type?: string }) => {
         rows: 0,
         indexes: []
       };
-      
+
       // Add table tab using store with connection ID
       await tableStore.addTableTab(tableData, props.connection?.id);
-      
+
       // Add error to executed queries
       const errorQuery = `DESCRIBE ${table.name}`;
       const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
       tableStore.addExecutedQuery(errorQuery, false, errorMessage);
-      
+
       showRightSidebar.value = true;
       activeTableName.value = table.name;
     }
@@ -211,7 +210,7 @@ const handleDisconnect = async () => {
     try {
       // Disconnect from database
       await disconnect();
-      
+
       // Remove from active connections
       if (props.connection.tabId) {
         // Emit event to parent to handle connection removal
@@ -275,7 +274,7 @@ const loadTableStructure = async (tableName: string) => {
   if (!props.connection?.id) {
     throw new Error('No connection ID available');
   }
-  
+
   try {
     // Use real database call to get table structure
     const structure = await getTableStructure(props.connection.id, tableName);
@@ -292,7 +291,7 @@ const verifyConnection = async () => {
 
     return false;
   }
-  
+
   try {
     // Check if connection is still active in database service
     const hasConnections = await hasActiveConnections();
@@ -310,7 +309,7 @@ const loadTables = async (retryCount = 0) => {
     tables.value = [];
     return;
   }
-  
+
   // Verify connection is still active
   const isConnectionActive = await verifyConnection();
   if (!isConnectionActive) {
@@ -326,12 +325,12 @@ const loadTables = async (retryCount = 0) => {
       return;
     }
   }
-  
+
   isLoadingTables.value = true;
   try {
     // Load real tables from database using the specific connection ID
     const databaseTables = await getTables(props.connection.id);
-    
+
     // Ensure databaseTables is an array
     if (Array.isArray(databaseTables)) {
       tables.value = databaseTables;
@@ -353,11 +352,11 @@ const handleReloadData = async () => {
   try {
     // Check if we have an active table tab
     const activeTabContent = tableStore.getActiveTabContent();
-    
+
     if (activeTabContent?.type === 'table') {
       // We have an active table - check for unsaved changes
       const hasUnsavedChanges = await checkForUnsavedChanges();
-      
+
       if (hasUnsavedChanges) {
         // Show confirmation dialog
         const confirmed = await showDiscardChangesDialog();
@@ -370,19 +369,19 @@ const handleReloadData = async () => {
           rightSidebarRef.value.clearUnsavedChanges();
         }
       }
-      
+
       // Reload table data
 
       if (rightSidebarRef.value && rightSidebarRef.value.handleRetryLoadData) {
         await rightSidebarRef.value.handleRetryLoadData();
       }
-      
-      ElMessage.success('Table data reloaded successfully');
+
+      // success: no toast
     } else if (props.connection?.isConnected && props.connection?.id) {
       // No active table but we have a connection - reload table list
 
       await loadTables();
-      ElMessage.success('Table list reloaded successfully');
+      // success: no toast
     } else {
       // No active table and no connection - skip
 
@@ -439,7 +438,7 @@ const handleKeydown = async (event: KeyboardEvent) => {
 
     }
   }
-  
+
   // CMD + R is now handled by Home.vue and calls handleReloadData directly
   // No need to handle it here anymore
 };
@@ -460,7 +459,7 @@ watch(() => props.connection?.database, (newDatabase: string | undefined, oldDat
     setTimeout(() => {
       loadTables();
     }, 100);
-    
+
     // Note: Database state switching is handled by Home.vue
     // No need to call switchToDatabase here to avoid duplicate calls
   } else {
@@ -593,4 +592,4 @@ defineExpose({
 .connection-icon {
   color: var(--el-text-color-placeholder);
 }
-</style> 
+</style>

@@ -42,8 +42,9 @@
 
     <template #footer>
       <div class="dialog-footer">
-        <el-button @click="handleCancel">Cancel</el-button>
+        <el-button size="small" @click="handleCancel">Cancel</el-button>
         <el-button
+          size="small"
           type="default"
           class="btn-test-connection"
           :loading="isTesting"
@@ -53,6 +54,7 @@
           Test Connection
         </el-button>
         <el-button
+          size="small"
           type="primary"
           :loading="isSaving"
           :disabled="isConnecting || isTesting"
@@ -61,6 +63,7 @@
           Save
         </el-button>
         <el-button
+          size="small"
           type="success"
           :loading="isConnecting"
           :disabled="isSaving || isTesting"
@@ -365,7 +368,7 @@ const handleTestConnection = async () => {
 
     if (resp.success) {
       await disconnect(cleanConnection.id);
-      // success: no toast
+      ElMessage.success('Connection test successful');
     } else {
       error.value =
         resp.error || 'Connection test failed. Please check your credentials and try again.';

@@ -43,21 +43,26 @@ export async function showErrorDialog(args: ShowErrorDialogArgs): Promise<void> 
       distinguishCancelAndClose: true,
       closeOnClickModal: false,
       closeOnPressEscape: true,
+      beforeClose: async (action, _instance, done) => {
+        if (action === 'cancel') {
+          const ok = await copyToClipboard(full);
+          if (!ok) {
+            try {
+              await ElMessageBox.alert(full, title, {
+                confirmButtonText: 'Close',
+                type: 'error',
+              });
+            } catch {
+              /* ignore */
+            }
+          }
+          return;
+        }
+        done();
+      },
     });
-  } catch (action) {
-    // cancel => copy
-    const ok = await copyToClipboard(full);
-    // If copy fails, just close silently (no toast per requirement).
-    if (!ok) {
-      try {
-        await ElMessageBox.alert(full, title, {
-          confirmButtonText: 'Close',
-          type: 'error',
-        });
-      } catch {
-        /* ignore */
-      }
-    }
+  } catch {
+    /* user closed with X / Escape → reject('close') */
   }
 }
 
