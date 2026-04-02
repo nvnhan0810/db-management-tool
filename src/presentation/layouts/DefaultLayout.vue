@@ -71,7 +71,6 @@ const handleSelectSavedConnection = async (connection: SavedConnection) => {
       connectionsStore.setActiveConnection(connectionWithName);
       await connectionStore.addConnection(connectionWithName, connection.name);
       loadingMessage.close();
-      ElMessage.success(`Connected to ${connection.name}`);
       showSavedConnectionsModal.value = false;
       await new Promise((r) => setTimeout(r, 100));
       router.push({ name: 'workspace' });

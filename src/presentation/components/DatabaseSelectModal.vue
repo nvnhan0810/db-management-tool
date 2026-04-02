@@ -138,7 +138,6 @@ const handleConfirm = async () => {
   try {
     const success = await selectDatabase(selectedDatabase.value);
     if (success) {
-      ElMessage.success(`Connected to database: ${selectedDatabase.value}`);
       emit('selected', selectedDatabase.value);
       visible.value = false;
     } else {

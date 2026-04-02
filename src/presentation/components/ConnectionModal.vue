@@ -365,7 +365,7 @@ const handleTestConnection = async () => {
 
     if (resp.success) {
       await disconnect(cleanConnection.id);
-      ElMessage.success('Connection test successful!');
+      // success: no toast
     } else {
       error.value =
         resp.error || 'Connection test failed. Please check your credentials and try again.';
@@ -401,7 +401,7 @@ const handleSave = async () => {
     // Save or update connection
     await connectionsStore.saveConnection(cleanConnection, form.name!.trim());
 
-    ElMessage.success(isEditing.value ? 'Connection updated successfully!' : 'Connection saved successfully!');
+    // success: no toast
 
     // Close modal and emit saved event
     visible.value = false;
@@ -451,8 +451,6 @@ const handleConnect = async () => {
           // Don't fail the connect if save fails
         }
       }
-
-      ElMessage.success('Connected successfully!');
 
       // Close modal and navigate to workspace
       visible.value = false;

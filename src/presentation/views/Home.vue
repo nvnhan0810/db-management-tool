@@ -147,7 +147,6 @@ const handleLoadConnection = async (connection: SavedConnection) => {
       connectionsStore.setActiveConnection(connectionWithName);
       await connectionStore.addConnection(connectionWithName, connection.name);
       loadingMessage.close();
-      ElMessage.success(`Connected to ${connection.name}`);
       await new Promise((r) => setTimeout(r, 100));
       router.push({ name: 'workspace' });
     } else {
@@ -180,7 +179,7 @@ const handleCommand = async (command: string, connection: SavedConnection) => {
         }
       );
       await deleteConnection(connection.id);
-      ElMessage.success('Connection deleted successfully');
+      // success: no toast
     } catch (error) {
       if (error !== 'cancel') {
         await showErrorDialog({ title: 'Delete failed', message: 'Failed to delete connection' });
