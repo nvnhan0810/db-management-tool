@@ -879,8 +879,18 @@ function setTableDataViewRef(tabId: string, el: TableDataViewRef | null) {
 
 async function handleSaveKeydown(e: KeyboardEvent) {
   const key = e.key?.toLowerCase();
-  // Ctrl/Cmd + R reload data currently shown in "data" mode
-  if ((e.ctrlKey || e.metaKey) && key === 'r') {
+  // Ctrl/Cmd + R reload active connection (tables + opened tabs)
+  // Ctrl/Cmd + Shift + R reload current tab data only (legacy behavior)
+  if ((e.ctrlKey || e.metaKey) && key === 'r' && !e.shiftKey) {
+    e.preventDefault();
+    e.stopPropagation();
+
+    await reloadActiveConnection();
+    return;
+  }
+
+  // Ctrl/Cmd + Shift + R reload data currently shown in "data" mode
+  if ((e.ctrlKey || e.metaKey) && key === 'r' && e.shiftKey) {
     e.preventDefault();
     e.stopPropagation();
 
@@ -919,7 +929,6 @@ async function handleSaveKeydown(e: KeyboardEvent) {
 
       try {
         await loadTableData(tab, page, perPage);
-        ElMessage.success('Data reloaded');
       } catch {
         ElMessage.error('Reload failed');
       }
@@ -942,6 +951,69 @@ async function handleSaveKeydown(e: KeyboardEvent) {
           comp.runSave();
         }
     }
+  }
+}
+
+async function reloadActiveConnection() {
+  if (!connection.value?.id) return;
+
+  // Check unsaved changes across all opened data tabs
+  let hasAnyChanges = false;
+  for (const t of tabs.value) {
+    if (t.tabType === 'query' || t.viewMode !== 'data') continue;
+    const comp = tableDataViewRefs[t.id];
+    const sidebarState = getDataSidebarState(t.id);
+    const hasSidebarChanges =
+      Object.keys(sidebarState.modifiedRows ?? {}).length > 0 || sidebarState.deletedRows.length > 0;
+    const hasUiChanges = comp?.hasUnsavedChanges ? comp.hasUnsavedChanges() : false;
+    if (hasSidebarChanges || hasUiChanges) {
+      hasAnyChanges = true;
+      break;
+    }
+  }
+
+  if (hasAnyChanges) {
+    try {
+      await ElMessageBox.confirm(
+        'Bạn có thay đổi chưa lưu (bao gồm mark deleted). Reload sẽ hủy thay đổi này. Bạn có chắc không?',
+        'Discard & Reload',
+        {
+          confirmButtonText: 'Reload',
+          cancelButtonText: 'Cancel',
+          type: 'warning',
+          distinguishCancelAndClose: true
+        }
+      );
+    } catch {
+      return;
+    }
+
+    // Discard changes for all tabs
+    for (const t of tabs.value) {
+      const comp = tableDataViewRefs[t.id];
+      comp?.clearUnsavedChanges?.();
+      clearDataSidebarState(t.id);
+    }
+  }
+
+  try {
+    await loadTables();
+
+    const reloads: Promise<unknown>[] = [];
+    for (const t of tabs.value) {
+      if (t.tabType === 'query') continue;
+      // structure
+      reloads.push(loadTableStructure(t));
+      // data (only for data view)
+      if (t.viewMode === 'data') {
+        const page = t.data?.page ?? 1;
+        const perPage = t.data?.perPage ?? 50;
+        reloads.push(loadTableData(t, page, perPage));
+      }
+    }
+    await Promise.all(reloads);
+  } catch {
+    ElMessage.error('Reload failed');
   }
 }
 const activeDataTab = computed(() => {
@@ -1149,7 +1221,6 @@ async function runDropTable(connectionId: string, table: Table) {
     const toRemove = tabs.value.filter((t) => t.tableName === table.name).map((t) => t.id);
     toRemove.forEach((id) => handleRemoveTab(id));
     activeTableName.value = '';
-    ElMessage.success('Dropped');
     await loadTables();
   } catch (err) {
     loading.close();
@@ -1356,7 +1427,6 @@ async function handleCancelImport() {
 async function handleCopyImportError() {
   try {
     await navigator.clipboard.writeText(importError.value || '');
-    ElMessage.success('Copied');
   } catch {
     ElMessage.error('Copy failed');
   }

@@ -689,7 +689,6 @@ async function runSave() {
       })) as { success?: boolean; error?: string } | null;
       if (result && !result.success) throw new Error(result.error || 'Query failed');
     }
-    ElMessage.success('Saved');
     if (!useControlledSidebar.value) {
       internalModifiedRows.value = {};
       internalDeletedRows.value = new Set();
