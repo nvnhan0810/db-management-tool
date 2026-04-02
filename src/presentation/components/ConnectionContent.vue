@@ -59,6 +59,7 @@
                     'multi-selected': selectedTableNames.includes(table.name),
                   }"
                   @click="handleTableRowClick($event, table)"
+                  @contextmenu.prevent.stop
                 >
                   <el-icon class="table-icon">
                     <Document />
@@ -67,7 +68,7 @@
                 </div>
                 <template #dropdown>
                   <el-dropdown-menu>
-                    <el-dropdown-item command="export">Export SQL</el-dropdown-item>
+                    <el-dropdown-item command="export">Export SQL…</el-dropdown-item>
                     <el-dropdown-item command="import">Import SQL</el-dropdown-item>
                   </el-dropdown-menu>
                 </template>
@@ -327,6 +328,31 @@
         </div>
       </template>
     </el-dialog>
+
+    <!-- Export mode modal -->
+    <el-dialog
+      v-model="exportModeVisible"
+      title="Export options"
+      width="320px"
+      :close-on-click-modal="false"
+      :close-on-press-escape="true"
+    >
+      <el-radio-group
+        v-model="exportMode"
+        style="display: flex; flex-direction: column; gap: 10px; align-items: flex-start;"
+      >
+        <el-radio label="structure-data">Structure and Data</el-radio>
+        <el-radio label="structure">Structure</el-radio>
+        <el-radio label="data">Data</el-radio>
+      </el-radio-group>
+
+      <template #footer>
+        <div style="display: flex; justify-content: flex-end; gap: 8px;">
+          <el-button @click="exportModeVisible = false">Cancel</el-button>
+          <el-button type="primary" @click="confirmExportMode">Export</el-button>
+        </div>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -475,6 +501,11 @@ const exportSubtitle = computed(() => {
   }
   return exportPath.value ? `Saving to: ${exportPath.value}` : '';
 });
+
+// Export mode modal state
+const exportModeVisible = ref(false);
+const exportMode = ref<'structure-data' | 'structure' | 'data'>('structure-data');
+let pendingExportConnectionId: string | null = null;
 
 const filteredTables = computed(() => {
   const q = tableNameFilter.value.trim().toLowerCase();
@@ -894,13 +925,22 @@ async function onTableMenuCommand(cmd: string, table: Table) {
     if (!selectedTableNames.value.includes(table.name)) {
       selectedTableNames.value = [table.name];
     }
-    await runExportSql(id);
+    pendingExportConnectionId = id;
+    exportMode.value = 'structure-data';
+    exportModeVisible.value = true;
   } else if (cmd === 'import') {
     await runImportSql(id);
   }
 }
 
-async function runExportSql(connectionId: string) {
+async function confirmExportMode() {
+  if (!pendingExportConnectionId) return;
+  exportModeVisible.value = false;
+  await runExportSql(pendingExportConnectionId, exportMode.value);
+  pendingExportConnectionId = null;
+}
+
+async function runExportSql(connectionId: string, mode: 'structure-data' | 'structure' | 'data') {
   const names = [...selectedTableNames.value];
   if (names.length === 0) {
     ElMessage.warning('Select at least one table');
@@ -958,7 +998,7 @@ async function runExportSql(connectionId: string) {
     const handler = (p: unknown) => onProgress(p);
     window.electron?.on?.('export:progress', handler);
 
-    const r = await exportTablesSqlToPathWithJob(connectionId, names, picked.path, exportJobId.value);
+    const r = await exportTablesSqlToPathWithJob(connectionId, names, picked.path, exportJobId.value, mode);
     window.electron?.off?.('export:progress', handler);
 
     if (!r.success) {

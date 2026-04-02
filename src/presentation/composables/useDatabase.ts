@@ -129,13 +129,15 @@ export function useDatabase() {
     connectionId: string,
     tableNames: string[],
     path: string,
-    jobId: string
+    jobId: string,
+    mode: 'structure-data' | 'structure' | 'data'
   ): Promise<{ success: boolean; path?: string; error?: string }> => {
     const r = (await window.electron?.invoke('database:exportTablesSqlToPath', {
       connectionId,
       tableNames,
       path,
       jobId,
+      mode,
     })) as { success: boolean; path?: string; error?: string } | undefined;
     if (!r) return { success: false, error: 'Export failed (no response from main process)' };
     return r;

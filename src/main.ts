@@ -191,12 +191,18 @@ ipcMain.handle(
   'database:exportTablesSqlToPath',
   async (
     _event,
-    args: { connectionId: string; tableNames: string[]; path: string; jobId: string }
+    args: {
+      connectionId: string;
+      tableNames: string[];
+      path: string;
+      jobId: string;
+      mode: 'structure-data' | 'structure' | 'data';
+    }
   ) => {
     try {
-      const { connectionId, tableNames, path: outPath, jobId } = args ?? {};
-      if (!connectionId || !Array.isArray(tableNames) || !outPath || !jobId) {
-        return { success: false, error: 'Missing connectionId, tableNames, path, or jobId' };
+      const { connectionId, tableNames, path: outPath, jobId, mode } = args ?? {};
+      if (!connectionId || !Array.isArray(tableNames) || !outPath || !jobId || !mode) {
+        return { success: false, error: 'Missing connectionId, tableNames, path, jobId, or mode' };
       }
 
       const win = BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0];
@@ -217,7 +223,8 @@ ipcMain.handle(
         tableNames,
         outPath,
         (p) => send({ ...p, jobId }),
-        abort.signal
+        abort.signal,
+        mode
       );
       send({ stage: 'done', jobId, path: outPath });
       exportJobs.delete(jobId);

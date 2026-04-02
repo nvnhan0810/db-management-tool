@@ -493,7 +493,9 @@ class DatabaseService {
       rowsDone?: number;
       rowsTotal?: number;
     }) => void
-  , signal?: AbortSignal): Promise<void> {
+  , signal?: AbortSignal,
+  mode: 'structure-data' | 'structure' | 'data' = 'structure-data'
+  ): Promise<void> {
     const connection = this.connections.get(connectionId);
     const info = this.connectionInfo.get(connectionId);
     if (!connection || !info) throw new Error('No active connection found');
@@ -507,7 +509,7 @@ class DatabaseService {
     };
 
     const dbLabel = info.database ?? 'database';
-    await write(`-- GL Database Client export\n-- ${dbLabel}\n-- ${new Date().toISOString()}\n\n`);
+    await write(`-- GL Database Client export\n-- ${dbLabel}\n-- mode=${mode}\n-- ${new Date().toISOString()}\n\n`);
 
     onProgress?.({ stage: 'start', totalTables: tableNames.length });
     try {
@@ -521,12 +523,15 @@ class DatabaseService {
         totalTables: tableNames.length,
       });
 
+      const includeStructure = mode === 'structure-data' || mode === 'structure';
+      const includeData = mode === 'structure-data' || mode === 'data';
+
       if (info.type === 'postgresql') {
-        await this.exportPgTableToWriter(connection as import('pg').Pool, name, write, (p) =>
+        await this.exportPgTableToWriter(connection as import('pg').Pool, name, write, includeStructure, includeData, (p) =>
           onProgress?.({ ...p, table: name, tableIndex: i + 1, totalTables: tableNames.length })
         );
       } else {
-        await this.exportMysqlTableToWriter(connection as mysql.Connection, name, write, (p) =>
+        await this.exportMysqlTableToWriter(connection as mysql.Connection, name, write, includeStructure, includeData, (p) =>
           onProgress?.({ ...p, table: name, tableIndex: i + 1, totalTables: tableNames.length })
         );
       }
@@ -565,9 +570,15 @@ class DatabaseService {
   ): Promise<string> {
     const [createRows] = await conn.query(`SHOW CREATE TABLE \`${table}\``);
     const row0 = (createRows as Record<string, string>[])[0];
-    const ddl = row0['Create Table'] ?? row0['Create View'];
+    const createTable = row0['Create Table'];
+    const createView = row0['Create View'];
+    const ddl = createTable ?? createView;
     if (!ddl) throw new Error(`SHOW CREATE TABLE failed for ${table}`);
-    let out = `-- Table: ${table}\n${ddl};\n\n`;
+    const drop =
+      createView && !createTable
+        ? `DROP VIEW IF EXISTS \`${table}\`;\n`
+        : `DROP TABLE IF EXISTS \`${table}\`;\n`;
+    let out = `-- Table: ${table}\n${drop}${ddl};\n\n`;
     const [dataRows] = await conn.query(`SELECT * FROM \`${table}\``);
     const rows = dataRows as Record<string, unknown>[];
     if (rows.length === 0) return out;
@@ -590,14 +601,27 @@ class DatabaseService {
     conn: mysql.Connection,
     table: string,
     write: (chunk: string) => Promise<void>,
+    includeStructure: boolean,
+    includeData: boolean,
     onProgress?: (p: { stage: 'table:batch'; rowsDone: number; rowsTotal: number }) => void
   ): Promise<void> {
-    const [createRows] = await conn.query(`SHOW CREATE TABLE \`${table}\``);
-    const row0 = (createRows as Record<string, string>[])[0];
-    const ddl = row0['Create Table'] ?? row0['Create View'];
-    if (!ddl) throw new Error(`SHOW CREATE TABLE failed for ${table}`);
-    await write(`-- Table: ${table}\n${ddl};\n\n`);
+    if (includeStructure) {
+      const [createRows] = await conn.query(`SHOW CREATE TABLE \`${table}\``);
+      const row0 = (createRows as Record<string, string>[])[0];
+      const createTable = row0['Create Table'];
+      const createView = row0['Create View'];
+      const ddl = createTable ?? createView;
+      if (!ddl) throw new Error(`SHOW CREATE TABLE failed for ${table}`);
+      const drop =
+        createView && !createTable
+          ? `DROP VIEW IF EXISTS \`${table}\`;\n`
+          : `DROP TABLE IF EXISTS \`${table}\`;\n`;
+      await write(`-- Table: ${table}\n${drop}${ddl};\n\n`);
+    } else {
+      await write(`-- Table: ${table}\n-- (data only)\n\n`);
+    }
 
+    if (!includeData) return;
     const [dataRows] = await conn.query(`SELECT * FROM \`${table}\``);
     const rows = dataRows as Record<string, unknown>[];
     if (rows.length === 0) return;
@@ -628,7 +652,7 @@ class DatabaseService {
     );
     if (vCheck.rows.length > 0) {
       const def = (vCheck.rows[0] as { view_definition: string }).view_definition;
-      return `-- View: ${table}\nCREATE OR REPLACE VIEW ${qTable} AS ${def};\n\n`;
+      return `-- View: ${table}\nDROP VIEW IF EXISTS ${qTable} CASCADE;\nCREATE OR REPLACE VIEW ${qTable} AS ${def};\n\n`;
     }
 
     const ddlResult = await pool.query(
@@ -643,7 +667,7 @@ class DatabaseService {
     const colRows = ddlResult.rows as Array<{ name: string; typ: string }>;
     if (colRows.length === 0) throw new Error(`Table not found: ${table}`);
     const colDefs = colRows.map((r) => `${pgQuoteIdent(r.name)} ${r.typ}`).join(',\n  ');
-    let out = `-- Table: ${table}\nCREATE TABLE ${qTable} (\n  ${colDefs}\n);\n\n`;
+    let out = `-- Table: ${table}\nDROP TABLE IF EXISTS ${qTable} CASCADE;\nCREATE TABLE ${qTable} (\n  ${colDefs}\n);\n\n`;
     const dataResult = await pool.query(`SELECT * FROM ${qTable}`);
     const rows = dataResult.rows as Record<string, unknown>[];
     if (rows.length === 0) return out;
@@ -666,6 +690,8 @@ class DatabaseService {
     pool: import('pg').Pool,
     table: string,
     write: (chunk: string) => Promise<void>,
+    includeStructure: boolean,
+    includeData: boolean,
     onProgress?: (p: { stage: 'table:batch'; rowsDone: number; rowsTotal: number }) => void
   ): Promise<void> {
     const qTable = pgQuoteIdent(table);
@@ -675,24 +701,37 @@ class DatabaseService {
     );
     if (vCheck.rows.length > 0) {
       const def = (vCheck.rows[0] as { view_definition: string }).view_definition;
-      await write(`-- View: ${table}\nCREATE OR REPLACE VIEW ${qTable} AS ${def};\n\n`);
+      if (includeStructure) {
+        await write(
+          `-- View: ${table}\nDROP VIEW IF EXISTS ${qTable} CASCADE;\nCREATE OR REPLACE VIEW ${qTable} AS ${def};\n\n`
+        );
+      } else {
+        await write(`-- View: ${table}\n-- (data only; views have no data)\n\n`);
+      }
       return;
     }
 
-    const ddlResult = await pool.query(
-      `SELECT a.attname AS name, format_type(a.atttypid, a.atttypmod) AS typ
-       FROM pg_attribute a
-       JOIN pg_class c ON a.attrelid = c.oid
-       JOIN pg_namespace n ON c.relnamespace = n.oid
-       WHERE n.nspname = 'public' AND c.relname = $1 AND a.attnum > 0 AND NOT a.attisdropped
-       ORDER BY a.attnum`,
-      [table]
-    );
-    const colRows = ddlResult.rows as Array<{ name: string; typ: string }>;
-    if (colRows.length === 0) throw new Error(`Table not found: ${table}`);
-    const colDefs = colRows.map((r) => `${pgQuoteIdent(r.name)} ${r.typ}`).join(',\n  ');
-    await write(`-- Table: ${table}\nCREATE TABLE ${qTable} (\n  ${colDefs}\n);\n\n`);
+    if (includeStructure) {
+      const ddlResult = await pool.query(
+        `SELECT a.attname AS name, format_type(a.atttypid, a.atttypmod) AS typ
+         FROM pg_attribute a
+         JOIN pg_class c ON a.attrelid = c.oid
+         JOIN pg_namespace n ON c.relnamespace = n.oid
+         WHERE n.nspname = 'public' AND c.relname = $1 AND a.attnum > 0 AND NOT a.attisdropped
+         ORDER BY a.attnum`,
+        [table]
+      );
+      const colRows = ddlResult.rows as Array<{ name: string; typ: string }>;
+      if (colRows.length === 0) throw new Error(`Table not found: ${table}`);
+      const colDefs = colRows.map((r) => `${pgQuoteIdent(r.name)} ${r.typ}`).join(',\n  ');
+      await write(
+        `-- Table: ${table}\nDROP TABLE IF EXISTS ${qTable} CASCADE;\nCREATE TABLE ${qTable} (\n  ${colDefs}\n);\n\n`
+      );
+    } else {
+      await write(`-- Table: ${table}\n-- (data only)\n\n`);
+    }
 
+    if (!includeData) return;
     const dataResult = await pool.query(`SELECT * FROM ${qTable}`);
     const rows = dataResult.rows as Record<string, unknown>[];
     if (rows.length === 0) return;
