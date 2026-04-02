@@ -3,8 +3,11 @@ import started from 'electron-squirrel-startup';
 import fs from 'node:fs';
 import path from 'node:path';
 import util from 'node:util';
+import { shell } from 'electron';
 import { databaseService } from './infrastructure/database/databaseService';
 import { deleteSecret, getSecret, saveSecret } from './main-secrets';
+
+const exportJobs = new Map<string, { abort: AbortController; outPath: string }>();
 
 if (started) {
   app.quit();
@@ -141,6 +144,159 @@ ipcMain.handle('database:executeQuery', async (_event, { connectionId, query }) 
   if (!connectionId || !query) throw new Error('Missing connectionId or query');
   console.log('[database:executeQuery]', { connectionId, query });
   return databaseService.executeQuery(connectionId, query);
+});
+
+ipcMain.handle(
+  'dialog:chooseSavePath',
+  async (
+    _event,
+    args?: { defaultFilename?: string; title?: string; extensions?: string[] }
+  ) => {
+    const { defaultFilename, title, extensions } = args ?? {};
+    const win = BrowserWindow.getFocusedWindow();
+    const { canceled, filePath } = await dialog.showSaveDialog(
+      win ?? BrowserWindow.getAllWindows()[0],
+      {
+        title: title ?? 'Save file',
+        defaultPath: defaultFilename ?? 'export.sql',
+        filters: [
+          { name: 'SQL', extensions: extensions ?? ['sql'] },
+          { name: 'All Files', extensions: ['*'] },
+        ],
+      }
+    );
+    if (canceled || !filePath) return { success: false, canceled: true };
+    return { success: true, path: filePath };
+  }
+);
+
+ipcMain.handle(
+  'database:exportTablesSql',
+  async (_event, args: { connectionId: string; tableNames: string[] }) => {
+    try {
+      const { connectionId, tableNames } = args ?? {};
+      if (!connectionId || !Array.isArray(tableNames)) {
+        return { success: false, error: 'Missing connectionId or tableNames' };
+      }
+      const sql = await databaseService.exportTablesSql(connectionId, tableNames);
+      return { success: true, sql };
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      return { success: false, error: msg };
+    }
+  }
+);
+
+ipcMain.handle(
+  'database:exportTablesSqlToPath',
+  async (
+    _event,
+    args: { connectionId: string; tableNames: string[]; path: string; jobId: string }
+  ) => {
+    try {
+      const { connectionId, tableNames, path: outPath, jobId } = args ?? {};
+      if (!connectionId || !Array.isArray(tableNames) || !outPath || !jobId) {
+        return { success: false, error: 'Missing connectionId, tableNames, path, or jobId' };
+      }
+
+      const win = BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0];
+      const send = (payload: unknown) => {
+        try {
+          win?.webContents?.send('export:progress', payload);
+        } catch {
+          /* ignore */
+        }
+      };
+
+      const abort = new AbortController();
+      exportJobs.set(jobId, { abort, outPath });
+
+      send({ stage: 'start', jobId, totalTables: tableNames.length });
+      await databaseService.exportTablesSqlToPath(
+        connectionId,
+        tableNames,
+        outPath,
+        (p) => send({ ...p, jobId }),
+        abort.signal
+      );
+      send({ stage: 'done', jobId, path: outPath });
+      exportJobs.delete(jobId);
+      return { success: true, path: outPath };
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (args?.jobId) exportJobs.delete(args.jobId);
+      return { success: false, error: msg };
+    }
+  }
+);
+
+ipcMain.handle('database:cancelExport', async (_event, args: { jobId: string }) => {
+  const job = exportJobs.get(args?.jobId);
+  if (!job) return { success: false, error: 'Job not found' };
+  job.abort.abort();
+  return { success: true };
+});
+
+ipcMain.handle('shell:showItemInFolder', async (_event, args: { path: string }) => {
+  const p = args?.path;
+  if (!p) return { success: false, error: 'Missing path' };
+  shell.showItemInFolder(p);
+  return { success: true };
+});
+
+ipcMain.handle(
+  'database:importSqlScript',
+  async (_event, args: { connectionId: string; sql: string }) => {
+    const { connectionId, sql } = args ?? {};
+    if (!connectionId || typeof sql !== 'string') {
+      throw new Error('Missing connectionId or sql');
+    }
+    return databaseService.importSqlScript(connectionId, sql);
+  }
+);
+
+ipcMain.handle(
+  'dialog:saveTextFile',
+  async (
+    _event,
+    args: { defaultFilename?: string; content: string; title?: string }
+  ) => {
+    const { content, defaultFilename, title } = args ?? {};
+    if (typeof content !== 'string') {
+      return { success: false, error: 'Invalid content' };
+    }
+    const win = BrowserWindow.getFocusedWindow();
+    const { canceled, filePath } = await dialog.showSaveDialog(win ?? BrowserWindow.getAllWindows()[0], {
+      title: title ?? 'Save SQL',
+      defaultPath: defaultFilename ?? 'export.sql',
+      filters: [
+        { name: 'SQL', extensions: ['sql'] },
+        { name: 'All Files', extensions: ['*'] },
+      ],
+    });
+    if (canceled || !filePath) {
+      return { success: false, canceled: true };
+    }
+    fs.writeFileSync(filePath, content, 'utf8');
+    return { success: true, path: filePath };
+  }
+);
+
+ipcMain.handle('dialog:openSqlFile', async () => {
+  const win = BrowserWindow.getFocusedWindow();
+  const result = await dialog.showOpenDialog(win ?? BrowserWindow.getAllWindows()[0], {
+    title: 'Open SQL file',
+    properties: ['openFile'],
+    filters: [
+      { name: 'SQL', extensions: ['sql'] },
+      { name: 'All Files', extensions: ['*'] },
+    ],
+  });
+  if (result.canceled || result.filePaths.length === 0) {
+    return { canceled: true, content: null };
+  }
+  const content = fs.readFileSync(result.filePaths[0], 'utf-8');
+  return { canceled: false, content, path: result.filePaths[0] };
 });
 
 ipcMain.handle('reload:prevent', (event, message) => {

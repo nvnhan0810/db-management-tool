@@ -83,6 +83,115 @@ export function useDatabase() {
     };
   };
 
+  const exportTablesSql = async (
+    connectionId: string,
+    tableNames: string[]
+  ): Promise<{ success: boolean; sql?: string; error?: string }> => {
+    return (await window.electron?.invoke('database:exportTablesSql', {
+      connectionId,
+      tableNames,
+    })) as { success: boolean; sql?: string; error?: string };
+  };
+
+  const chooseSavePath = async (args: {
+    defaultFilename?: string;
+    title?: string;
+    extensions?: string[];
+  }): Promise<{ success: boolean; canceled?: boolean; path?: string }> => {
+    const r = (await window.electron?.invoke('dialog:chooseSavePath', args)) as
+      | {
+      success: boolean;
+      canceled?: boolean;
+      path?: string;
+    }
+      | undefined;
+    if (!r) {
+      return { success: false, canceled: true };
+    }
+    return r;
+  };
+
+  const exportTablesSqlToPath = async (
+    connectionId: string,
+    tableNames: string[],
+    path: string
+  ): Promise<{ success: boolean; path?: string; error?: string }> => {
+    const r = (await window.electron?.invoke('database:exportTablesSqlToPath', {
+      connectionId,
+      tableNames,
+      path,
+    })) as { success: boolean; path?: string; error?: string } | undefined;
+    if (!r) return { success: false, error: 'Export failed (no response from main process)' };
+    return r;
+  };
+
+  const exportTablesSqlToPathWithJob = async (
+    connectionId: string,
+    tableNames: string[],
+    path: string,
+    jobId: string
+  ): Promise<{ success: boolean; path?: string; error?: string }> => {
+    const r = (await window.electron?.invoke('database:exportTablesSqlToPath', {
+      connectionId,
+      tableNames,
+      path,
+      jobId,
+    })) as { success: boolean; path?: string; error?: string } | undefined;
+    if (!r) return { success: false, error: 'Export failed (no response from main process)' };
+    return r;
+  };
+
+  const cancelExport = async (jobId: string): Promise<{ success: boolean; error?: string }> => {
+    const r = (await window.electron?.invoke('database:cancelExport', { jobId })) as
+      | { success: boolean; error?: string }
+      | undefined;
+    if (!r) return { success: false, error: 'Cancel failed' };
+    return r;
+  };
+
+  const showItemInFolder = async (path: string): Promise<{ success: boolean; error?: string }> => {
+    const r = (await window.electron?.invoke('shell:showItemInFolder', { path })) as
+      | { success: boolean; error?: string }
+      | undefined;
+    if (!r) return { success: false, error: 'Open folder failed' };
+    return r;
+  };
+
+  const importSqlScript = async (
+    connectionId: string,
+    sql: string
+  ): Promise<{ success: boolean; executed?: number; error?: string }> => {
+    return (await window.electron?.invoke('database:importSqlScript', {
+      connectionId,
+      sql,
+    })) as { success: boolean; executed?: number; error?: string };
+  };
+
+  const saveTextFile = async (args: {
+    content: string;
+    defaultFilename?: string;
+    title?: string;
+  }): Promise<{ success: boolean; canceled?: boolean; path?: string; error?: string }> => {
+    return (await window.electron?.invoke('dialog:saveTextFile', args)) as {
+      success: boolean;
+      canceled?: boolean;
+      path?: string;
+      error?: string;
+    };
+  };
+
+  const openSqlFile = async (): Promise<{
+    canceled: boolean;
+    content?: string | null;
+    path?: string;
+  }> => {
+    return (await window.electron?.invoke('dialog:openSqlFile')) as {
+      canceled: boolean;
+      content?: string | null;
+      path?: string;
+    };
+  };
+
   return {
     connect,
     disconnect,
@@ -92,5 +201,14 @@ export function useDatabase() {
     getDatabases,
     getTableStructure,
     executeQuery,
+    exportTablesSql,
+    chooseSavePath,
+    exportTablesSqlToPath,
+    exportTablesSqlToPathWithJob,
+    cancelExport,
+    showItemInFolder,
+    importSqlScript,
+    saveTextFile,
+    openSqlFile,
   };
 }

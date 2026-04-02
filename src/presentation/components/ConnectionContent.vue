@@ -39,20 +39,39 @@
               </template>
             </el-input>
           </div>
-          <div class="tables-list">
+          <div
+            ref="tablesListRef"
+            class="tables-list"
+            tabindex="0"
+            @keydown="onTablesSidebarKeydown"
+          >
             <template v-if="filteredTables.length > 0">
-              <div
+              <el-dropdown
                 v-for="table in filteredTables"
                 :key="table.name"
-                class="table-item"
-                :class="{ active: activeTableName === table.name }"
-                @click="handleSelectTable(table)"
+                trigger="contextmenu"
+                @command="(cmd: string | number) => onTableMenuCommand(String(cmd), table)"
               >
-                <el-icon class="table-icon">
-                  <Document />
-                </el-icon>
-                <span class="table-name">{{ table.name }}</span>
-              </div>
+                <div
+                  class="table-item"
+                  :class="{
+                    active: activeTableName === table.name,
+                    'multi-selected': selectedTableNames.includes(table.name),
+                  }"
+                  @click="handleTableRowClick($event, table)"
+                >
+                  <el-icon class="table-icon">
+                    <Document />
+                  </el-icon>
+                  <span class="table-name">{{ table.name }}</span>
+                </div>
+                <template #dropdown>
+                  <el-dropdown-menu>
+                    <el-dropdown-item command="export">Export SQL</el-dropdown-item>
+                    <el-dropdown-item command="import">Import SQL</el-dropdown-item>
+                  </el-dropdown-menu>
+                </template>
+              </el-dropdown>
             </template>
             <div v-else class="no-match">
               <span>No tables match "{{ tableNameFilter }}"</span>
@@ -244,6 +263,70 @@
       :connection-id="connection?.id"
       @selected="handleDatabaseSelected"
     />
+
+    <!-- Export progress dialog -->
+    <el-dialog
+      v-model="exportDialogVisible"
+      title="Export SQL"
+      width="520px"
+      :close-on-click-modal="false"
+      :close-on-press-escape="false"
+      :show-close="exportStatus !== 'running'"
+    >
+      <div v-if="exportStatus === 'running'">
+        <div style="margin-bottom: 8px; font-weight: 600;">
+          {{ exportTitle }}
+        </div>
+        <div style="margin-bottom: 12px; color: var(--el-text-color-secondary); font-size: 12px;">
+          {{ exportSubtitle }}
+        </div>
+        <el-progress :percentage="exportPercent" />
+      </div>
+
+      <div v-else-if="exportStatus === 'success'">
+        <el-result icon="success" title="Export completed">
+          <template #sub-title>
+            <div style="word-break: break-all;">{{ exportPath }}</div>
+          </template>
+        </el-result>
+      </div>
+
+      <div v-else-if="exportStatus === 'error'">
+        <el-result icon="error" title="Export failed">
+          <template #sub-title>
+            <div style="white-space: pre-wrap;">{{ exportError }}</div>
+          </template>
+        </el-result>
+      </div>
+
+      <template #footer>
+        <div style="display: flex; justify-content: flex-end; gap: 8px;">
+          <el-button
+            v-if="exportStatus === 'running'"
+            type="danger"
+            :loading="exportCanceling"
+            @click="handleCancelExport"
+          >
+            Cancel
+          </el-button>
+
+          <el-button
+            v-if="exportStatus === 'success'"
+            type="primary"
+            @click="handleOpenExportPath"
+          >
+            Open file location
+          </el-button>
+
+          <el-button
+            v-if="exportStatus !== 'running'"
+            @click="exportDialogVisible = false"
+          >
+            Close
+          </el-button>
+        </div>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -325,7 +408,19 @@ const connectionStore = useConnectionStore();
 const { dataSidebarOpen, rowDetailPanelEnabled, sqlHistoryPanelOpen, currentConnection, activeConnections, currentTabId } =
   storeToRefs(connectionStore);
 const { switchToConnection } = connectionStore;
-const { getTables, getTableStructure, executeQuery } = useDatabase();
+const {
+  getTables,
+  getTableStructure,
+  executeQuery,
+  exportTablesSql,
+  exportTablesSqlToPathWithJob,
+  chooseSavePath,
+  cancelExport,
+  showItemInFolder,
+  importSqlScript,
+  saveTextFile,
+  openSqlFile,
+} = useDatabase();
 
 // Use currentConnection, but fallback to first active connection if currentConnection is null
 const connection = computed(() => {
@@ -338,6 +433,48 @@ const tables = ref<Table[]>([]);
 const tableNameFilter = ref('');
 const isLoadingTables = ref(false);
 const activeTableName = ref<string>('');
+/** Multi-select (Ctrl/Cmd+click); cleared on normal table click. */
+const selectedTableNames = ref<string[]>([]);
+const tablesListRef = ref<HTMLElement | null>(null);
+
+// Export dialog state
+const exportDialogVisible = ref(false);
+const exportStatus = ref<'idle' | 'running' | 'success' | 'error'>('idle');
+const exportJobId = ref<string | null>(null);
+const exportPath = ref<string>('');
+const exportError = ref<string>('');
+const exportTableIndex = ref(0);
+const exportTotalTables = ref(0);
+const exportCurrentTable = ref<string>('');
+const exportRowsDone = ref(0);
+const exportRowsTotal = ref(0);
+const exportCanceling = ref(false);
+
+const exportPercent = computed(() => {
+  const total = exportTotalTables.value || 0;
+  if (total <= 0) return 0;
+  const doneTables = Math.max(0, exportTableIndex.value - 1);
+  const currentFrac =
+    exportRowsTotal.value > 0 ? exportRowsDone.value / exportRowsTotal.value : 0;
+  const pct = ((doneTables + currentFrac) / total) * 100;
+  return Math.max(0, Math.min(100, Math.round(pct)));
+});
+
+const exportTitle = computed(() => {
+  if (exportStatus.value !== 'running') return '';
+  const idx = exportTableIndex.value || 0;
+  const total = exportTotalTables.value || 0;
+  if (!exportCurrentTable.value) return `Exporting… (${idx}/${total})`;
+  return `Exporting ${idx}/${total}: ${exportCurrentTable.value}`;
+});
+
+const exportSubtitle = computed(() => {
+  if (exportStatus.value !== 'running') return '';
+  if (exportRowsTotal.value > 0) {
+    return `Rows: ${exportRowsDone.value}/${exportRowsTotal.value}`;
+  }
+  return exportPath.value ? `Saving to: ${exportPath.value}` : '';
+});
 
 const filteredTables = computed(() => {
   const q = tableNameFilter.value.trim().toLowerCase();
@@ -700,6 +837,7 @@ watch(
 watch(
   () => [connection.value?.id, connection.value?.database],
   async () => {
+    selectedTableNames.value = [];
     if (connection.value?.database) {
       // Only load tables if this connection doesn't already have cached tables
       const connId = connection.value.id;
@@ -716,6 +854,162 @@ watch(
   },
   { immediate: true }
 );
+
+function toggleTableSelection(name: string) {
+  const i = selectedTableNames.value.indexOf(name);
+  if (i >= 0) {
+    selectedTableNames.value = selectedTableNames.value.filter((n) => n !== name);
+  } else {
+    selectedTableNames.value = [...selectedTableNames.value, name];
+  }
+}
+
+function selectAllFilteredTables() {
+  selectedTableNames.value = filteredTables.value.map((t) => t.name);
+}
+
+function onTablesSidebarKeydown(e: KeyboardEvent) {
+  if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'a') {
+    e.preventDefault();
+    if (filteredTables.value.length > 0) {
+      selectAllFilteredTables();
+    }
+  }
+}
+
+async function handleTableRowClick(e: MouseEvent, table: Table) {
+  if (e.metaKey || e.ctrlKey) {
+    e.preventDefault();
+    toggleTableSelection(table.name);
+    return;
+  }
+  selectedTableNames.value = [];
+  await handleSelectTable(table);
+}
+
+async function onTableMenuCommand(cmd: string, table: Table) {
+  const id = connection.value?.id;
+  if (!id) return;
+  if (cmd === 'export') {
+    if (!selectedTableNames.value.includes(table.name)) {
+      selectedTableNames.value = [table.name];
+    }
+    await runExportSql(id);
+  } else if (cmd === 'import') {
+    await runImportSql(id);
+  }
+}
+
+async function runExportSql(connectionId: string) {
+  const names = [...selectedTableNames.value];
+  if (names.length === 0) {
+    ElMessage.warning('Select at least one table');
+    return;
+  }
+
+  const safe = `${connection.value?.database ?? 'db'}_export.sql`.replace(/[^a-zA-Z0-9_.-]/g, '_');
+  const picked = await chooseSavePath({
+    defaultFilename: safe,
+    title: 'Save SQL file',
+    extensions: ['sql'],
+  });
+  if (!picked || !picked.success || picked.canceled || !picked.path) return;
+
+  try {
+    // Init dialog
+    exportDialogVisible.value = true;
+    exportStatus.value = 'running';
+    exportCanceling.value = false;
+    exportError.value = '';
+    exportPath.value = picked.path;
+    exportJobId.value = crypto.randomUUID();
+    exportTableIndex.value = 0;
+    exportTotalTables.value = names.length;
+    exportCurrentTable.value = '';
+    exportRowsDone.value = 0;
+    exportRowsTotal.value = 0;
+
+    const jobId = exportJobId.value;
+    const onProgress = (payload: any) => {
+      if (!payload || typeof payload !== 'object') return;
+      if (payload.jobId && jobId && payload.jobId !== jobId) return;
+      if (payload.stage === 'start') {
+        exportTotalTables.value = payload.totalTables ?? names.length;
+        exportTableIndex.value = 0;
+        exportRowsDone.value = 0;
+        exportRowsTotal.value = 0;
+      } else if (payload.stage === 'table:start') {
+        exportTableIndex.value = payload.tableIndex ?? exportTableIndex.value;
+        exportTotalTables.value = payload.totalTables ?? exportTotalTables.value;
+        exportCurrentTable.value = payload.table ?? '';
+        exportRowsDone.value = 0;
+        exportRowsTotal.value = 0;
+      } else if (payload.stage === 'table:batch') {
+        exportTableIndex.value = payload.tableIndex ?? exportTableIndex.value;
+        exportTotalTables.value = payload.totalTables ?? exportTotalTables.value;
+        exportCurrentTable.value = payload.table ?? exportCurrentTable.value;
+        exportRowsDone.value = payload.rowsDone ?? exportRowsDone.value;
+        exportRowsTotal.value = payload.rowsTotal ?? exportRowsTotal.value;
+      } else if (payload.stage === 'done') {
+        exportPath.value = payload.path ?? exportPath.value;
+      }
+    };
+
+    const handler = (p: unknown) => onProgress(p);
+    window.electron?.on?.('export:progress', handler);
+
+    const r = await exportTablesSqlToPathWithJob(connectionId, names, picked.path, exportJobId.value);
+    window.electron?.off?.('export:progress', handler);
+
+    if (!r.success) {
+      exportStatus.value = 'error';
+      exportError.value = r.error || 'Export failed';
+      return;
+    }
+    exportStatus.value = 'success';
+  } catch (err) {
+    exportStatus.value = 'error';
+    exportError.value = err instanceof Error ? err.message : 'Export failed';
+  }
+}
+
+async function handleCancelExport() {
+  if (exportCanceling.value) return;
+  const jobId = exportJobId.value;
+  if (!jobId) return;
+  exportCanceling.value = true;
+  try {
+    await cancelExport(jobId);
+    exportStatus.value = 'error';
+    exportError.value = 'Export canceled';
+  } finally {
+    exportCanceling.value = false;
+  }
+}
+
+async function handleOpenExportPath() {
+  if (!exportPath.value) return;
+  await showItemInFolder(exportPath.value);
+}
+
+async function runImportSql(connectionId: string) {
+  const open = await openSqlFile();
+  if (open.canceled || open.content == null || open.content === '') return;
+  const loading = ElMessage({ message: 'Importing…', type: 'info', duration: 0 });
+  try {
+    const r = await importSqlScript(connectionId, open.content);
+    loading.close();
+    if (!r.success) {
+      ElMessage.error(r.error || 'Import failed');
+      return;
+    }
+    ElMessage.success(`Executed ${r.executed ?? 0} statement(s)`);
+    await loadTables();
+  } catch (err) {
+    loading.close();
+    ElMessage.error(err instanceof Error ? err.message : 'Import failed');
+  }
+}
 
 const handleSelectTable = async (table: Table) => {
   activeTableName.value = table.name;
@@ -1227,10 +1521,16 @@ const formatDate = (date: Date | string) => {
       flex: 1;
       overflow-y: auto;
       padding: 8px;
+      outline: none;
       scrollbar-width: none;
       -ms-overflow-style: none;
       &::-webkit-scrollbar {
         display: none;
+      }
+
+      :deep(.el-dropdown) {
+        display: block;
+        width: 100%;
       }
 
       .table-item {
@@ -1281,6 +1581,14 @@ const formatDate = (date: Date | string) => {
           .table-name {
             color: var(--el-color-primary);
             font-weight: 600;
+          }
+        }
+
+        &.multi-selected {
+          background-color: rgba(64, 158, 255, 0.1);
+          border-color: rgba(64, 158, 255, 0.35);
+          .dark & {
+            background-color: rgba(64, 158, 255, 0.14);
           }
         }
 

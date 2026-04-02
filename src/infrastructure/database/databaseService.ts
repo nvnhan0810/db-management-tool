@@ -1,7 +1,10 @@
 import type { DatabaseConnection } from '@/domain/connection/types';
 import type { QueryResult } from '@/domain/query/types';
+import { splitSqlStatements } from '@/infrastructure/database/sqlScriptSplit';
 import { getPg, getSsh2Client } from '@/utils/native-modules';
 import mysql from 'mysql2/promise';
+import { once } from 'node:events';
+import fs from 'node:fs';
 import * as net from 'net';
 
 class DatabaseService {
@@ -421,6 +424,349 @@ class DatabaseService {
       rowCount: Array.isArray(rows) ? rows.length : 0,
     };
   }
+
+  /**
+   * Export selected tables as SQL (DDL + INSERT). Table names must match [a-zA-Z0-9_].
+   */
+  async exportTablesSql(
+    connectionId: string,
+    tableNames: string[],
+    onProgress?: (p: {
+      stage:
+        | 'table:start'
+        | 'table:done'
+        | 'table:batch'
+        | 'start';
+      table?: string;
+      tableIndex?: number;
+      totalTables?: number;
+      rowsDone?: number;
+      rowsTotal?: number;
+    }) => void
+  ): Promise<string> {
+    const connection = this.connections.get(connectionId);
+    const info = this.connectionInfo.get(connectionId);
+    if (!connection || !info) throw new Error('No active connection found');
+    if (!tableNames.length) throw new Error('No tables selected');
+    const dbLabel = info.database ?? 'database';
+    const header = `-- GL Database Client export\n-- ${dbLabel}\n-- ${new Date().toISOString()}\n\n`;
+    const parts: string[] = [header];
+    onProgress?.({ stage: 'start', totalTables: tableNames.length });
+    for (let i = 0; i < tableNames.length; i++) {
+      const raw = tableNames[i];
+      const name = sanitizeTableIdent(raw);
+      onProgress?.({ stage: 'table:start', table: name, tableIndex: i + 1, totalTables: tableNames.length });
+      if (info.type === 'postgresql') {
+        parts.push(
+          await this.exportPgTable(connection as import('pg').Pool, name, (p) =>
+            onProgress?.({ ...p, table: name, tableIndex: i + 1, totalTables: tableNames.length })
+          )
+        );
+      } else {
+        parts.push(
+          await this.exportMysqlTable(connection as mysql.Connection, name, (p) =>
+            onProgress?.({ ...p, table: name, tableIndex: i + 1, totalTables: tableNames.length })
+          )
+        );
+      }
+      onProgress?.({ stage: 'table:done', table: name, tableIndex: i + 1, totalTables: tableNames.length });
+    }
+    return parts.join('\n');
+  }
+
+  /**
+   * Stream export directly to a file (avoids huge in-memory string).
+   */
+  async exportTablesSqlToPath(
+    connectionId: string,
+    tableNames: string[],
+    outPath: string,
+    onProgress?: (p: {
+      stage:
+        | 'table:start'
+        | 'table:done'
+        | 'table:batch'
+        | 'start';
+      table?: string;
+      tableIndex?: number;
+      totalTables?: number;
+      rowsDone?: number;
+      rowsTotal?: number;
+    }) => void
+  , signal?: AbortSignal): Promise<void> {
+    const connection = this.connections.get(connectionId);
+    const info = this.connectionInfo.get(connectionId);
+    if (!connection || !info) throw new Error('No active connection found');
+    if (!tableNames.length) throw new Error('No tables selected');
+
+    const stream = fs.createWriteStream(outPath, { encoding: 'utf8' });
+    const write = async (chunk: string) => {
+      if (!stream.write(chunk)) {
+        await once(stream, 'drain');
+      }
+    };
+
+    const dbLabel = info.database ?? 'database';
+    await write(`-- GL Database Client export\n-- ${dbLabel}\n-- ${new Date().toISOString()}\n\n`);
+
+    onProgress?.({ stage: 'start', totalTables: tableNames.length });
+    try {
+      for (let i = 0; i < tableNames.length; i++) {
+        if (signal?.aborted) throw new Error('Export canceled');
+        const name = sanitizeTableIdent(tableNames[i]);
+      onProgress?.({
+        stage: 'table:start',
+        table: name,
+        tableIndex: i + 1,
+        totalTables: tableNames.length,
+      });
+
+      if (info.type === 'postgresql') {
+        await this.exportPgTableToWriter(connection as import('pg').Pool, name, write, (p) =>
+          onProgress?.({ ...p, table: name, tableIndex: i + 1, totalTables: tableNames.length })
+        );
+      } else {
+        await this.exportMysqlTableToWriter(connection as mysql.Connection, name, write, (p) =>
+          onProgress?.({ ...p, table: name, tableIndex: i + 1, totalTables: tableNames.length })
+        );
+      }
+
+      onProgress?.({
+        stage: 'table:done',
+        table: name,
+        tableIndex: i + 1,
+        totalTables: tableNames.length,
+      });
+      }
+    } catch (err) {
+      try {
+        stream.destroy();
+      } catch {
+        /* ignore */
+      }
+      try {
+        fs.unlinkSync(outPath);
+      } catch {
+        /* ignore */
+      }
+      throw err;
+    }
+
+    await new Promise<void>((resolve, reject) => {
+      stream.end(() => resolve());
+      stream.on('error', reject);
+    });
+  }
+
+  private async exportMysqlTable(
+    conn: mysql.Connection,
+    table: string,
+    onProgress?: (p: { stage: 'table:batch'; rowsDone: number; rowsTotal: number }) => void
+  ): Promise<string> {
+    const [createRows] = await conn.query(`SHOW CREATE TABLE \`${table}\``);
+    const row0 = (createRows as Record<string, string>[])[0];
+    const ddl = row0['Create Table'] ?? row0['Create View'];
+    if (!ddl) throw new Error(`SHOW CREATE TABLE failed for ${table}`);
+    let out = `-- Table: ${table}\n${ddl};\n\n`;
+    const [dataRows] = await conn.query(`SELECT * FROM \`${table}\``);
+    const rows = dataRows as Record<string, unknown>[];
+    if (rows.length === 0) return out;
+    const cols = Object.keys(rows[0]);
+    const colList = cols.map((c) => `\`${c}\``).join(',');
+    const batch = 200;
+    const total = rows.length;
+    for (let i = 0; i < rows.length; i += batch) {
+      const chunk = rows.slice(i, i + batch);
+      const values = chunk
+        .map((r) => `(${cols.map((c) => mysqlLiteral(r[c])).join(',')})`)
+        .join(',\n');
+      out += `INSERT INTO \`${table}\` (${colList}) VALUES\n${values};\n\n`;
+      onProgress?.({ stage: 'table:batch', rowsDone: Math.min(i + chunk.length, total), rowsTotal: total });
+    }
+    return out;
+  }
+
+  private async exportMysqlTableToWriter(
+    conn: mysql.Connection,
+    table: string,
+    write: (chunk: string) => Promise<void>,
+    onProgress?: (p: { stage: 'table:batch'; rowsDone: number; rowsTotal: number }) => void
+  ): Promise<void> {
+    const [createRows] = await conn.query(`SHOW CREATE TABLE \`${table}\``);
+    const row0 = (createRows as Record<string, string>[])[0];
+    const ddl = row0['Create Table'] ?? row0['Create View'];
+    if (!ddl) throw new Error(`SHOW CREATE TABLE failed for ${table}`);
+    await write(`-- Table: ${table}\n${ddl};\n\n`);
+
+    const [dataRows] = await conn.query(`SELECT * FROM \`${table}\``);
+    const rows = dataRows as Record<string, unknown>[];
+    if (rows.length === 0) return;
+
+    const cols = Object.keys(rows[0]);
+    const colList = cols.map((c) => `\`${c}\``).join(',');
+    const batch = 200;
+    const total = rows.length;
+    for (let i = 0; i < rows.length; i += batch) {
+      const chunk = rows.slice(i, i + batch);
+      const values = chunk
+        .map((r) => `(${cols.map((c) => mysqlLiteral(r[c])).join(',')})`)
+        .join(',\n');
+      await write(`INSERT INTO \`${table}\` (${colList}) VALUES\n${values};\n\n`);
+      onProgress?.({ stage: 'table:batch', rowsDone: Math.min(i + chunk.length, total), rowsTotal: total });
+    }
+  }
+
+  private async exportPgTable(
+    pool: import('pg').Pool,
+    table: string,
+    onProgress?: (p: { stage: 'table:batch'; rowsDone: number; rowsTotal: number }) => void
+  ): Promise<string> {
+    const qTable = pgQuoteIdent(table);
+    const vCheck = await pool.query(
+      `SELECT view_definition FROM information_schema.views WHERE table_schema = 'public' AND table_name = $1`,
+      [table]
+    );
+    if (vCheck.rows.length > 0) {
+      const def = (vCheck.rows[0] as { view_definition: string }).view_definition;
+      return `-- View: ${table}\nCREATE OR REPLACE VIEW ${qTable} AS ${def};\n\n`;
+    }
+
+    const ddlResult = await pool.query(
+      `SELECT a.attname AS name, format_type(a.atttypid, a.atttypmod) AS typ
+       FROM pg_attribute a
+       JOIN pg_class c ON a.attrelid = c.oid
+       JOIN pg_namespace n ON c.relnamespace = n.oid
+       WHERE n.nspname = 'public' AND c.relname = $1 AND a.attnum > 0 AND NOT a.attisdropped
+       ORDER BY a.attnum`,
+      [table]
+    );
+    const colRows = ddlResult.rows as Array<{ name: string; typ: string }>;
+    if (colRows.length === 0) throw new Error(`Table not found: ${table}`);
+    const colDefs = colRows.map((r) => `${pgQuoteIdent(r.name)} ${r.typ}`).join(',\n  ');
+    let out = `-- Table: ${table}\nCREATE TABLE ${qTable} (\n  ${colDefs}\n);\n\n`;
+    const dataResult = await pool.query(`SELECT * FROM ${qTable}`);
+    const rows = dataResult.rows as Record<string, unknown>[];
+    if (rows.length === 0) return out;
+    const cols = Object.keys(rows[0]);
+    const colList = cols.map(pgQuoteIdent).join(',');
+    const batch = 200;
+    const total = rows.length;
+    for (let i = 0; i < rows.length; i += batch) {
+      const chunk = rows.slice(i, i + batch);
+      const values = chunk
+        .map((r) => `(${cols.map((c) => pgLiteral(r[c])).join(',')})`)
+        .join(',\n');
+      out += `INSERT INTO ${qTable} (${colList}) VALUES\n${values};\n\n`;
+      onProgress?.({ stage: 'table:batch', rowsDone: Math.min(i + chunk.length, total), rowsTotal: total });
+    }
+    return out;
+  }
+
+  private async exportPgTableToWriter(
+    pool: import('pg').Pool,
+    table: string,
+    write: (chunk: string) => Promise<void>,
+    onProgress?: (p: { stage: 'table:batch'; rowsDone: number; rowsTotal: number }) => void
+  ): Promise<void> {
+    const qTable = pgQuoteIdent(table);
+    const vCheck = await pool.query(
+      `SELECT view_definition FROM information_schema.views WHERE table_schema = 'public' AND table_name = $1`,
+      [table]
+    );
+    if (vCheck.rows.length > 0) {
+      const def = (vCheck.rows[0] as { view_definition: string }).view_definition;
+      await write(`-- View: ${table}\nCREATE OR REPLACE VIEW ${qTable} AS ${def};\n\n`);
+      return;
+    }
+
+    const ddlResult = await pool.query(
+      `SELECT a.attname AS name, format_type(a.atttypid, a.atttypmod) AS typ
+       FROM pg_attribute a
+       JOIN pg_class c ON a.attrelid = c.oid
+       JOIN pg_namespace n ON c.relnamespace = n.oid
+       WHERE n.nspname = 'public' AND c.relname = $1 AND a.attnum > 0 AND NOT a.attisdropped
+       ORDER BY a.attnum`,
+      [table]
+    );
+    const colRows = ddlResult.rows as Array<{ name: string; typ: string }>;
+    if (colRows.length === 0) throw new Error(`Table not found: ${table}`);
+    const colDefs = colRows.map((r) => `${pgQuoteIdent(r.name)} ${r.typ}`).join(',\n  ');
+    await write(`-- Table: ${table}\nCREATE TABLE ${qTable} (\n  ${colDefs}\n);\n\n`);
+
+    const dataResult = await pool.query(`SELECT * FROM ${qTable}`);
+    const rows = dataResult.rows as Record<string, unknown>[];
+    if (rows.length === 0) return;
+
+    const cols = Object.keys(rows[0]);
+    const colList = cols.map(pgQuoteIdent).join(',');
+    const batch = 200;
+    const total = rows.length;
+    for (let i = 0; i < rows.length; i += batch) {
+      const chunk = rows.slice(i, i + batch);
+      const values = chunk
+        .map((r) => `(${cols.map((c) => pgLiteral(r[c])).join(',')})`)
+        .join(',\n');
+      await write(`INSERT INTO ${qTable} (${colList}) VALUES\n${values};\n\n`);
+      onProgress?.({ stage: 'table:batch', rowsDone: Math.min(i + chunk.length, total), rowsTotal: total });
+    }
+  }
+
+  /**
+   * Run SQL script (one statement at a time). Best for files produced by this app.
+   */
+  async importSqlScript(
+    connectionId: string,
+    sql: string
+  ): Promise<{ success: boolean; executed: number; error?: string }> {
+    const statements = splitSqlStatements(sql);
+    let executed = 0;
+    for (const stmt of statements) {
+      const trimmed = stmt.trim();
+      if (!trimmed) continue;
+      try {
+        await this.executeQuery(connectionId, trimmed);
+        executed++;
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        return { success: false, executed, error: msg };
+      }
+    }
+    return { success: true, executed };
+  }
+}
+
+function sanitizeTableIdent(name: string): string {
+  if (!/^[a-zA-Z0-9_]+$/.test(name)) {
+    throw new Error(`Invalid table name: ${name}`);
+  }
+  return name;
+}
+
+function pgQuoteIdent(name: string): string {
+  return `"${name.replace(/"/g, '""')}"`;
+}
+
+function pgLiteral(v: unknown): string {
+  if (v === null || v === undefined) return 'NULL';
+  if (typeof v === 'number') return String(v);
+  if (typeof v === 'boolean') return v ? 'TRUE' : 'FALSE';
+  if (Buffer.isBuffer(v)) return `'\\x${v.toString('hex')}'::bytea`;
+  if (v instanceof Date) return `'${v.toISOString()}'::timestamp with time zone`;
+  return `'${String(v).replace(/'/g, "''")}'`;
+}
+
+function mysqlLiteral(v: unknown): string {
+  if (v === null || v === undefined) return 'NULL';
+  if (typeof v === 'number') return String(v);
+  if (typeof v === 'boolean') return v ? '1' : '0';
+  if (Buffer.isBuffer(v)) return `0x${v.toString('hex')}`;
+  if (v instanceof Date) return `'${formatMysqlDate(v)}'`;
+  return `'${String(v).replace(/\\/g, '\\\\').replace(/'/g, "''")}'`;
+}
+
+function formatMysqlDate(d: Date): string {
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
 }
 
 export const databaseService = new DatabaseService();
