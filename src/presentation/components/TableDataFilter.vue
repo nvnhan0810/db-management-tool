@@ -53,7 +53,7 @@
 
 <script setup lang="ts">
 import { Delete, Plus } from '@element-plus/icons-vue';
-import { computed, onMounted, onUnmounted, ref } from 'vue';
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 
 interface Filter {
   column: string;
@@ -63,13 +63,18 @@ interface Filter {
 
 interface Props {
   columns: string[];
+  presetFilters?: Filter[] | null;
+  presetNonce?: number;
 }
 
 interface Emits {
   (e: 'apply', filters: Filter[] | null, rawSql: string | null): void;
 }
 
-const props = defineProps<Props>();
+const props = withDefaults(defineProps<Props>(), {
+  presetFilters: null,
+  presetNonce: 0,
+});
 const emit = defineEmits<Emits>();
 
 const filterPanelOpen = ref(false);
@@ -91,6 +96,20 @@ const openFilterPanel = () => {
     });
   }
 };
+
+// Apply preset filters (e.g. when jumping via FK)
+watch(
+  () => props.presetNonce,
+  () => {
+    if (!props.presetFilters || props.presetFilters.length === 0) return;
+    filters.value = props.presetFilters.map((f) => ({
+      column: f.column,
+      operator: f.operator,
+      value: f.value,
+    }));
+    filterPanelOpen.value = true;
+  }
+);
 
 const addFilter = () => {
   filters.value.push({

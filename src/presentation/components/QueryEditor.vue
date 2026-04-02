@@ -80,6 +80,7 @@ import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import type { ActiveConnection } from '@/presentation/stores/connectionStore';
 import { useDatabase } from '@/presentation/composables/useDatabase';
 import { useTableStore } from '@/presentation/stores/tableStore';
+import { showErrorDialog } from '@/presentation/utils/errorDialogs';
 import CustomTitleBar from '@/presentation/components/CustomTitleBar.vue';
 import DatabaseTables from '@/presentation/components/DatabaseTables.vue';
 import RightSidebar from '@/presentation/components/RightSidebar.vue';
@@ -389,7 +390,11 @@ const handleReloadData = async () => {
     }
   } catch (error) {
     console.error('Error during reload:', error);
-    ElMessage.error('Failed to reload data');
+    await showErrorDialog({
+      title: 'Reload failed',
+      message: error instanceof Error ? error.message : 'Failed to reload data',
+      details: error instanceof Error ? error.stack : undefined,
+    });
   }
 };
 

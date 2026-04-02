@@ -24,6 +24,7 @@ export interface SqlHistoryItem {
 
 const STORAGE_KEY = 'connectionsState';
 const QUIT_TIME_KEY = 'lastQuitTime';
+const UI_PREFS_KEY = 'uiPrefs';
 
 /** Workspace sessions: open tabs, current tab, sidebar — not the saved-connection list. */
 export const useConnectionStore = defineStore('connection', () => {
@@ -59,6 +60,36 @@ export const useConnectionStore = defineStore('connection', () => {
         timestamp: Date.now(),
       })
     );
+  };
+
+  const saveUiPrefs = () => {
+    localStorage.setItem(
+      UI_PREFS_KEY,
+      JSON.stringify({
+        rowDetailPanelEnabled: rowDetailPanelEnabled.value,
+        sqlHistoryPanelOpen: sqlHistoryPanelOpen.value,
+        timestamp: Date.now(),
+      })
+    );
+  };
+
+  const loadUiPrefs = () => {
+    try {
+      const raw = localStorage.getItem(UI_PREFS_KEY);
+      if (!raw) return;
+      const parsed = JSON.parse(raw) as {
+        rowDetailPanelEnabled?: boolean;
+        sqlHistoryPanelOpen?: boolean;
+      };
+      if (typeof parsed.rowDetailPanelEnabled === 'boolean') {
+        rowDetailPanelEnabled.value = parsed.rowDetailPanelEnabled;
+      }
+      if (typeof parsed.sqlHistoryPanelOpen === 'boolean') {
+        sqlHistoryPanelOpen.value = parsed.sqlHistoryPanelOpen;
+      }
+    } catch {
+      /* ignore */
+    }
   };
 
   const loadState = (): boolean => {
@@ -112,8 +143,10 @@ export const useConnectionStore = defineStore('connection', () => {
   };
 
   watch([activeConnections, currentTabId], saveState, { deep: true });
+  watch([rowDetailPanelEnabled, sqlHistoryPanelOpen], saveUiPrefs, { deep: false });
 
   if (!stateLoaded) {
+    loadUiPrefs();
     loadState();
     stateLoaded = true;
   }

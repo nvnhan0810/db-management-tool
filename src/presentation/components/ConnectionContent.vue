@@ -175,7 +175,10 @@
               :table-name="tab.tableName"
               :connection-id="connection?.id"
               :column-types="(tab.structure?.columns) ? Object.fromEntries(tab.structure.columns.map((c: { name: string; type: string }) => [c.name, c.type])) : {}"
+              :foreign-keys="(tab.structure?.columns) ? Object.fromEntries(tab.structure.columns.filter((c: any) => !!c.foreign_key).map((c: any) => [c.name, c.foreign_key])) : {}"
               :columns-from-structure="tab.structure?.columns?.map((c: { name: string }) => c.name) ?? []"
+              :filter-preset="tab.filterPreset ?? null"
+              :filter-preset-nonce="tab.filterPresetNonce ?? 0"
               :sidebar-panel-open="dataSidebarVisible"
               :sidebar-selected-row-index="getDataSidebarState(tab.id).selectedRowIndex"
               :sidebar-selected-column="getDataSidebarState(tab.id).selectedColumn"
@@ -186,6 +189,7 @@
               @filter-apply="(whereClause: string | null) => handleFilterApply(tab, whereClause)"
               @refresh="() => { loadTableData(tab); clearDataSidebarState(tab.id); }"
               @cell-select="(e: { rowIndex: number; columnKey: string | null }) => onDataCellSelect(tab.id, e)"
+              @open-related="(e: { refTable: string; refColumn: string; value: unknown }) => openRelatedTabFromCell(tab, e)"
               @sidebar-close="onDataSidebarClose(tab.id)"
               @update-field="(e: { field: string; value: unknown }) => onDataUpdateField(tab.id, e)"
               @mark-deleted="onDataMarkDeleted(tab.id)"
@@ -464,6 +468,7 @@ import TableStructureView from '@/presentation/components/TableStructureView.vue
 import TableViewFooter from '@/presentation/components/TableViewFooter.vue';
 import { useDatabase } from '@/presentation/composables/useDatabase';
 import { useConnectionStore } from '@/presentation/stores/connectionStore';
+import { showErrorDialog } from '@/presentation/utils/errorDialogs';
 import { Connection, Document, Folder, Search } from '@element-plus/icons-vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import { storeToRefs } from 'pinia';
@@ -514,6 +519,8 @@ interface Tab {
     perPage: number;
   };
   whereClause?: string | null;
+  filterPreset?: { column: string; operator: string; value: string } | null;
+  filterPresetNonce?: number;
 }
 
 type DatabaseQueryResult = {
@@ -930,7 +937,7 @@ async function handleSaveKeydown(e: KeyboardEvent) {
       try {
         await loadTableData(tab, page, perPage);
       } catch {
-        ElMessage.error('Reload failed');
+        await showErrorDialog({ title: 'Reload failed', message: 'Failed to reload data.' });
       }
     }
     return;
@@ -1013,7 +1020,7 @@ async function reloadActiveConnection() {
     }
     await Promise.all(reloads);
   } catch {
-    ElMessage.error('Reload failed');
+    await showErrorDialog({ title: 'Reload failed', message: 'Failed to reload connection.' });
   }
 }
 const activeDataTab = computed(() => {
@@ -1214,7 +1221,7 @@ async function runDropTable(connectionId: string, table: Table) {
     const r = await dropTable(connectionId, table.name, table.type);
     loading.close();
     if (!r.success) {
-      ElMessage.error(r.error || 'Drop failed');
+      await showErrorDialog({ title: 'Drop failed', message: r.error || 'Drop failed' });
       return;
     }
     // Close tabs for this table if open
@@ -1224,7 +1231,11 @@ async function runDropTable(connectionId: string, table: Table) {
     await loadTables();
   } catch (err) {
     loading.close();
-    ElMessage.error(err instanceof Error ? err.message : 'Drop failed');
+    await showErrorDialog({
+      title: 'Drop failed',
+      message: err instanceof Error ? err.message : 'Drop failed',
+      details: err instanceof Error ? err.stack : undefined,
+    });
   }
 }
 
@@ -1428,7 +1439,7 @@ async function handleCopyImportError() {
   try {
     await navigator.clipboard.writeText(importError.value || '');
   } catch {
-    ElMessage.error('Copy failed');
+    await showErrorDialog({ title: 'Copy failed', message: 'Copy failed' });
   }
 }
 
@@ -1477,6 +1488,62 @@ const handleSelectTable = async (table: Table) => {
     ]);
   }
 };
+
+function quoteIdentForDb(name: string, dbType: string): string {
+  if (dbType === 'postgresql') return `"${name.replace(/"/g, '""')}"`;
+  if (dbType === 'mysql') return `\`${name.replace(/`/g, '``')}\``;
+  return name;
+}
+
+function literalForDb(value: unknown, dbType: string): string {
+  if (value === null || value === undefined || value === '') return 'NULL';
+  if (typeof value === 'number' && Number.isFinite(value)) return String(value);
+  if (typeof value === 'bigint') return value.toString();
+  const s = String(value);
+  // basic literal escaping (we only generate simple "=" filters)
+  const escaped = s.replace(/'/g, "''");
+  return `'${escaped}'`;
+}
+
+async function openRelatedTabFromCell(
+  fromTab: Tab,
+  payload: { refTable: string; refColumn: string; value: unknown }
+) {
+  if (!connection.value?.id) return;
+  const dbType = connection.value.type;
+
+  const refTableName = payload.refTable;
+  const refColumn = payload.refColumn;
+  const where = `${quoteIdentForDb(refColumn, dbType)} = ${literalForDb(payload.value, dbType)}`;
+  const preset = { column: refColumn, operator: '=', value: String(payload.value ?? '') };
+
+  const existing = tabs.value.find((t) => t.tabType !== 'query' && t.tableName === refTableName);
+  if (existing) {
+    existing.viewMode = 'data';
+    existing.whereClause = where;
+    existing.filterPreset = preset;
+    existing.filterPresetNonce = (existing.filterPresetNonce ?? 0) + 1;
+    existing.sortBy = null;
+    existing.sortOrder = null;
+    activeTabId.value = existing.id;
+    activeTableName.value = existing.tableName;
+    await Promise.all([loadTableStructure(existing), loadTableData(existing, 1, existing.data?.perPage ?? 50)]);
+    return;
+  }
+
+  await handleSelectTable({ name: refTableName });
+  const opened = tabs.value.find((t) => t.tabType !== 'query' && t.tableName === refTableName);
+  if (!opened) return;
+  opened.viewMode = 'data';
+  opened.whereClause = where;
+  opened.filterPreset = preset;
+  opened.filterPresetNonce = (opened.filterPresetNonce ?? 0) + 1;
+  opened.sortBy = null;
+  opened.sortOrder = null;
+  activeTabId.value = opened.id;
+  activeTableName.value = opened.tableName;
+  await Promise.all([loadTableStructure(opened), loadTableData(opened, 1, opened.data?.perPage ?? 50)]);
+}
 
 const handleRemoveTab = (tabId: string) => {
   const index = tabs.value.findIndex(tab => tab.id === tabId);

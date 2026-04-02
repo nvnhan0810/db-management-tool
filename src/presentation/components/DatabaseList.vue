@@ -148,6 +148,7 @@
 <script setup lang="ts">
 import { Check, Close, Folder, Plus } from '@element-plus/icons-vue';
 import { ElMessage } from 'element-plus';
+import { showErrorDialog } from '@/presentation/utils/errorDialogs';
 import { reactive, ref } from 'vue';
 
 interface DatabaseInfo {
@@ -268,7 +269,11 @@ const createDatabase = async () => {
     newDatabaseForm.name = '';
     ElMessage.success('Database created successfully');
   } catch (error) {
-    ElMessage.error('Failed to create database');
+    await showErrorDialog({
+      title: 'Create database failed',
+      message: error instanceof Error ? error.message : 'Failed to create database',
+      details: error instanceof Error ? error.stack : undefined,
+    });
   } finally {
     isCreatingDatabase.value = false;
   }

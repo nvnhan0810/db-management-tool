@@ -82,6 +82,7 @@ import { useDatabase } from '@/presentation/composables/useDatabase';
 import { useConnectionsStore } from '@/presentation/stores/connectionsStore';
 import { useConnectionStore } from '@/presentation/stores/connectionStore';
 import { ElMessage } from 'element-plus';
+import { showErrorDialog } from '@/presentation/utils/errorDialogs';
 import { computed, reactive, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
 
@@ -314,7 +315,7 @@ const loadConnectionForEdit = async (savedConnection: SavedConnection) => {
   } catch (err) {
     console.error('Failed to load connection for edit:', err);
     error.value = err instanceof Error ? err.message : 'Failed to load connection';
-    ElMessage.error(error.value);
+    await showErrorDialog({ title: 'Error', message: error.value });
   }
 };
 
@@ -368,12 +369,12 @@ const handleTestConnection = async () => {
     } else {
       error.value =
         resp.error || 'Connection test failed. Please check your credentials and try again.';
-      ElMessage.error(error.value);
+      await showErrorDialog({ title: 'Error', message: error.value });
     }
   } catch (err) {
     console.error('Test connection error:', err);
     error.value = err instanceof Error ? err.message : 'Connection test failed';
-    ElMessage.error(error.value);
+    await showErrorDialog({ title: 'Error', message: error.value });
   } finally {
     isTesting.value = false;
   }
@@ -408,7 +409,7 @@ const handleSave = async () => {
   } catch (err) {
     console.error('Failed to save connection:', err);
     error.value = err instanceof Error ? err.message : 'Failed to save connection';
-    ElMessage.error(error.value);
+    await showErrorDialog({ title: 'Error', message: error.value });
   } finally {
     isSaving.value = false;
   }
@@ -464,12 +465,12 @@ const handleConnect = async () => {
       router.push({ name: 'workspace' });
     } else {
       error.value = resp.error || 'Failed to connect to database. Please check your credentials.';
-      ElMessage.error(error.value);
+      await showErrorDialog({ title: 'Error', message: error.value });
     }
   } catch (err) {
     console.error('Connection error:', err);
     error.value = err instanceof Error ? err.message : 'Failed to connect to database';
-    ElMessage.error(error.value);
+    await showErrorDialog({ title: 'Error', message: error.value });
   } finally {
     isConnecting.value = false;
   }

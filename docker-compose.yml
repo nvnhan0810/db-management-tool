@@ -10,6 +10,7 @@ services:
       MYSQL_PASSWORD: gl_password
     volumes:
       - ./db-data/mysql:/var/lib/mysql
+      - ./db-init/mysql:/docker-entrypoint-initdb.d
     networks:
       - gl-network
 
@@ -23,6 +24,7 @@ services:
       POSTGRES_DB: gl_db
     volumes:
       - ./db-data/pgsql:/var/lib/postgresql/data
+      - ./db-init/pgsql:/docker-entrypoint-initdb.d
     networks:
       - gl-network
 

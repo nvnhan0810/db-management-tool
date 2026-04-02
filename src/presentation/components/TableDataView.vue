@@ -4,6 +4,8 @@
     <TableDataFilter
       v-if="data"
       :columns="displayColumns"
+      :preset-filters="presetFilters"
+      :preset-nonce="props.filterPresetNonce"
       @apply="handleFilterApply"
     />
 
@@ -101,7 +103,18 @@
                   class="cell-text"
                   @dblclick.stop="startCellEdit($index, column)"
                 >
-                  {{ formatCellValue(getDisplayCellValue(row, column, row[column])) || '\u00A0' }}
+                  <span class="cell-text-value">
+                    {{ formatCellValue(getDisplayCellValue(row, column, row[column])) || '\u00A0' }}
+                  </span>
+                  <button
+                    v-if="getForeignKeyTarget(column) && row[column] !== null && row[column] !== undefined && row[column] !== ''"
+                    class="cell-fk-btn"
+                    type="button"
+                    title="Open related"
+                    @click.stop="openRelated(column, row[column])"
+                  >
+                    →
+                  </button>
                 </span>
               </template>
             </template>
@@ -120,6 +133,7 @@
 
 <script setup lang="ts">
 import TableDataFilter from '@/presentation/components/TableDataFilter.vue';
+import { showErrorDialog, showSqlErrorDialog } from '@/presentation/utils/errorDialogs';
 import { ElMessage } from 'element-plus';
 import { computed, nextTick, onMounted, onUnmounted, reactive, ref, watch } from 'vue';
 
@@ -145,6 +159,11 @@ interface Props {
   connectionId?: string;
   /** Column name -> DB type (for contenteditable vs single-line input) */
   columnTypes?: Record<string, string>;
+  /**
+   * Foreign keys mapping: columnName -> "refTable.refColumn"
+   * Example: { user_id: "users.id" }
+   */
+  foreignKeys?: Record<string, string>;
   /** When true, right sidebar panel is open (layout with-sidebar) */
   sidebarPanelOpen?: boolean;
   /** When provided (sidebar in parent), use these; else use internal state */
@@ -158,6 +177,10 @@ interface Props {
   sortOrder?: 'asc' | 'desc' | null;
   /** Column names when table has no rows (from structure) */
   columnsFromStructure?: string[];
+  /** When set (e.g. jumping via FK), auto-populate filter UI */
+  filterPreset?: { column: string; operator: string; value: string } | null;
+  /** Increment to re-apply preset even if same values */
+  filterPresetNonce?: number;
 }
 
 interface Emits {
@@ -169,6 +192,7 @@ interface Emits {
   (e: 'mark-deleted'): void;
   (e: 'unmark-deleted'): void;
   (e: 'sort-change', payload: { prop: string | null; order: 'ascending' | 'descending' | null }): void;
+  (e: 'open-related', payload: { refTable: string; refColumn: string; value: unknown }): void;
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -179,6 +203,7 @@ const props = withDefaults(defineProps<Props>(), {
   tableName: '',
   connectionId: undefined,
   columnTypes: () => ({}),
+  foreignKeys: () => ({}),
   sidebarPanelOpen: false,
   sidebarSelectedRowIndex: undefined,
   sidebarSelectedColumn: undefined,
@@ -187,6 +212,8 @@ const props = withDefaults(defineProps<Props>(), {
   sortBy: null,
   sortOrder: null,
   columnsFromStructure: () => [],
+  filterPreset: null,
+  filterPresetNonce: 0,
 });
 
 const emit = defineEmits<Emits>();
@@ -206,6 +233,35 @@ const displayColumns = computed(() => {
   }
   return props.columnsFromStructure ?? [];
 });
+
+const presetFilters = computed(() => {
+  const p = props.filterPreset;
+  if (!p || !p.column) return null;
+  return [
+    {
+      column: p.column,
+      operator: p.operator || '=',
+      value: p.value ?? '',
+    },
+  ] as Array<{ column: string; operator: string; value: string }>;
+});
+
+function getForeignKeyTarget(columnName: string): { refTable: string; refColumn: string } | null {
+  const raw = props.foreignKeys?.[columnName];
+  if (!raw || typeof raw !== 'string') return null;
+  const idx = raw.lastIndexOf('.');
+  if (idx <= 0 || idx >= raw.length - 1) return null;
+  const refTable = raw.slice(0, idx).trim();
+  const refColumn = raw.slice(idx + 1).trim();
+  if (!refTable || !refColumn) return null;
+  return { refTable, refColumn };
+}
+
+function openRelated(columnName: string, value: unknown) {
+  const t = getForeignKeyTarget(columnName);
+  if (!t) return;
+  emit('open-related', { refTable: t.refTable, refColumn: t.refColumn, value });
+}
 
 function isNewRow(rowIndex: number): boolean {
   return rowIndex >= dataRowsLength.value;
@@ -401,7 +457,10 @@ function commitCellEdit(rowIndex: number, columnKey: string) {
     const isNullLike = trimmed === '' || trimmed.toUpperCase() === 'NULL';
     const isNumeric = /^-?\d+(\.\d+)?$/.test(trimmed);
     if (!isNullLike && !isNumeric) {
-      ElMessage.error('Invalid numeric value for this column');
+      showErrorDialog({
+        title: 'Invalid value',
+        message: 'Invalid numeric value for this column',
+      });
       return; // giữ nguyên editing để user sửa lại
     }
   }
@@ -678,6 +737,7 @@ async function runSave() {
   }
 
   if (statements.length === 0) {
+    // keep as info toast? requirement says remove error toasts; keep this minimal info.
     ElMessage.info('No changes to save');
     return;
   }
@@ -698,7 +758,7 @@ async function runSave() {
     pendingNewRows.value = [];
     emit('refresh');
   } catch (err) {
-    ElMessage.error(err instanceof Error ? err.message : 'Save failed');
+    await showSqlErrorDialog('Save failed', err);
   }
 }
 
@@ -1113,6 +1173,36 @@ defineExpose({ runSave, addRow, hasUnsavedChanges, clearUnsavedChanges });
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+    position: relative;
+  }
+
+  .cell-text-value {
+    display: block;
+    padding-right: 18px; /* reserve space for right-arrow */
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .cell-fk-btn {
+    position: absolute;
+    right: 2px;
+    top: 50%;
+    transform: translateY(-50%);
+    padding: 0;
+    width: 14px;
+    height: 14px;
+    line-height: 14px;
+    font-size: 12px;
+    border: none;
+    background: none;
+    color: var(--el-text-color-secondary);
+    cursor: pointer;
+    opacity: 1.0;
+  }
+
+  .cell-fk-btn:hover {
+    color: var(--el-text-color-primary);
   }
 
   /* Editing cell: make input fill full td, remove inner padding/border so td border is used */

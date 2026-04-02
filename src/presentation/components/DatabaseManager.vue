@@ -62,6 +62,7 @@ import { Folder, Loading } from '@element-plus/icons-vue';
 import { ElMessage } from 'element-plus';
 import { onMounted, reactive, ref } from 'vue';
 import { useDatabase } from '@/presentation/composables/useDatabase';
+import { showErrorDialog } from '@/presentation/utils/errorDialogs';
 
 interface DatabaseInfo {
   name: string;
@@ -92,6 +93,11 @@ const newDatabaseForm = reactive({
 const availableDatabases = ref<DatabaseInfo[]>([]);
 const isLoadingDatabases = ref(false);
 
+// Selected databases inside manager (names only)
+const selectedDatabasesInManager = ref<string[]>(
+  (props.selectedDatabases ?? []).map((d) => d.name)
+);
+
 // Use database composable
 const { getDatabases } = useDatabase();
 
@@ -121,7 +127,11 @@ const loadDatabases = async () => {
     availableDatabases.value = formattedDatabases;
   } catch (error) {
     console.error('Error loading databases:', error);
-    ElMessage.error('Failed to load databases: ' + (error instanceof Error ? error.message : 'Unknown error'));
+    await showErrorDialog({
+      title: 'Load databases failed',
+      message: error instanceof Error ? error.message : 'Failed to load databases',
+      details: error instanceof Error ? error.stack : undefined,
+    });
     
     // Fallback to empty array
     availableDatabases.value = [];
@@ -162,7 +172,11 @@ const createDatabase = async () => {
     newDatabaseForm.name = '';
     ElMessage.success('Database created successfully');
   } catch (error) {
-    ElMessage.error('Failed to create database');
+    await showErrorDialog({
+      title: 'Create database failed',
+      message: error instanceof Error ? error.message : 'Failed to create database',
+      details: error instanceof Error ? error.stack : undefined,
+    });
   } finally {
     isCreatingDatabase.value = false;
   }

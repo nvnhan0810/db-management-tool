@@ -99,6 +99,7 @@ import { useDatabase } from '@/presentation/composables/useDatabase';
 import ConnectionModal from '@/presentation/components/ConnectionModal.vue';
 import { Connection, Delete, Edit, MoreFilled, Plus } from '@element-plus/icons-vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
+import { showErrorDialog } from '@/presentation/utils/errorDialogs';
 import { computed, ref } from 'vue';
 import { useRouter } from 'vue-router';
 
@@ -151,10 +152,14 @@ const handleLoadConnection = async (connection: SavedConnection) => {
       router.push({ name: 'workspace' });
     } else {
       loadingMessage.close();
-      ElMessage.error(resp.error || 'Failed to connect to database');
+      await showErrorDialog({ title: 'Connect failed', message: resp.error || 'Failed to connect to database' });
     }
   } catch (error) {
-    ElMessage.error(error instanceof Error ? error.message : 'Failed to connect to database');
+    await showErrorDialog({
+      title: 'Connect failed',
+      message: error instanceof Error ? error.message : 'Failed to connect to database',
+      details: error instanceof Error ? error.stack : undefined,
+    });
   }
 };
 
@@ -178,7 +183,7 @@ const handleCommand = async (command: string, connection: SavedConnection) => {
       ElMessage.success('Connection deleted successfully');
     } catch (error) {
       if (error !== 'cancel') {
-        ElMessage.error('Failed to delete connection');
+        await showErrorDialog({ title: 'Delete failed', message: 'Failed to delete connection' });
       }
     }
   }

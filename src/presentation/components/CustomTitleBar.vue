@@ -75,6 +75,24 @@
 
     <!-- Right side - Window controls and theme toggle -->
     <div class="title-bar-right">
+      <!-- Bottom SQL history panel toggle -->
+      <el-tooltip
+        v-if="hasActiveConnection"
+        :content="sqlHistoryPanelOpen ? 'SQL history: open' : 'SQL history: closed'"
+        placement="bottom"
+      >
+        <el-button
+          size="small"
+          class="control-btn sidebar-toggle"
+          @click="handleSqlHistoryToggle"
+        >
+          <span
+            class="codicon codicon-layout-panel row-detail-sidebar-codicon"
+            aria-hidden="true"
+          />
+        </el-button>
+      </el-tooltip>
+
       <!-- Row/cell detail panel: when on, clicking a data row opens the right sidebar (default: on) -->
       <el-tooltip
         v-if="hasActiveConnection"
@@ -92,24 +110,6 @@
         >
           <span
             class="codicon codicon-layout-sidebar-right row-detail-sidebar-codicon"
-            aria-hidden="true"
-          />
-        </el-button>
-      </el-tooltip>
-
-      <!-- Bottom SQL history panel toggle -->
-      <el-tooltip
-        v-if="hasActiveConnection"
-        :content="sqlHistoryPanelOpen ? 'SQL history: open' : 'SQL history: closed'"
-        placement="bottom"
-      >
-        <el-button
-          size="small"
-          class="control-btn sidebar-toggle"
-          @click="handleSqlHistoryToggle"
-        >
-          <span
-            class="codicon codicon-output row-detail-sidebar-codicon"
             aria-hidden="true"
           />
         </el-button>
@@ -149,6 +149,7 @@ import { useDatabase } from '@/presentation/composables/useDatabase';
 import { useConnectionStore } from '@/presentation/stores/connectionStore';
 import { useConnectionsStore } from '@/presentation/stores/connectionsStore';
 import { useThemeStore } from '@/presentation/stores/themeStore';
+import { showErrorDialog } from '@/presentation/utils/errorDialogs';
 import {
   Close,
   Edit,
@@ -259,7 +260,11 @@ const handleDisconnect = async () => {
     emit('disconnect');
   } catch (error) {
     console.error('Error disconnecting:', error);
-    ElMessage.error('Failed to disconnect');
+    await showErrorDialog({
+      title: 'Disconnect failed',
+      message: error instanceof Error ? error.message : 'Failed to disconnect',
+      details: error instanceof Error ? error.stack : undefined,
+    });
   }
 };
 

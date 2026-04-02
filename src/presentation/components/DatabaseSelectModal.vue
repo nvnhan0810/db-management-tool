@@ -57,6 +57,7 @@ import { useDatabase } from '@/presentation/composables/useDatabase';
 import { useConnectionStore } from '@/presentation/stores/connectionStore';
 import { Check, Folder } from '@element-plus/icons-vue';
 import { ElMessage } from 'element-plus';
+import { showErrorDialog } from '@/presentation/utils/errorDialogs';
 import { storeToRefs } from 'pinia';
 import { computed, ref, watch } from 'vue';
 
@@ -107,7 +108,7 @@ const loadDatabases = async () => {
     const baseId = (current as any)?.rootConnectionId || current?.id;
     const connectionId = props.connectionId || baseId;
     if (!connectionId) {
-      ElMessage.error('No connection available');
+      await showErrorDialog({ title: 'Error', message: 'No connection available' });
       return;
     }
 
@@ -115,7 +116,11 @@ const loadDatabases = async () => {
     databases.value = dbList || [];
   } catch (error) {
     console.error('Failed to load databases:', error);
-    ElMessage.error('Failed to load databases');
+    await showErrorDialog({
+      title: 'Load databases failed',
+      message: error instanceof Error ? error.message : 'Failed to load databases',
+      details: error instanceof Error ? error.stack : undefined,
+    });
     databases.value = [];
   } finally {
     isLoading.value = false;
@@ -137,11 +142,15 @@ const handleConfirm = async () => {
       emit('selected', selectedDatabase.value);
       visible.value = false;
     } else {
-      ElMessage.error('Failed to connect to database');
+      await showErrorDialog({ title: 'Connect failed', message: 'Failed to connect to database' });
     }
   } catch (error) {
     console.error('Failed to select database:', error);
-    ElMessage.error('Failed to connect to database');
+    await showErrorDialog({
+      title: 'Connect failed',
+      message: error instanceof Error ? error.message : 'Failed to connect to database',
+      details: error instanceof Error ? error.stack : undefined,
+    });
   } finally {
     isConnecting.value = false;
   }

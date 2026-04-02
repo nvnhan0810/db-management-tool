@@ -97,6 +97,19 @@ class DatabaseService {
       dbPort = localPort;
     }
 
+    const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+    const isRetryableConnectError = (err: unknown) => {
+      const anyErr = err as { code?: unknown; message?: unknown };
+      const code = typeof anyErr?.code === 'string' ? anyErr.code : '';
+      const msg = typeof anyErr?.message === 'string' ? anyErr.message : '';
+      return (
+        code === 'ECONNRESET' ||
+        code === 'ECONNREFUSED' ||
+        msg.includes('ECONNRESET') ||
+        msg.includes('ECONNREFUSED')
+      );
+    };
+
     try {
       if (connection.type === 'mysql') {
         const conn = await mysql.createConnection({
@@ -122,12 +135,30 @@ class DatabaseService {
         }
         const { Pool } = getPg();
         const pgPool = new Pool(pgConfig as import('pg').PoolConfig);
-        const client = await pgPool.connect();
-        try {
-          await client.query('SELECT NOW()');
-        } finally {
-          client.release();
+
+        // Postgres containers often restart right after init scripts finish.
+        // Add a small retry window for ECONNRESET/ECONNREFUSED.
+        let lastErr: unknown = null;
+        for (let attempt = 1; attempt <= 6; attempt++) {
+          try {
+            const client = await pgPool.connect();
+            try {
+              await client.query('SELECT NOW()');
+            } finally {
+              client.release();
+            }
+            lastErr = null;
+            break;
+          } catch (err) {
+            lastErr = err;
+            if (!isRetryableConnectError(err) || attempt === 6) {
+              throw err;
+            }
+            await sleep(250 * attempt);
+          }
         }
+        if (lastErr) throw lastErr;
+
         this.connections.set(connection.id, pgPool);
         this.connectionInfo.set(connection.id, connection);
       } else {
@@ -263,6 +294,7 @@ class DatabaseService {
       collation?: string;
       default_value?: string;
       extra?: string;
+      foreign_key?: string;
       comment?: string;
     }>;
     rows?: number;
@@ -281,6 +313,7 @@ class DatabaseService {
       collation?: string;
       default_value?: string;
       extra?: string;
+      foreign_key?: string;
       comment?: string;
     }> = [];
     let rows: number | undefined;
@@ -293,6 +326,33 @@ class DatabaseService {
 
     if (info.type === 'postgresql') {
       const pgPool = connection as import('pg').Pool;
+      const fkResult = await pgPool.query(
+        `
+        SELECT
+          kcu.column_name AS column_name,
+          ccu.table_name AS foreign_table_name,
+          ccu.column_name AS foreign_column_name
+        FROM information_schema.table_constraints tc
+        JOIN information_schema.key_column_usage kcu
+          ON tc.constraint_name = kcu.constraint_name
+         AND tc.table_schema = kcu.table_schema
+        JOIN information_schema.constraint_column_usage ccu
+          ON ccu.constraint_name = tc.constraint_name
+         AND ccu.table_schema = tc.table_schema
+        WHERE tc.constraint_type = 'FOREIGN KEY'
+          AND tc.table_schema = 'public'
+          AND tc.table_name = $1
+        `,
+        [tableName]
+      );
+      const fkByColumn = new Map<string, string>();
+      for (const r of fkResult.rows as Array<Record<string, unknown>>) {
+        const col = String(r.column_name || '');
+        const ft = String(r.foreign_table_name || '');
+        const fc = String(r.foreign_column_name || '');
+        if (col && ft && fc) fkByColumn.set(col, `${ft}.${fc}`);
+      }
+
       const colResult = await pgPool.query(
         `SELECT ordinal_position, column_name as name,
           CASE WHEN character_maximum_length IS NOT NULL THEN data_type || '(' || character_maximum_length || ')'
@@ -313,6 +373,7 @@ class DatabaseService {
           ordinal_position: r.ordinal_position as number,
           default_value: r.default_value as string,
           extra: r.extra as string,
+          foreign_key: fkByColumn.get(String(r.name)) || undefined,
           comment: r.comment as string,
         }))
       );
@@ -326,6 +387,27 @@ class DatabaseService {
       }
     } else {
       const conn = connection as mysql.Connection;
+      const [fkResults] = await conn.query(
+        `
+        SELECT
+          kcu.COLUMN_NAME AS column_name,
+          kcu.REFERENCED_TABLE_NAME AS foreign_table_name,
+          kcu.REFERENCED_COLUMN_NAME AS foreign_column_name
+        FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE kcu
+        WHERE kcu.TABLE_SCHEMA = ?
+          AND kcu.TABLE_NAME = ?
+          AND kcu.REFERENCED_TABLE_NAME IS NOT NULL
+        `,
+        [info.database, tableName]
+      );
+      const fkByColumn = new Map<string, string>();
+      for (const r of fkResults as Array<Record<string, unknown>>) {
+        const col = String(r.column_name || r.COLUMN_NAME || '');
+        const ft = String(r.foreign_table_name || r.REFERENCED_TABLE_NAME || '');
+        const fc = String(r.foreign_column_name || r.REFERENCED_COLUMN_NAME || '');
+        if (col && ft && fc) fkByColumn.set(col, `${ft}.${fc}`);
+      }
+
       const [colResults] = await conn.query(
         `SELECT ORDINAL_POSITION, COLUMN_NAME as name,
           CONCAT(DATA_TYPE, CASE WHEN CHARACTER_MAXIMUM_LENGTH IS NOT NULL THEN CONCAT('(', CHARACTER_MAXIMUM_LENGTH, ')')
@@ -343,6 +425,7 @@ class DatabaseService {
           ordinal_position: r.ordinal_position as number,
           default_value: r.default_value as string,
           extra: r.extra as string,
+          foreign_key: fkByColumn.get(String(r.name)) || undefined,
           comment: r.comment as string,
         }))
       );
