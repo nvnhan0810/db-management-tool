@@ -4,12 +4,18 @@
     <div v-if="filterPanelOpen" class="filter-content">
       <div class="filter-rows">
         <div v-for="(filter, index) in filters" :key="index" class="filter-row">
-          <el-select v-model="filter.column" placeholder="Select Column" style="width: 200px; margin-right: 10px;"
-            filterable :disabled="filter.operator === 'RAW SQL'">
+          <el-select
+            v-model="filter.column"
+            size="small"
+            placeholder="Select Column"
+            style="width: 180px; margin-right: 8px;"
+            filterable
+            :disabled="filter.operator === 'RAW SQL'"
+          >
             <el-option v-for="col in availableColumns" :key="col" :label="col" :value="col" />
           </el-select>
 
-          <el-select v-model="filter.operator" placeholder="Operator" style="width: 150px; margin-right: 10px;"
+          <el-select size="small" v-model="filter.operator" placeholder="Operator" style="width: 150px; margin-right: 10px;"
             @change="handleOperatorChange(filter)">
             <el-option label="=" value="=" />
             <el-option label="!=" value="!=" />
@@ -26,11 +32,16 @@
             <el-option label="RAW SQL" value="RAW SQL" />
           </el-select>
 
-          <el-input v-if="!isNullOperator(filter.operator)" v-model="filter.value"
-            :placeholder="getValuePlaceholder(filter.operator)" style="flex: 1; margin-right: 10px;"
-            @keyup.enter="applyFilters" />
+          <el-input
+            v-if="!isNullOperator(filter.operator)"
+            v-model="filter.value"
+            size="small"
+            :placeholder="getValuePlaceholder(filter.operator)"
+            style="flex: 1; margin-right: 8px;"
+            @keyup.enter="applyFilters"
+          />
 
-          <el-button type="danger" size="small" :icon="Delete" circle @click="removeFilter(index)" />
+          <el-button type="danger" circle size="small" :icon="Delete" @click="removeFilter(index)" />
         </div>
       </div>
 
@@ -200,6 +211,7 @@ onUnmounted(() => {
 <style scoped lang="scss">
 .table-data-filter {
   background-color: var(--el-bg-color-page);
+  padding: 8px 10px 0 10px;
 
   .dark & {
     background-color: var(--el-bg-color-overlay);
@@ -217,12 +229,12 @@ onUnmounted(() => {
   }
 
   .filter-content {
-    margin-bottom: 20px;
+    margin-bottom: 14px;
 
     .filter-actions {
       display: flex;
-      gap: 8px;
-      margin-top: 12px;
+      gap: 6px;
+      margin-top: 8px;
     }
 
     .raw-filter-section {
@@ -255,14 +267,7 @@ onUnmounted(() => {
       .filter-row {
         display: flex;
         align-items: center;
-        margin-bottom: 12px;
-        padding: 12px;
-        background-color: var(--el-fill-color-lighter);
-        border-radius: 6px;
-
-        .dark & {
-          background-color: var(--el-fill-color-light);
-        }
+        margin-bottom: 8px;
 
         &:last-child {
           margin-bottom: 0;

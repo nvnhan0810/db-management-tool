@@ -4,7 +4,11 @@
       <div class="panel-header">
         <span class="title">SQL History</span>
         <div class="actions">
-          <el-button size="small" @click="close">Close</el-button>
+          <el-button size="small" @click="close">
+            <el-icon>
+              <Close />
+            </el-icon>
+          </el-button>
         </div>
       </div>
 
@@ -15,13 +19,13 @@
 
         <div v-else class="list">
           <div v-for="(q, idx) in queries" :key="idx" class="item">
-            <div class="meta">
+            <div :class="['meta', { 'meta-success': q.success, 'meta-error': !q.success }]">
               <span class="time">{{ formatTime(q.timestamp) }}</span>
-              <el-tag size="small" :type="q.success ? 'success' : 'danger'">
-                {{ q.success ? 'Success' : 'Error' }}
-              </el-tag>
               <span v-if="q.executionTime" class="exec">
                 {{ formatExecutionTime(q.executionTime) }}
+              </span>
+              <span v-if="q.executionTime && q.executionTime >= 200" class="exec-slow">
+                - SLOW SQL
               </span>
             </div>
             <pre class="sql">{{ q.sql }}</pre>
@@ -82,6 +86,7 @@ function formatExecutionTime(executionTime: number): string {
   justify-content: space-between;
   width: 100%;
   gap: 12px;
+  margin-bottom: 4px;
 
   .title {
     font-weight: 600;
@@ -102,10 +107,8 @@ function formatExecutionTime(executionTime: number): string {
 }
 
 .item {
-  border: 1px solid var(--el-border-color-light);
   border-radius: 6px;
   background-color: var(--el-bg-color);
-  padding: 10px 12px;
 }
 
 .meta {
@@ -114,24 +117,32 @@ function formatExecutionTime(executionTime: number): string {
   gap: 10px;
   margin-bottom: 8px;
   flex-wrap: wrap;
+
+  &.meta-success {
+    color: var(--el-color-success);
+  }
+
+  &.meta-error {
+    color: var(--el-color-danger);
+  }
 }
 
 .time {
   font-size: 12px;
-  color: var(--el-text-color-secondary);
 }
 
 .exec {
   font-size: 12px;
-  color: var(--el-text-color-placeholder);
+}
+
+.exec-slow {
+  font-size: 12px;
+  color: var(--el-color-danger);
+  font-weight: bold;
 }
 
 .sql {
   margin: 0;
-  padding: 10px;
-  background-color: var(--el-bg-color-page);
-  border: 1px solid var(--el-border-color-lighter);
-  border-radius: 6px;
   white-space: pre-wrap;
   word-break: break-word;
   font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;

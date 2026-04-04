@@ -27,41 +27,24 @@
         <!-- Tables List -->
         <div v-else-if="tables.length > 0" class="tables-list-wrapper">
           <div class="tables-filter">
-            <el-input
-              v-model="tableNameFilter"
-              placeholder="Filter by table name..."
-              clearable
-              size="small"
-              class="table-filter-input"
-            >
+            <el-input v-model="tableNameFilter" placeholder="Filter by table name..." clearable size="small"
+              class="table-filter-input">
               <template #prefix>
-                <el-icon><Search /></el-icon>
+                <el-icon>
+                  <Search />
+                </el-icon>
               </template>
             </el-input>
           </div>
-          <div
-            ref="tablesListRef"
-            class="tables-list"
-            tabindex="0"
-            @keydown="onTablesSidebarKeydown"
-            @contextmenu.prevent.stop="onTablesSidebarContextMenu"
-          >
+          <div ref="tablesListRef" class="tables-list" tabindex="0" @keydown="onTablesSidebarKeydown"
+            @contextmenu.prevent.stop="onTablesSidebarContextMenu">
             <template v-if="filteredTables.length > 0">
-              <el-dropdown
-                v-for="table in filteredTables"
-                :key="table.name"
-                trigger="contextmenu"
-                @command="(cmd: string | number) => onTableMenuCommand(String(cmd), table)"
-              >
-                <div
-                  class="table-item"
-                  :class="{
-                    active: activeTableName === table.name,
-                    'multi-selected': selectedTableNames.includes(table.name),
-                  }"
-                  @click="handleTableRowClick($event, table)"
-                  @contextmenu.prevent.stop
-                >
+              <el-dropdown v-for="table in filteredTables" :key="table.name" trigger="contextmenu"
+                @command="(cmd: string | number) => onTableMenuCommand(String(cmd), table)">
+                <div class="table-item" :class="{
+                  active: activeTableName === table.name,
+                  'multi-selected': selectedTableNames.includes(table.name),
+                }" @click="handleTableRowClick($event, table)" @contextmenu.prevent.stop>
                   <el-icon class="table-icon">
                     <Document />
                   </el-icon>
@@ -137,121 +120,79 @@
         <div v-else class="content-split" ref="splitRef">
           <div ref="contentAreaInnerRef" class="content-area-inner">
             <div class="tabs-container">
-              <el-tabs v-model="activeTabId" type="card" closable @tab-remove="handleRemoveTab" @tab-click="handleTabClick">
-              <el-tab-pane
-                v-for="tab in tabs"
-                :key="tab.id"
-                :label="tab.tableName"
-                :name="tab.id"
-              >
-                <div class="tab-content-wrapper">
-                  <!-- Main Content Area -->
-                  <div class="tab-main-content">
-                    <!-- Query Editor Tab -->
-                    <QueryEditorTab
-                      v-if="tab.tabType === 'query'"
-                      :connection-id="connection?.id"
-                      :db-type="connection?.type || 'postgresql'"
-                    />
+              <el-tabs v-model="activeTabId" type="card" closable @tab-remove="handleRemoveTab"
+                @tab-click="handleTabClick">
+                <el-tab-pane v-for="tab in tabs" :key="tab.id" :label="tab.tableName" :name="tab.id">
+                  <div class="tab-content-wrapper">
+                    <!-- Main Content Area -->
+                    <div class="tab-main-content">
+                      <!-- Query Editor Tab -->
+                      <QueryEditorTab v-if="tab.tabType === 'query'" :connection-id="connection?.id"
+                        :db-type="connection?.type || 'postgresql'" />
 
-                    <!-- Table Tabs -->
-                    <template v-else>
-                      <!-- Structure View -->
-                      <TableStructureView
-                        v-if="tab.viewMode === 'structure'"
-                        :structure="tab.structure"
-                        :is-loading="tab.isLoadingStructure === true"
-                        :error="tab.structureError || null"
-                      />
+                      <!-- Table Tabs -->
+                      <template v-else>
+                        <!-- Structure View -->
+                        <TableStructureView v-if="tab.viewMode === 'structure'" :structure="tab.structure"
+                          :is-loading="tab.isLoadingStructure === true" :error="tab.structureError || null" />
 
-            <!-- Data View -->
-            <TableDataView
-              v-else-if="tab.viewMode === 'data'"
-              :ref="(el: any) => setTableDataViewRef(tab.id, el)"
-              :data="tab.data"
-              :is-loading="tab.isLoadingData === true"
-              :error="tab.dataError || null"
-              :db-type="connection?.type || 'postgresql'"
-              :table-name="tab.tableName"
-              :connection-id="connection?.id"
-              :column-types="(tab.structure?.columns) ? Object.fromEntries(tab.structure.columns.map((c: { name: string; type: string }) => [c.name, c.type])) : {}"
-              :foreign-keys="(tab.structure?.columns) ? Object.fromEntries(tab.structure.columns.filter((c: any) => !!c.foreign_key).map((c: any) => [c.name, c.foreign_key])) : {}"
-              :columns-from-structure="tab.structure?.columns?.map((c: { name: string }) => c.name) ?? []"
-              :filter-preset="tab.filterPreset ?? null"
-              :filter-preset-nonce="tab.filterPresetNonce ?? 0"
-              :sidebar-panel-open="dataSidebarVisible"
-              :sidebar-selected-row-index="getDataSidebarState(tab.id).selectedRowIndex"
-              :sidebar-selected-column="getDataSidebarState(tab.id).selectedColumn"
-              :sidebar-modified-rows="getDataSidebarState(tab.id).modifiedRows"
-              :sidebar-deleted-rows="getDataSidebarState(tab.id).deletedRows"
-              :sort-by="tab.sortBy || null"
-              :sort-order="tab.sortOrder || null"
-              @filter-apply="(whereClause: string | null) => handleFilterApply(tab, whereClause)"
-              @refresh="() => { loadTableData(tab); clearDataSidebarState(tab.id); }"
-              @cell-select="(e: { rowIndex: number; columnKey: string | null }) => onDataCellSelect(tab.id, e)"
-              @open-related="(e: { refTable: string; refColumn: string; value: unknown }) => openRelatedTabFromCell(tab, e)"
-              @sidebar-close="onDataSidebarClose(tab.id)"
-              @update-field="(e: { field: string; value: unknown }) => onDataUpdateField(tab.id, e)"
-              @mark-deleted="onDataMarkDeleted(tab.id)"
-              @unmark-deleted="onDataUnmarkDeleted(tab.id)"
-              @sort-change="(payload: { prop: string | null; order: 'ascending' | 'descending' | null }) => handleSortChange(tab, payload)"
-            />
+                        <!-- Data View -->
+                        <TableDataView v-else-if="tab.viewMode === 'data'"
+                          :ref="(el: any) => setTableDataViewRef(tab.id, el)" :data="tab.data"
+                          :is-loading="tab.isLoadingData === true" :error="tab.dataError || null"
+                          :db-type="connection?.type || 'postgresql'" :table-name="tab.tableName"
+                          :connection-id="connection?.id"
+                          :column-types="(tab.structure?.columns) ? Object.fromEntries(tab.structure.columns.map((c: { name: string; type: string }) => [c.name, c.type])) : {}"
+                          :foreign-keys="(tab.structure?.columns) ? Object.fromEntries(tab.structure.columns.filter((c: any) => !!c.foreign_key).map((c: any) => [c.name, c.foreign_key])) : {}"
+                          :columns-from-structure="tab.structure?.columns?.map((c: { name: string }) => c.name) ?? []"
+                          :filter-preset="tab.filterPreset ?? null" :filter-preset-nonce="tab.filterPresetNonce ?? 0"
+                          :sidebar-panel-open="dataSidebarVisible"
+                          :sidebar-selected-row-index="getDataSidebarState(tab.id).selectedRowIndex"
+                          :sidebar-selected-column="getDataSidebarState(tab.id).selectedColumn"
+                          :sidebar-modified-rows="getDataSidebarState(tab.id).modifiedRows"
+                          :sidebar-deleted-rows="getDataSidebarState(tab.id).deletedRows" :sort-by="tab.sortBy || null"
+                          :sort-order="tab.sortOrder || null"
+                          @filter-apply="(whereClause: string | null) => handleFilterApply(tab, whereClause)"
+                          @refresh="() => { loadTableData(tab); clearDataSidebarState(tab.id); }"
+                          @cell-select="(e: { rowIndex: number; columnKey: string | null }) => onDataCellSelect(tab.id, e)"
+                          @open-related="(e: { refTable: string; refColumn: string; value: unknown }) => openRelatedTabFromCell(tab, e)"
+                          @sidebar-close="onDataSidebarClose(tab.id)"
+                          @update-field="(e: { field: string; value: unknown }) => onDataUpdateField(tab.id, e)"
+                          @mark-deleted="onDataMarkDeleted(tab.id)" @unmark-deleted="onDataUnmarkDeleted(tab.id)"
+                          @sort-change="(payload: { prop: string | null; order: 'ascending' | 'descending' | null }) => handleSortChange(tab, payload)" />
 
-                      <!-- Fallback if no view mode -->
-                      <div v-else class="no-view-mode">
-                        <el-empty description="No view mode selected" />
-                      </div>
-                    </template>
+                        <!-- Fallback if no view mode -->
+                        <div v-else class="no-view-mode">
+                          <el-empty description="No view mode selected" />
+                        </div>
+                      </template>
+                    </div>
+
+                    <!-- Footer (only for table tabs) -->
+                    <TableViewFooter v-if="tab.tabType !== 'query'" :view-mode="tab.viewMode || 'data'" :data="tab.data"
+                      @update:view-mode="(val: 'structure' | 'data') => switchViewMode(tab, val)"
+                      @page-change="(page: number) => handlePageChange(tab, page)"
+                      @per-page-change="(perPage: number) => handlePerPageChange(tab, perPage)"
+                      @add-row="handleAddRow(tab)" />
                   </div>
-
-                  <!-- Footer (only for table tabs) -->
-                  <TableViewFooter
-                    v-if="tab.tabType !== 'query'"
-                    :view-mode="tab.viewMode || 'data'"
-                    :data="tab.data"
-                    @update:view-mode="(val: 'structure' | 'data') => switchViewMode(tab, val)"
-                    @page-change="(page: number) => handlePageChange(tab, page)"
-                    @per-page-change="(perPage: number) => handlePerPageChange(tab, perPage)"
-                    @add-row="handleAddRow(tab)"
-                  />
-                </div>
-              </el-tab-pane>
-            </el-tabs>
+                </el-tab-pane>
+              </el-tabs>
             </div>
             <!-- Data table cell sidebar (inside content-area, full height) -->
-            <div
-              v-if="dataSidebarVisible"
-              class="data-detail-sidebar-wrap"
-            >
-              <TableDataCellSidebar
-                ref="dataSidebarRef"
-                :visible="true"
-                :selected-row="dataSidebarSelectedRow"
-                :selected-column="dataSidebarSelectedColumn"
-                :modified-fields="dataSidebarModifiedFields"
-                :is-deleted="dataSidebarIsDeleted"
-                :column-types="dataSidebarColumnTypes"
+            <div v-if="dataSidebarVisible" class="data-detail-sidebar-wrap">
+              <TableDataCellSidebar ref="dataSidebarRef" :visible="true" :selected-row="dataSidebarSelectedRow"
+                :selected-column="dataSidebarSelectedColumn" :modified-fields="dataSidebarModifiedFields"
+                :is-deleted="dataSidebarIsDeleted" :column-types="dataSidebarColumnTypes"
                 @close="onDataSidebarClose(activeTabId)"
                 @update-field="(field: string, value: unknown) => onDataUpdateField(activeTabId, { field, value })"
-                @mark-deleted="onDataMarkDeleted(activeTabId)"
-                @unmark-deleted="onDataUnmarkDeleted(activeTabId)"
-              />
+                @mark-deleted="onDataMarkDeleted(activeTabId)" @unmark-deleted="onDataUnmarkDeleted(activeTabId)" />
             </div>
           </div>
 
-          <div
-            v-if="sqlHistoryPanelOpen"
-            class="splitter-bar"
-            role="separator"
-            aria-orientation="horizontal"
-            @mousedown.prevent="startSqlPanelResize"
-          />
+          <div v-if="sqlHistoryPanelOpen" class="splitter-bar" role="separator" aria-orientation="horizontal"
+            @mousedown.prevent="startSqlPanelResize" />
 
-          <div
-            v-if="sqlHistoryPanelOpen"
-            class="bottom-sql-panel-wrap"
-            :style="{ height: `${sqlPanelHeight}px` }"
-          >
+          <div v-if="sqlHistoryPanelOpen" class="bottom-sql-panel-wrap" :style="{ height: `${sqlPanelHeight}px` }">
             <BottomSqlHistoryPanel />
           </div>
         </div>
@@ -265,21 +206,12 @@
     </div>
 
     <!-- Database Select Modal -->
-    <DatabaseSelectModal
-      v-model="showDatabaseModal"
-      :connection-id="connection?.id"
-      @selected="handleDatabaseSelected"
-    />
+    <DatabaseSelectModal v-model="showDatabaseModal" :connection-id="connection?.id"
+      @selected="handleDatabaseSelected" />
 
     <!-- Export progress dialog -->
-    <el-dialog
-      v-model="exportDialogVisible"
-      title="Export SQL"
-      width="520px"
-      :close-on-click-modal="false"
-      :close-on-press-escape="false"
-      :show-close="exportStatus !== 'running'"
-    >
+    <el-dialog v-model="exportDialogVisible" title="Export SQL" width="520px" :close-on-click-modal="false"
+      :close-on-press-escape="false" :show-close="exportStatus !== 'running'">
       <div v-if="exportStatus === 'running'">
         <div style="margin-bottom: 8px; font-weight: 600;">
           {{ exportTitle }}
@@ -308,27 +240,16 @@
 
       <template #footer>
         <div style="display: flex; justify-content: flex-end; gap: 8px;">
-          <el-button
-            v-if="exportStatus === 'running'"
-            type="danger"
-            :loading="exportCanceling"
-            @click="handleCancelExport"
-          >
+          <el-button v-if="exportStatus === 'running'" type="danger" :loading="exportCanceling"
+            @click="handleCancelExport">
             Cancel
           </el-button>
 
-          <el-button
-            v-if="exportStatus === 'success'"
-            type="primary"
-            @click="handleOpenExportPath"
-          >
+          <el-button v-if="exportStatus === 'success'" type="primary" @click="handleOpenExportPath">
             Open file location
           </el-button>
 
-          <el-button
-            v-if="exportStatus !== 'running'"
-            @click="exportDialogVisible = false"
-          >
+          <el-button v-if="exportStatus !== 'running'" @click="exportDialogVisible = false">
             Close
           </el-button>
         </div>
@@ -336,17 +257,10 @@
     </el-dialog>
 
     <!-- Export mode modal -->
-    <el-dialog
-      v-model="exportModeVisible"
-      title="Export options"
-      width="320px"
-      :close-on-click-modal="false"
-      :close-on-press-escape="true"
-    >
-      <el-radio-group
-        v-model="exportMode"
-        style="display: flex; flex-direction: column; gap: 10px; align-items: flex-start;"
-      >
+    <el-dialog v-model="exportModeVisible" title="Export options" width="320px" :close-on-click-modal="false"
+      :close-on-press-escape="true">
+      <el-radio-group v-model="exportMode"
+        style="display: flex; flex-direction: column; gap: 10px; align-items: flex-start;">
         <el-radio label="structure-data">Structure and Data</el-radio>
         <el-radio label="structure">Structure</el-radio>
         <el-radio label="data">Data</el-radio>
@@ -361,14 +275,8 @@
     </el-dialog>
 
     <!-- Import progress dialog -->
-    <el-dialog
-      v-model="importDialogVisible"
-      title="Import SQL"
-      width="520px"
-      :close-on-click-modal="false"
-      :close-on-press-escape="false"
-      :show-close="importStatus !== 'running'"
-    >
+    <el-dialog v-model="importDialogVisible" title="Import SQL" width="520px" :close-on-click-modal="false"
+      :close-on-press-escape="false" :show-close="importStatus !== 'running'">
       <div v-if="importStatus === 'running'">
         <div style="margin-bottom: 8px; font-weight: 600;">
           {{ importTitle }}
@@ -397,26 +305,16 @@
 
       <template #footer>
         <div style="display: flex; justify-content: flex-end; gap: 8px;">
-          <el-button
-            v-if="importStatus === 'error'"
-            @click="handleCopyImportError"
-          >
+          <el-button v-if="importStatus === 'error'" @click="handleCopyImportError">
             Copy error
           </el-button>
 
-          <el-button
-            v-if="importStatus === 'running'"
-            type="danger"
-            :loading="importCanceling"
-            @click="handleCancelImport"
-          >
+          <el-button v-if="importStatus === 'running'" type="danger" :loading="importCanceling"
+            @click="handleCancelImport">
             Cancel
           </el-button>
 
-          <el-button
-            v-if="importStatus !== 'running'"
-            @click="importDialogVisible = false"
-          >
+          <el-button v-if="importStatus !== 'running'" @click="importDialogVisible = false">
             Close
           </el-button>
         </div>
@@ -425,18 +323,10 @@
 
     <!-- Sidebar context menu (blank area) -->
     <teleport to="body">
-      <div
-        v-if="tablesSidebarMenuVisible"
-        class="tables-sidebar-context-overlay"
-        @click="closeTablesSidebarMenu"
-        @contextmenu.prevent
-      >
-        <div
-          class="tables-sidebar-context-menu"
-          :style="{ left: `${tablesSidebarMenuX}px`, top: `${tablesSidebarMenuY}px` }"
-          @click.stop
-          @contextmenu.prevent
-        >
+      <div v-if="tablesSidebarMenuVisible" class="tables-sidebar-context-overlay" @click="closeTablesSidebarMenu"
+        @contextmenu.prevent>
+        <div class="tables-sidebar-context-menu"
+          :style="{ left: `${tablesSidebarMenuX}px`, top: `${tablesSidebarMenuY}px` }" @click.stop @contextmenu.prevent>
           <div class="tables-sidebar-context-title">
             {{
               tables.length === 0
@@ -886,6 +776,15 @@ function setTableDataViewRef(tabId: string, el: TableDataViewRef | null) {
 
 async function handleSaveKeydown(e: KeyboardEvent) {
   const key = e.key?.toLowerCase();
+  // Ctrl/Cmd + W close current tab
+  if ((e.ctrlKey || e.metaKey) && key === 'w') {
+    const tabId = activeTabId.value;
+    if (!tabId) return;
+    e.preventDefault();
+    e.stopPropagation();
+    handleRemoveTab(tabId);
+    return;
+  }
   // Ctrl/Cmd + R reload active connection (tables + opened tabs)
   // Ctrl/Cmd + Shift + R reload current tab data only (legacy behavior)
   if ((e.ctrlKey || e.metaKey) && key === 'r' && !e.shiftKey) {
@@ -949,14 +848,14 @@ async function handleSaveKeydown(e: KeyboardEvent) {
     const tab = tabs.value.find(t => t.id === activeTabId.value);
     if (tab && tab.tabType !== 'query' && tab.viewMode === 'data') {
       const comp = tableDataViewRefs[tab.id];
-        if (comp?.runSave) {
-          const active = document.activeElement as HTMLElement | null;
-          if (active && (active.isContentEditable || active.tagName === 'INPUT' || active.tagName === 'TEXTAREA')) {
-            active.blur();
-            await nextTick();
-          }
-          comp.runSave();
+      if (comp?.runSave) {
+        const active = document.activeElement as HTMLElement | null;
+        if (active && (active.isContentEditable || active.tagName === 'INPUT' || active.tagName === 'TEXTAREA')) {
+          active.blur();
+          await nextTick();
         }
+        comp.runSave();
+      }
     }
   }
 }
@@ -1359,13 +1258,13 @@ async function runImportSql(connectionId: string) {
     const payload = payloadRaw as
       | { stage: 'start'; jobId: string }
       | {
-      stage: 'scan' | 'read' | 'execute';
-      jobId: string;
-      bytesRead: number;
-      totalBytes: number;
-      executed: number;
-      totalStatements?: number;
-    }
+        stage: 'scan' | 'read' | 'execute';
+        jobId: string;
+        bytesRead: number;
+        totalBytes: number;
+        executed: number;
+        totalStatements?: number;
+      }
       | { stage: 'done'; jobId: string; executed: number; totalBytes: number };
     if (!payload || payload.jobId !== jobId) return;
 
@@ -2012,6 +1911,7 @@ const formatDate = (date: Date | string) => {
       outline: none;
       scrollbar-width: none;
       -ms-overflow-style: none;
+
       &::-webkit-scrollbar {
         display: none;
       }
@@ -2032,19 +1932,24 @@ const formatDate = (date: Date | string) => {
 
         &:hover {
           background-color: rgba(64, 158, 255, 0.1);
+
           .table-name,
           .table-icon {
             color: var(--el-text-color-primary);
           }
+
           .dark & {
             background-color: rgba(64, 158, 255, 0.18);
+
             .table-name,
             .table-icon {
               color: var(--el-text-color-primary);
             }
           }
+
           [data-theme="light"] & {
             background-color: rgba(64, 158, 255, 0.08);
+
             .table-name,
             .table-icon {
               color: var(--el-text-color-primary);
@@ -2075,6 +1980,7 @@ const formatDate = (date: Date | string) => {
         &.multi-selected {
           background-color: rgba(64, 158, 255, 0.1);
           border-color: rgba(64, 158, 255, 0.35);
+
           .dark & {
             background-color: rgba(64, 158, 255, 0.14);
           }
@@ -2262,7 +2168,7 @@ const formatDate = (date: Date | string) => {
       overflow: hidden;
     }
 
-    .content-split > .content-area-inner {
+    .content-split>.content-area-inner {
       flex: 1;
       min-height: 0;
     }
@@ -2278,13 +2184,13 @@ const formatDate = (date: Date | string) => {
     .splitter-bar::before {
       content: '';
       position: absolute;
-      left: 16px;
-      right: 16px;
+      left: 0;
+      right: 0;
       top: 2px;
-      height: 2px;
-      border-radius: 2px;
+      height: 4px;
       background-color: var(--el-border-color-light);
       opacity: 0.9;
+      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
     }
 
     .splitter-bar:hover::before {
@@ -2312,7 +2218,7 @@ const formatDate = (date: Date | string) => {
 
         .el-tabs__header {
           margin: 0;
-          padding: 0 16px;
+          // padding: 0;
           background-color: var(--el-bg-color);
           border-bottom: 1px solid var(--el-border-color-light);
         }
@@ -2329,9 +2235,9 @@ const formatDate = (date: Date | string) => {
             flex-direction: column;
             min-height: 0;
             overflow: hidden;
-            padding: 20px 20px 24px;
+            // padding: 20px 20px 24px;
 
-            > .tab-content-wrapper {
+            >.tab-content-wrapper {
               flex: 1;
               min-height: 0;
             }
@@ -2346,7 +2252,7 @@ const formatDate = (date: Date | string) => {
         overflow: hidden;
         background-color: var(--el-bg-color);
 
-        > .tab-footer {
+        >.tab-footer {
           flex-shrink: 0;
         }
       }
@@ -2358,6 +2264,7 @@ const formatDate = (date: Date | string) => {
         background-color: var(--el-bg-color);
         scrollbar-width: none;
         -ms-overflow-style: none;
+
         &::-webkit-scrollbar {
           display: none;
         }

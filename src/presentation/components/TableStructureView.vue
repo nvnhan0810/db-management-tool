@@ -16,9 +16,16 @@
       <div class="structure-section">
         <h4>Columns</h4>
         <div v-if="!structure.columns || structure.columns.length === 0" class="no-columns">
-          <el-empty description="No columns found" :image-size="80" />
+          <el-empty description="No columns found" :image-size="64" />
         </div>
-        <el-table v-else :data="structure.columns" border style="width: 100%" max-height="400">
+        <el-table
+          v-else
+          size="small"
+          :data="structure.columns"
+          border
+          style="width: 100%"
+          max-height="400"
+        >
           <el-table-column prop="ordinal_position" label="#" width="60" align="center" />
           <el-table-column prop="name" label="Column Name" min-width="150" />
           <el-table-column prop="type" label="Data Type" min-width="120" />
@@ -39,7 +46,7 @@
       <!-- Indexes Section -->
       <div v-if="structure.indexes && structure.indexes.length > 0" class="structure-section">
         <h4>Indexes</h4>
-        <el-table :data="structure.indexes" border style="width: 100%">
+        <el-table size="small" :data="structure.indexes" border style="width: 100%">
           <el-table-column prop="name" label="Index Name" min-width="150" />
           <el-table-column prop="column_name" label="Column" min-width="120" />
           <el-table-column prop="is_unique" label="Unique" width="80" align="center">
@@ -106,19 +113,28 @@ withDefaults(defineProps<Props>(), {
 }
 
 .loading-structure {
-  padding: 20px;
+  padding: 12px 16px;
 }
 
 .error-message {
-  padding: 20px;
+  padding: 12px 16px;
+
+  :deep(.el-alert) {
+    padding: 8px 12px;
+  }
+
+  :deep(.el-alert__title) {
+    font-size: 13px;
+    line-height: 1.4;
+  }
 }
 
 .structure-content {
   .structure-section {
-    margin-bottom: 32px;
+    margin-bottom: 20px;
     background-color: var(--el-bg-color-page);
     border-radius: 8px;
-    padding: 20px;
+    padding: 14px 16px;
     box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
 
     .dark & {
@@ -133,12 +149,12 @@ withDefaults(defineProps<Props>(), {
     }
 
     h4 {
-      margin: 0 0 16px 0;
-      font-size: 18px;
+      margin: 0 0 10px 0;
+      font-size: 14px;
       font-weight: 600;
       color: var(--el-text-color-primary);
-      padding-bottom: 12px;
-      border-bottom: 2px solid var(--el-border-color-light);
+      padding-bottom: 8px;
+      border-bottom: 1px solid var(--el-border-color-light);
 
       .dark & {
         color: var(--el-text-color-primary);
@@ -203,11 +219,11 @@ withDefaults(defineProps<Props>(), {
   }
 
   .table-info-footer {
-    margin-top: 24px;
-    padding: 16px 20px;
+    margin-top: 16px;
+    padding: 10px 14px;
     background: linear-gradient(135deg, var(--el-color-primary-light-9) 0%, var(--el-color-primary-light-8) 100%);
     border-radius: 8px;
-    font-size: 14px;
+    font-size: 12px;
     color: var(--el-text-color-regular);
     border: 1px solid var(--el-color-primary-light-7);
 
@@ -220,7 +236,7 @@ withDefaults(defineProps<Props>(), {
     strong {
       color: var(--el-color-primary);
       font-weight: 600;
-      font-size: 16px;
+      font-size: 13px;
 
       .dark & {
         color: var(--el-color-primary-light-3);
@@ -230,7 +246,7 @@ withDefaults(defineProps<Props>(), {
 }
 
 .no-columns {
-  padding: 40px;
+  padding: 24px;
   text-align: center;
 }
 </style>

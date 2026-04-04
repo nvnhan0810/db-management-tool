@@ -24,6 +24,7 @@
       <div class="data-content" :class="{ 'with-sidebar': sidebarVisible }">
         <el-table
           v-if="displayRows.length > 0"
+          size="small"
           :data="displayRows"
           border
           style="width: 100%"
@@ -41,7 +42,7 @@
             :key="column"
             :prop="column"
             :label="column"
-            min-width="120"
+            min-width="100"
             resizable
             :sortable="pendingNewRows.length > 0 ? false : 'custom'"
           >
@@ -82,6 +83,7 @@
                   <el-input
                     v-if="!isMultilineTextColumn(column)"
                     ref="editInputRef"
+                    size="small"
                     :model-value="editDraftValue"
                     class="cell-edit-input"
                     @update:model-value="(v: string) => (editDraftValue = v)"
@@ -121,7 +123,7 @@
           </el-table-column>
         </el-table>
         <div v-else class="no-data">
-          <el-empty description="No data found" :image-size="100" />
+          <el-empty description="No data found" :image-size="72" />
         </div>
       </div>
     </div>
@@ -953,11 +955,20 @@ defineExpose({ runSave, addRow, hasUnsavedChanges, clearUnsavedChanges });
 }
 
 .loading-data {
-  padding: 20px;
+  padding: 12px 16px;
 }
 
 .error-message {
-  padding: 20px;
+  padding: 12px 16px;
+
+  :deep(.el-alert) {
+    padding: 8px 12px;
+  }
+
+  :deep(.el-alert__title) {
+    font-size: 13px;
+    line-height: 1.4;
+  }
 }
 
 .no-data {
@@ -998,6 +1009,7 @@ defineExpose({ runSave, addRow, hasUnsavedChanges, clearUnsavedChanges });
 
   :deep(.el-table) {
     background-color: transparent;
+    font-size: 12px;
 
     .el-table__body-wrapper {
       scrollbar-width: none;
@@ -1147,14 +1159,14 @@ defineExpose({ runSave, addRow, hasUnsavedChanges, clearUnsavedChanges });
 
   .editable-div {
     width: 100%;
-    height: 42px;
+    height: 32px;
     outline: none;
     white-space: pre-wrap;
     word-break: break-word;
     display: block;
-    padding: 0 8px;
+    padding: 0 6px;
     overflow-y: auto;
-    line-height: 42px; /* 1 dòng: căn giữa dọc */
+    line-height: 32px; /* align with small table row */
   }
 
   .cell-edit-wrap.is-multiline-editable {
@@ -1178,10 +1190,11 @@ defineExpose({ runSave, addRow, hasUnsavedChanges, clearUnsavedChanges });
 
   .cell-text-value {
     display: block;
-    padding-right: 18px; /* reserve space for right-arrow */
+    padding-right: 16px; /* reserve space for right-arrow */
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+    font-size: 12px;
   }
 
   .cell-fk-btn {
@@ -1190,10 +1203,10 @@ defineExpose({ runSave, addRow, hasUnsavedChanges, clearUnsavedChanges });
     top: 50%;
     transform: translateY(-50%);
     padding: 0;
-    width: 14px;
-    height: 14px;
-    line-height: 14px;
-    font-size: 12px;
+    width: 12px;
+    height: 12px;
+    line-height: 12px;
+    font-size: 11px;
     border: none;
     background: none;
     color: var(--el-text-color-secondary);
@@ -1241,7 +1254,8 @@ defineExpose({ runSave, addRow, hasUnsavedChanges, clearUnsavedChanges });
   }
 
   :deep(.cell-editing .cell-edit-input .el-input__inner) {
-    height: 38px !important;
+    height: 32px !important;
+    font-size: 12px;
   }
 }
 </style>
