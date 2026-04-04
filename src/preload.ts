@@ -21,6 +21,7 @@ const invokeChannels = [
   'database:exportTablesSqlToPath',
   'database:cancelExport',
   'database:dropTable',
+  'database:dropDatabase',
   'shell:showItemInFolder',
   'database:importSqlScript',
   'database:importSqlFromPath',

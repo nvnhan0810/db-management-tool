@@ -1042,6 +1042,85 @@ class DatabaseService {
       : `DROP TABLE IF EXISTS \`${name}\``;
     await conn.query(sql);
   }
+
+  /**
+   * Drop a database (MySQL / PostgreSQL). Caller must confirm (e.g. typed name) in the UI.
+   * System databases are rejected. PostgreSQL uses a temporary connection to `postgres`.
+   */
+  async dropDatabase(connectionId: string, databaseName: string): Promise<void> {
+    const connection = this.connections.get(connectionId);
+    const info = this.connectionInfo.get(connectionId);
+    if (!connection || !info) throw new Error('No active connection found');
+
+    const target = databaseName.trim();
+    if (!target) throw new Error('Database name is required');
+
+    if (info.type === 'mysql') {
+      const lower = target.toLowerCase();
+      const mysqlProtected = new Set(['mysql', 'information_schema', 'performance_schema', 'sys']);
+      if (mysqlProtected.has(lower)) {
+        throw new Error('Cannot drop a system database');
+      }
+
+      const conn = connection as mysql.Connection;
+      const currentDb = info.database?.trim() ?? '';
+
+      await conn.query('USE `mysql`');
+      await conn.query(`DROP DATABASE ${mysqlQuoteDatabaseIdent(target)}`);
+
+      if (currentDb && currentDb.toLowerCase() !== lower) {
+        await conn.query(`USE ${mysqlQuoteDatabaseIdent(currentDb)}`);
+      }
+
+      return;
+    }
+
+    if (info.type === 'postgresql') {
+      const lower = target.toLowerCase();
+      const pgProtected = new Set(['postgres', 'template0', 'template1']);
+      if (pgProtected.has(lower)) {
+        throw new Error('Cannot drop a system database');
+      }
+
+      const pgPool = connection as import('pg').Pool;
+      const { Pool } = getPg();
+      // pg-pool stores password as non-enumerable; object spread omits it and breaks SCRAM auth.
+      const o = (pgPool as unknown as { options: import('pg').PoolConfig }).options;
+      const poolPassword =
+        typeof o.password === 'string'
+          ? o.password
+          : typeof info.password === 'string'
+            ? info.password
+            : '';
+      const adminPool = new Pool({
+        host: o.host,
+        port: o.port,
+        user: o.user,
+        password: poolPassword,
+        database: 'postgres',
+        ssl: o.ssl,
+        connectionTimeoutMillis: o.connectionTimeoutMillis ?? 10000,
+      });
+      try {
+        await adminPool.query(
+          'SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = $1',
+          [target]
+        );
+        await adminPool.query(`DROP DATABASE ${pgQuoteIdent(target)}`);
+      } finally {
+        await adminPool.end();
+      }
+
+      const currentDb = info.database?.trim() ?? '';
+      if (currentDb === target) {
+        await this.disconnect(connectionId);
+      }
+
+      return;
+    }
+
+    throw new Error(`Unsupported database type: ${info.type}`);
+  }
 }
 
 function sanitizeTableIdent(name: string): string {
@@ -1053,6 +1132,10 @@ function sanitizeTableIdent(name: string): string {
 
 function pgQuoteIdent(name: string): string {
   return `"${name.replace(/"/g, '""')}"`;
+}
+
+function mysqlQuoteDatabaseIdent(name: string): string {
+  return `\`${name.replace(/`/g, '``')}\``;
 }
 
 function pgLiteral(v: unknown): string {

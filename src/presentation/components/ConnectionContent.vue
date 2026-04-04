@@ -234,8 +234,12 @@
     </div>
 
     <!-- Database Select Modal -->
-    <DatabaseSelectModal v-model="showDatabaseModal" :connection-id="connection?.id"
-      @selected="handleDatabaseSelected" />
+    <DatabaseSelectModal
+      v-model="showDatabaseModal"
+      :connection-id="connection?.id"
+      @selected="handleDatabaseSelected"
+      @database-dropped="handleDatabaseDropped"
+    />
 
     <!-- Export progress dialog -->
     <el-dialog v-model="exportDialogVisible" title="Export SQL" width="520px" :close-on-click-modal="false"
@@ -902,6 +906,17 @@ async function handleSaveKeydown(e: KeyboardEvent) {
   }
 
   const keyLower = e.key?.toLowerCase();
+
+  // Ctrl/Cmd + K: open Select Database modal
+  if ((e.ctrlKey || e.metaKey) && keyLower === 'k') {
+    if (!connection.value) return;
+    if (isTargetEditableForRowDelete(e.target)) return;
+    e.preventDefault();
+    e.stopPropagation();
+    showDatabaseModal.value = true;
+    return;
+  }
+
   // Ctrl/Cmd + W: close active tab, or disconnect workspace when no tabs
   if ((e.ctrlKey || e.metaKey) && keyLower === 'w') {
     if (!connection.value) return;
@@ -1963,6 +1978,27 @@ const handleAddQuery = () => {
 // Get column names from data rows
 const handleDatabaseSelected = async (databaseName: string) => {
   // Reload tables after database is selected
+  await loadTables();
+};
+
+const handleDatabaseDropped = async (databaseName: string) => {
+  const conn = connection.value;
+  const trimmed = databaseName.trim();
+  if (!conn?.database?.trim()) {
+    await loadTables();
+    return;
+  }
+  const isMysql = conn.type === 'mysql';
+  const sameDb = isMysql
+    ? conn.database.trim().toLowerCase() === trimmed.toLowerCase()
+    : conn.database.trim() === trimmed;
+
+  if (sameDb && currentTabId.value) {
+    await connectionStore.removeConnection(currentTabId.value);
+    showDatabaseModal.value = false;
+    return;
+  }
+
   await loadTables();
 };
 

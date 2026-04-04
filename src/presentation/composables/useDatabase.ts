@@ -203,6 +203,18 @@ export function useDatabase() {
     return r;
   };
 
+  const dropDatabase = async (
+    connectionId: string,
+    databaseName: string
+  ): Promise<{ success: boolean; error?: string }> => {
+    const r = (await window.electron?.invoke('database:dropDatabase', {
+      connectionId,
+      databaseName,
+    })) as { success: boolean; error?: string } | undefined;
+    if (!r) return { success: false, error: 'Drop database failed (no response)' };
+    return r;
+  };
+
   const importSqlScript = async (
     connectionId: string,
     sql: string
@@ -255,6 +267,7 @@ export function useDatabase() {
     cancelExport,
     showItemInFolder,
     dropTable,
+    dropDatabase,
     importSqlScript,
     importSqlFromPathWithJob,
     cancelImport,

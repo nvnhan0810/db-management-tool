@@ -1,7 +1,7 @@
 {
   "name": "gl-database-client",
   "productName": "GL Database Client",
-  "version": "1.3.1",
+  "version": "1.4.0",
   "description": "GL Database Client is a database management tool.",
   "main": ".vite/build/main.js",
   "private": true,

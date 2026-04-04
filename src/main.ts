@@ -270,6 +270,23 @@ ipcMain.handle(
 );
 
 ipcMain.handle(
+  'database:dropDatabase',
+  async (_event, args: { connectionId: string; databaseName: string }) => {
+    try {
+      const { connectionId, databaseName } = args ?? {};
+      if (!connectionId || !databaseName?.trim()) {
+        return { success: false, error: 'Missing connectionId or databaseName' };
+      }
+      await databaseService.dropDatabase(connectionId, databaseName.trim());
+      return { success: true };
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      return { success: false, error: msg };
+    }
+  }
+);
+
+ipcMain.handle(
   'database:importSqlScript',
   async (_event, args: { connectionId: string; sql: string }) => {
     const { connectionId, sql } = args ?? {};
