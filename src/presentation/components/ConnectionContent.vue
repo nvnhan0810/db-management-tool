@@ -386,12 +386,14 @@ import TableStructureView from '@/presentation/components/TableStructureView.vue
 import TableViewFooter from '@/presentation/components/TableViewFooter.vue';
 import { useDatabase } from '@/presentation/composables/useDatabase';
 import { useConnectionStore } from '@/presentation/stores/connectionStore';
+import { useConnectionsStore } from '@/presentation/stores/connectionsStore';
 import { formatDbCellDisplayValue, isTemporalSqlType } from '@/presentation/utils/dbCellDisplayFormat';
 import { showErrorDialog } from '@/presentation/utils/errorDialogs';
 import { Connection, Document, Folder, Search } from '@element-plus/icons-vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import { storeToRefs } from 'pinia';
 import { computed, nextTick, onMounted, onUnmounted, reactive, ref, watch } from 'vue';
+import { useRouter } from 'vue-router';
 
 interface Table {
   name: string;
@@ -468,6 +470,8 @@ const {
   currentTabId,
 } = storeToRefs(connectionStore);
 const { switchToConnection } = connectionStore;
+const router = useRouter();
+const connectionsStore = useConnectionsStore();
 const {
   getTables,
   getTableStructure,
@@ -484,6 +488,7 @@ const {
   chooseOpenSqlPath,
   importSqlFromPathWithJob,
   cancelImport,
+  disconnect,
 } = useDatabase();
 
 // Use currentConnection, but fallback to first active connection if currentConnection is null
@@ -897,13 +902,22 @@ async function handleSaveKeydown(e: KeyboardEvent) {
   }
 
   const keyLower = e.key?.toLowerCase();
-  // Ctrl/Cmd + W close current tab
+  // Ctrl/Cmd + W: close active tab, or disconnect workspace when no tabs
   if ((e.ctrlKey || e.metaKey) && keyLower === 'w') {
-    const tabId = activeTabId.value;
-    if (!tabId) return;
+    if (!connection.value) return;
+
+    if (tabs.value.length > 0) {
+      const tabId = activeTabId.value || tabs.value[tabs.value.length - 1]?.id;
+      if (!tabId) return;
+      e.preventDefault();
+      e.stopPropagation();
+      handleRemoveTab(tabId);
+      return;
+    }
+
     e.preventDefault();
     e.stopPropagation();
-    handleRemoveTab(tabId);
+    await confirmAndDisconnectWorkspace();
     return;
   }
   // Ctrl/Cmd + R reload active connection (tables + opened tabs)
@@ -1587,6 +1601,59 @@ const handleRemoveTab = (tabId: string) => {
     }
   }
 };
+
+/** Same disconnect behavior as CustomTitleBar (workspace tab vs home pointer). */
+async function confirmAndDisconnectWorkspace() {
+  try {
+    await ElMessageBox.confirm(
+      'Disconnect this connection?',
+      'Disconnect',
+      {
+        confirmButtonText: 'Disconnect',
+        cancelButtonText: 'Cancel',
+        type: 'warning',
+        distinguishCancelAndClose: true,
+      }
+    );
+  } catch {
+    return;
+  }
+
+  try {
+    if (connectionStore.activeConnections.length > 0) {
+      const currentConnection = connectionStore.currentConnection;
+      if (currentConnection?.tabId) {
+        await connectionStore.removeConnection(currentConnection.tabId);
+      }
+      return;
+    }
+
+    const connId = connectionsStore.activeConnection?.id ?? connection.value?.id ?? null;
+    if (connectionsStore.activeConnection && connId) {
+      await disconnect(connId);
+      connectionsStore.setActiveConnection(null);
+      connectionsStore.setConnectionStatus(false);
+
+      const connectionInStore = connectionStore.activeConnections.find(
+        (conn) => conn.id === connId
+      );
+      if (connectionInStore?.tabId) {
+        await connectionStore.removeConnection(connectionInStore.tabId);
+      }
+
+      if (router.currentRoute.value.name === 'workspace') {
+        router.push({ name: 'home' });
+      }
+    }
+  } catch (error) {
+    console.error('Error disconnecting:', error);
+    await showErrorDialog({
+      title: 'Disconnect failed',
+      message: error instanceof Error ? error.message : 'Failed to disconnect',
+      details: error instanceof Error ? error.stack : undefined,
+    });
+  }
+}
 
 const handleTabClick = async (tab: any) => {
   const tabData = tabs.value.find(t => t.id === tab.name);
