@@ -90,7 +90,6 @@
                 border
                 style="width: 100%"
                 height="100%"
-                stripe
               >
                 <el-table-column
                   v-for="column in getResultColumns(result.rows)"
@@ -807,11 +806,6 @@ const clearEditor = () => {
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
   }
 
-  [data-theme='light'] & {
-    background-color: rgba(255, 255, 255, 0.9);
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
-  }
-
   :deep(.el-table) {
     background-color: transparent;
     font-size: 12px;
@@ -864,19 +858,21 @@ const clearEditor = () => {
           color: var(--el-text-color-primary);
         }
 
-        &:hover > td {
-          background-color: rgba(64, 158, 255, 0.1) !important;
-
-          .dark & {
-            background-color: rgba(64, 158, 255, 0.25) !important;
+        &:hover {
+          &.row-selected > td {
+            background-color: rgba(0, 128, 255, 0.4) !important;
           }
-        }
-
-        &.el-table__row--striped {
-          background-color: var(--el-fill-color-lighter);
-
-          .dark & {
-            background-color: var(--el-fill-color-lighter) !important;
+          &.row-deleted > td {
+            background-color: rgba(245, 108, 108, 0.2) !important;
+          }
+          &.row-new > td {
+            background-color: rgba(103, 194, 58, 0.12) !important;
+          }
+          &.row-modified > td {
+            background-color: rgba(230, 162, 60, 0.25) !important;
+          }
+          > td {
+            background-color: rgba(0, 128, 255, 0.4) !important;
           }
         }
 
@@ -933,11 +929,6 @@ const clearEditor = () => {
     background-color: var(--el-bg-color-overlay);
     border-top-color: var(--el-border-color);
     box-shadow: 0 -2px 8px rgba(0, 0, 0, 0.3);
-  }
-
-  [data-theme='light'] & {
-    background-color: rgba(255, 255, 255, 0.95);
-    border-top-color: rgba(226, 232, 240, 0.8);
   }
 
   .footer-left {

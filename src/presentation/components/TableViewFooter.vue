@@ -96,11 +96,6 @@ const handlePerPageChange = (perPage: number) => {
     box-shadow: 0 -2px 8px rgba(0, 0, 0, 0.3);
   }
 
-  [data-theme="light"] & {
-    background-color: rgba(255, 255, 255, 0.95);
-    border-top-color: rgba(226, 232, 240, 0.8);
-  }
-
   .footer-left {
     display: flex;
     align-items: center;

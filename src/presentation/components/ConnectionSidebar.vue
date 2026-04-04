@@ -39,8 +39,8 @@
 <script setup lang="ts">
 import type { ActiveConnection } from '@/presentation/stores/connectionStore';
 import { useConnectionStore } from '@/presentation/stores/connectionStore';
-import { storeToRefs } from 'pinia';
 import { Connection } from '@element-plus/icons-vue';
+import { storeToRefs } from 'pinia';
 import { computed, ref, watch } from 'vue';
 
 const connectionStore = useConnectionStore();
@@ -144,11 +144,6 @@ const handleSelectConnection = (tabId: string) => {
         background-color: rgba(64, 158, 255, 0.2);
         border-color: rgba(64, 158, 255, 0.5);
       }
-
-      [data-theme="light"] & {
-        background-color: rgba(64, 158, 255, 0.1);
-        border-color: rgba(64, 158, 255, 0.3);
-      }
     }
 
     .connection-icon {
@@ -165,11 +160,6 @@ const handleSelectConnection = (tabId: string) => {
       .dark & {
         background-color: rgba(64, 158, 255, 0.2);
         color: var(--el-color-primary-light-3);
-      }
-
-      [data-theme="light"] & {
-        background-color: rgba(64, 158, 255, 0.1);
-        color: var(--el-color-primary);
       }
     }
 

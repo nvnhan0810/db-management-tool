@@ -664,9 +664,7 @@ function onDataCellSelect(tabId: string, e: { rowIndex: number; columnKey: strin
   }
 }
 function onDataSidebarClose(tabId: string) {
-  const s = getDataSidebarState(tabId);
-  s.selectedRowIndex = null;
-  s.selectedColumn = null;
+  // Keep selected row/column so keyboard Delete/Backspace still works when the panel is hidden.
   connectionStore.closeDataSidebar();
 }
 function onDataUpdateField(tabId: string, e: { field: string; value: unknown }) {
@@ -780,10 +778,40 @@ function setTableDataViewRef(tabId: string, el: TableDataViewRef | null) {
   }
 }
 
+function isTargetEditableForRowDelete(target: EventTarget | null): boolean {
+  const el = target as HTMLElement | null;
+  if (!el) return false;
+  const tag = el.tagName?.toLowerCase();
+  if (tag === 'input' || tag === 'textarea' || tag === 'select') return true;
+  if (el.isContentEditable) return true;
+  if (el.closest?.('[contenteditable="true"]')) return true;
+  if (el.closest?.('.monaco-editor') || el.closest?.('.cm-editor')) return true;
+  return false;
+}
+
 async function handleSaveKeydown(e: KeyboardEvent) {
-  const key = e.key?.toLowerCase();
+  const key = e.key;
+
+  if (key === 'Delete' || key === 'Backspace') {
+    const tab = activeDataTab.value;
+    if (tab) {
+      const s = getDataSidebarState(tab.id);
+      if (s.selectedRowIndex !== null && !isTargetEditableForRowDelete(e.target)) {
+        e.preventDefault();
+        e.stopPropagation();
+        if (s.deletedRows.includes(s.selectedRowIndex)) {
+          onDataUnmarkDeleted(tab.id);
+        } else {
+          onDataMarkDeleted(tab.id);
+        }
+        return;
+      }
+    }
+  }
+
+  const keyLower = e.key?.toLowerCase();
   // Ctrl/Cmd + W close current tab
-  if ((e.ctrlKey || e.metaKey) && key === 'w') {
+  if ((e.ctrlKey || e.metaKey) && keyLower === 'w') {
     const tabId = activeTabId.value;
     if (!tabId) return;
     e.preventDefault();
@@ -793,7 +821,7 @@ async function handleSaveKeydown(e: KeyboardEvent) {
   }
   // Ctrl/Cmd + R reload active connection (tables + opened tabs)
   // Ctrl/Cmd + Shift + R reload current tab data only (legacy behavior)
-  if ((e.ctrlKey || e.metaKey) && key === 'r' && !e.shiftKey) {
+  if ((e.ctrlKey || e.metaKey) && keyLower === 'r' && !e.shiftKey) {
     e.preventDefault();
     e.stopPropagation();
 
@@ -802,7 +830,7 @@ async function handleSaveKeydown(e: KeyboardEvent) {
   }
 
   // Ctrl/Cmd + Shift + R reload data currently shown in "data" mode
-  if ((e.ctrlKey || e.metaKey) && key === 'r' && e.shiftKey) {
+  if ((e.ctrlKey || e.metaKey) && keyLower === 'r' && e.shiftKey) {
     e.preventDefault();
     e.stopPropagation();
 
@@ -848,7 +876,7 @@ async function handleSaveKeydown(e: KeyboardEvent) {
     return;
   }
 
-  if ((e.ctrlKey || e.metaKey) && key === 's') {
+  if ((e.ctrlKey || e.metaKey) && keyLower === 's') {
     e.preventDefault();
     e.stopPropagation();
     const tab = tabs.value.find(t => t.id === activeTabId.value);
@@ -1963,15 +1991,6 @@ const formatDate = (date: Date | string) => {
               color: var(--el-text-color-primary);
             }
           }
-
-          [data-theme="light"] & {
-            background-color: rgba(64, 158, 255, 0.08);
-
-            .table-name,
-            .table-icon {
-              color: var(--el-text-color-primary);
-            }
-          }
         }
 
         &.active {
@@ -1981,11 +2000,6 @@ const formatDate = (date: Date | string) => {
           .dark & {
             background-color: rgba(64, 158, 255, 0.2);
             border-color: rgba(64, 158, 255, 0.5);
-          }
-
-          [data-theme="light"] & {
-            background-color: rgba(64, 158, 255, 0.1);
-            border-color: rgba(64, 158, 255, 0.3);
           }
 
           .table-name {
@@ -2091,12 +2105,6 @@ const formatDate = (date: Date | string) => {
           border-color: var(--el-border-color-light);
           box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
         }
-
-        [data-theme="light"] & {
-          background-color: rgba(255, 255, 255, 0.9);
-          border-color: rgba(226, 232, 240, 0.8);
-          box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
-        }
       }
 
       :deep(.el-card__header) {
@@ -2149,10 +2157,6 @@ const formatDate = (date: Date | string) => {
 
           .dark & {
             background-color: var(--el-border-color-lighter);
-          }
-
-          [data-theme="light"] & {
-            background-color: rgba(247, 250, 252, 0.8);
           }
 
           .detail-label {

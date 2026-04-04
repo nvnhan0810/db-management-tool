@@ -207,11 +207,6 @@ const handleCancel = () => {
         background-color: rgba(64, 158, 255, 0.2);
         border-color: rgba(64, 158, 255, 0.5);
       }
-
-      [data-theme="light"] & {
-        background-color: rgba(64, 158, 255, 0.1);
-        border-color: rgba(64, 158, 255, 0.3);
-      }
     }
 
     .database-icon {

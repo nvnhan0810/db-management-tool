@@ -1,121 +1,53 @@
 <template>
   <div class="data-view" ref="viewRef">
     <!-- Filter Section -->
-    <TableDataFilter
-      v-if="data"
-      :columns="displayColumns"
-      :preset-filters="presetFilters"
-      :preset-nonce="props.filterPresetNonce"
-      @apply="handleFilterApply"
-    />
+    <TableDataFilter v-if="data" :columns="displayColumns" :preset-filters="presetFilters"
+      :preset-nonce="props.filterPresetNonce" @apply="handleFilterApply" />
 
     <div v-if="isLoading" class="loading-data">
       <el-skeleton :rows="10" animated />
     </div>
     <div v-else-if="error" class="error-message">
-      <el-alert
-        :title="error"
-        type="error"
-        :closable="false"
-        show-icon
-      />
+      <el-alert :title="error" type="error" :closable="false" show-icon />
     </div>
     <div v-else-if="data" class="data-content-wrapper">
       <div class="data-content" :class="{ 'with-sidebar': sidebarVisible }">
-        <el-table
-          v-if="displayColumns.length > 0"
-          size="small"
-          :data="displayRows"
-          :row-key="getTableRowKey"
-          border
-          style="width: 100%"
-          height="100%"
-          stripe
-          :default-sort="defaultSort"
-          @sort-change="handleSortChange"
-          @cell-click="handleCellClick"
-          @cell-dblclick="handleCellDblclick"
-          :row-class-name="tableRowClassName"
-          :cell-class-name="tableCellClassName"
-        >
-          <el-table-column
-            v-for="column in displayColumns"
-            :key="column"
-            :prop="column"
-            :label="column"
-            min-width="100"
-            resizable
-            :sortable="pendingNewRows.length > 0 ? false : 'custom'"
-          >
+        <el-table v-if="displayColumns.length > 0" size="small" :data="displayRows" :row-key="getTableRowKey" border
+          style="width: 100%" height="100%" :default-sort="defaultSort" @sort-change="handleSortChange"
+          @cell-click="handleCellClick" @cell-dblclick="handleCellDblclick" :row-class-name="tableRowClassName"
+          :cell-class-name="tableCellClassName">
+          <el-table-column v-for="column in displayColumns" :key="column" :prop="column" :label="column" min-width="100"
+            resizable :sortable="pendingNewRows.length > 0 ? false : 'custom'">
             <template #default="{ row, $index }">
               <!-- New row: always show input -->
-              <div
-                v-if="isNewRow($index)"
-                class="cell-add-wrap"
-                @click.stop
-              >
-                <el-input
-                  v-if="!isMultilineTextColumn(column)"
-                  v-model="(row as Record<string, unknown>)[column]"
-                  class="cell-add-input"
-                  size="small"
-                  placeholder=""
-                  @click.stop
-                />
-                <el-input
-                  v-else
-                  v-model="(row as Record<string, unknown>)[column]"
-                  class="cell-add-input"
-                  size="small"
-                  placeholder=""
-                  @click.stop
-                />
+              <div v-if="isNewRow($index)" class="cell-add-wrap" @click.stop>
+                <el-input v-if="!isMultilineTextColumn(column)" v-model="(row as Record<string, unknown>)[column]"
+                  class="cell-add-input" size="small" placeholder="" @click.stop />
+                <el-input v-else v-model="(row as Record<string, unknown>)[column]" class="cell-add-input" size="small"
+                  placeholder="" @click.stop />
               </div>
               <!-- Existing row: edit or display -->
               <template v-else>
-                <div
-                  v-if="editingCell?.rowIndex === $index && editingCell?.columnKey === column"
-                  class="cell-edit-wrap"
+                <div v-if="editingCell?.rowIndex === $index && editingCell?.columnKey === column" class="cell-edit-wrap"
                   :class="{
                     'is-multiline-editable': isMultilineTextColumn(column) && isMultilineEditable
-                  }"
-                  @click.stop
-                >
-                  <el-input
-                    v-if="!isMultilineTextColumn(column)"
-                    ref="editInputRef"
-                    size="small"
-                    :model-value="editDraftValue"
-                    class="cell-edit-input"
-                    @update:model-value="(v: string) => (editDraftValue = v)"
-                    @blur="commitCellEdit($index, column)"
-                    @keydown.enter.prevent="commitCellEdit($index, column)"
-                  />
-                  <div
-                    v-else
-                    :ref="setEditableDivRef"
-                    class="cell-edit-input editable-div"
-                    contenteditable="true"
-                    @input="onEditableInput"
-                    @blur="commitCellEdit($index, column)"
-                    @keydown.enter.ctrl.prevent="commitCellEdit($index, column)"
-                  ></div>
+                  }" @click.stop>
+                  <el-input v-if="!isMultilineTextColumn(column)" ref="editInputRef" size="small"
+                    :model-value="editDraftValue" class="cell-edit-input"
+                    @update:model-value="(v: string) => (editDraftValue = v)" @blur="commitCellEdit($index, column)"
+                    @keydown.enter.prevent="commitCellEdit($index, column)" />
+                  <div v-else :ref="setEditableDivRef" class="cell-edit-input editable-div" contenteditable="true"
+                    @input="onEditableInput" @blur="commitCellEdit($index, column)"
+                    @keydown.enter.ctrl.prevent="commitCellEdit($index, column)"></div>
                 </div>
-                <span
-                  v-else
-                  class="cell-text"
-                  @dblclick.stop="startCellEdit($index, column)"
-                >
+                <span v-else class="cell-text" @dblclick.stop="startCellEdit($index, column)">
                   <span class="cell-text-value">
                     {{ formatCellValue(getDisplayCellValue(row, column, row[column])) || '\u00A0' }}
                   </span>
                   <button
                     v-if="getForeignKeyTarget(column) && row[column] !== null && row[column] !== undefined && row[column] !== ''"
-                    class="cell-fk-btn"
-                    type="button"
-                    title="Open related"
-                    @click.stop="openRelated(column, row[column])"
-                  >
+                    class="cell-fk-btn" type="button" title="Open related"
+                    @click.stop="openRelated(column, row[column])">
                     →
                   </button>
                 </span>
@@ -124,10 +56,7 @@
           </el-table-column>
         </el-table>
         <div v-else class="no-data">
-          <el-empty
-            description="No columns loaded — open Structure or wait for the table to load"
-            :image-size="72"
-          />
+          <el-empty description="No columns loaded — open Structure or wait for the table to load" :image-size="72" />
         </div>
       </div>
     </div>
@@ -989,8 +918,8 @@ const buildWhereClause = (filters: Filter[] | null, rawSql: string | null): stri
     }
 
     const column = dbType === 'postgresql' ? `"${filter.column}"` :
-                   dbType === 'mysql' ? `\`${filter.column}\`` :
-                   filter.column;
+      dbType === 'mysql' ? `\`${filter.column}\`` :
+        filter.column;
 
     if (filter.operator === 'IS NULL' || filter.operator === 'IS NOT NULL') {
       return `${column} ${filter.operator}`;
@@ -1155,11 +1084,6 @@ defineExpose({ runSave, addRow, hasUnsavedChanges, clearUnsavedChanges });
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
   }
 
-  [data-theme="light"] & {
-    background-color: rgba(255, 255, 255, 0.9);
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
-  }
-
   :deep(.el-table) {
     background-color: transparent;
     font-size: 12px;
@@ -1167,6 +1091,7 @@ defineExpose({ runSave, addRow, hasUnsavedChanges, clearUnsavedChanges });
     .el-table__body-wrapper {
       scrollbar-width: none;
       -ms-overflow-style: none;
+
       &::-webkit-scrollbar {
         display: none;
       }
@@ -1211,19 +1136,25 @@ defineExpose({ runSave, addRow, hasUnsavedChanges, clearUnsavedChanges });
           color: var(--el-text-color-primary);
         }
 
-        &:hover > td {
-          background-color: rgba(64, 158, 255, 0.10) !important;
-
-          .dark & {
-            background-color: rgba(64, 158, 255, 0.25) !important;
+        &:hover {
+          &.row-selected>td {
+            background-color: rgba(0, 128, 255, 0.4) !important;
           }
-        }
 
-        &.el-table__row--striped {
-          background-color: var(--el-fill-color-lighter);
+          &.row-deleted>td {
+            background-color: rgba(245, 108, 108, 0.2) !important;
+          }
 
-          .dark & {
-            background-color: var(--el-fill-color-lighter) !important;
+          &.row-new>td {
+            background-color: rgba(103, 194, 58, 0.12) !important;
+          }
+
+          &.row-modified>td {
+            background-color: rgba(230, 162, 60, 0.25) !important;
+          }
+
+          >td {
+            background-color: rgba(64, 158, 255, 0.25) !important;
           }
         }
 
@@ -1240,6 +1171,7 @@ defineExpose({ runSave, addRow, hasUnsavedChanges, clearUnsavedChanges });
 
   :deep(.row-new) {
     background-color: rgba(103, 194, 58, 0.12) !important;
+
     td {
       background-color: rgba(103, 194, 58, 0.08) !important;
     }
@@ -1273,6 +1205,7 @@ defineExpose({ runSave, addRow, hasUnsavedChanges, clearUnsavedChanges });
 
   :deep(.row-deleted) {
     background-color: rgba(245, 108, 108, 0.2) !important;
+
     td {
       background-color: rgba(245, 108, 108, 0.15) !important;
       border-color: var(--el-border-color-darker);
@@ -1280,12 +1213,8 @@ defineExpose({ runSave, addRow, hasUnsavedChanges, clearUnsavedChanges });
   }
 
   :deep(.row-selected) {
-    & > td {
-      background-color: rgba(64, 158, 255, 0.16) !important;
-
-      .dark & {
-        background-color: rgba(64, 158, 255, 0.25) !important;
-      }
+    &>td {
+      background-color: rgba(0, 128, 255, 0.4) !important;
     }
   }
 
@@ -1298,7 +1227,8 @@ defineExpose({ runSave, addRow, hasUnsavedChanges, clearUnsavedChanges });
     padding: 0 4px;
     min-width: 0;
     display: flex;
-    align-items: center; /* default: single-line centered vertically */
+    align-items: center;
+    /* default: single-line centered vertically */
     height: 100%;
   }
 
@@ -1319,7 +1249,8 @@ defineExpose({ runSave, addRow, hasUnsavedChanges, clearUnsavedChanges });
     display: block;
     padding: 0 6px;
     overflow-y: auto;
-    line-height: 32px; /* align with small table row */
+    line-height: 32px;
+    /* align with small table row */
   }
 
   .cell-edit-wrap.is-multiline-editable {
@@ -1328,13 +1259,14 @@ defineExpose({ runSave, addRow, hasUnsavedChanges, clearUnsavedChanges });
 
   .cell-edit-wrap.is-multiline-editable .editable-div {
     align-items: flex-start;
-    line-height: 1.5; /* nhiều dòng: bình thường */
+    line-height: 1.5;
+    /* nhiều dòng: bình thường */
   }
 
   .cell-text {
     display: block;
     min-height: 1em;
-  cursor: text;
+    cursor: text;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -1343,7 +1275,8 @@ defineExpose({ runSave, addRow, hasUnsavedChanges, clearUnsavedChanges });
 
   .cell-text-value {
     display: block;
-    padding-right: 16px; /* reserve space for right-arrow */
+    padding-right: 16px;
+    /* reserve space for right-arrow */
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;

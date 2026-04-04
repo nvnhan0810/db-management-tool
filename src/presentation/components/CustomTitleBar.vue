@@ -73,7 +73,7 @@
       </div>
     </div>
 
-    <!-- Right side - Window controls and theme toggle -->
+    <!-- Right side - Window controls -->
     <div class="title-bar-right">
       <!-- Bottom SQL history panel toggle -->
       <el-tooltip
@@ -115,13 +115,6 @@
         </el-button>
       </el-tooltip>
 
-      <!-- Theme toggle button (always visible) -->
-      <el-button size="small" class="control-btn theme-toggle" @click="handleThemeToggle">
-        <el-icon>
-          <component :is="isDarkMode ? 'Sunny' : 'Moon'" />
-        </el-icon>
-      </el-button>
-
       <!-- Windows-style Window controls (hidden on macOS) -->
       <div v-if="!isMacOS" class="window-controls">
         <el-button size="small" class="control-btn minimize" @click.stop="minimizeWindow">
@@ -148,7 +141,6 @@
 import { useDatabase } from '@/presentation/composables/useDatabase';
 import { useConnectionStore } from '@/presentation/stores/connectionStore';
 import { useConnectionsStore } from '@/presentation/stores/connectionsStore';
-import { useThemeStore } from '@/presentation/stores/themeStore';
 import { showErrorDialog } from '@/presentation/utils/errorDialogs';
 import {
   Close,
@@ -168,9 +160,6 @@ const connectionStore = useConnectionStore();
 const connectionsStore = useConnectionsStore();
 const { disconnect } = useDatabase();
 const { rowDetailPanelEnabled, sqlHistoryPanelOpen } = storeToRefs(connectionStore);
-const themeStore = useThemeStore();
-const { isDarkMode } = storeToRefs(themeStore);
-const { toggleTheme } = themeStore;
 const router = useRouter();
 
 
@@ -215,10 +204,6 @@ const activeConnectionId = computed(() => {
 onMounted(() => {
   isMacOS.value = navigator.platform.toLowerCase().includes('mac');
 });
-
-const handleThemeToggle = () => {
-  toggleTheme();
-};
 
 // Handle disconnect
 const handleDisconnect = async () => {

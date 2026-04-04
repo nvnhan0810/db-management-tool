@@ -248,18 +248,15 @@
   color: white;
 }
 
-.control-btn.theme-toggle,
 .control-btn.sidebar-toggle {
   -webkit-app-region: no-drag;
   cursor: pointer;
 }
 
-.control-btn.theme-toggle:hover,
 .control-btn.sidebar-toggle:hover {
   background-color: var(--el-fill-color-light);
 }
 
-.custom-title-bar.windows .control-btn.theme-toggle:hover,
 .custom-title-bar.windows .control-btn.sidebar-toggle:hover {
   background-color: var(--el-fill-color-light);
 }

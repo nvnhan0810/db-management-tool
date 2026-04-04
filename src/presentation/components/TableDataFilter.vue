@@ -218,11 +218,6 @@ onUnmounted(() => {
     border-color: var(--el-border-color-light);
   }
 
-  [data-theme="light"] & {
-    background-color: rgba(255, 255, 255, 0.9);
-    border-color: rgba(226, 232, 240, 0.8);
-  }
-
   .filter-row-single {
     display: flex;
     align-items: center;

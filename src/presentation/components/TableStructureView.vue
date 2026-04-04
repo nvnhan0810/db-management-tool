@@ -143,11 +143,6 @@ withDefaults(defineProps<Props>(), {
       box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
     }
 
-    [data-theme="light"] & {
-      background-color: rgba(255, 255, 255, 0.9);
-      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
-    }
-
     h4 {
       margin: 0 0 10px 0;
       font-size: 14px;

@@ -6,25 +6,12 @@ import { createPinia } from 'pinia';
 import { createApp } from 'vue';
 import App from './App.vue';
 import router from './router';
-import { useThemeStore } from './presentation/stores/themeStore';
 import { useConnectionsStore } from './presentation/stores/connectionsStore';
+import { applyDarkTheme } from './presentation/utils/applyDarkTheme';
 import './styles/theme-black.css';
 import './styles/index.scss';
 
-const initTheme = () => {
-  // App uses a fixed dark theme (black background, white text).
-  const isDark = true;
-  const html = document.documentElement;
-  if (isDark) {
-    html.classList.add('dark');
-    html.setAttribute('data-theme', 'dark');
-  } else {
-    html.classList.remove('dark');
-    html.setAttribute('data-theme', 'light');
-  }
-  localStorage.setItem('theme', 'dark');
-};
-initTheme();
+applyDarkTheme();
 
 window.addEventListener('beforeunload', (e) => {
   const hasState = localStorage.getItem('connectionsState');
@@ -47,10 +34,6 @@ app.use(router);
 app.use(ElementPlus);
 
 app.mount('#app');
-
-// Initialize stores after mount (Pinia must be installed first)
-const themeStore = useThemeStore();
-themeStore.applyTheme();
 
 const connectionsStore = useConnectionsStore();
 connectionsStore.initialize();
