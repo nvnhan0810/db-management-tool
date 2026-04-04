@@ -75,6 +75,33 @@
 
     <!-- Right side - Window controls -->
     <div class="title-bar-right">
+      <!-- Tables list (left schema sidebar) -->
+      <el-tooltip
+        v-if="hasActiveConnection"
+        :content="
+          tablesListSidebarOpen
+            ? 'Tables list: visible (drag splitter to resize)'
+            : 'Tables list: hidden'
+        "
+        placement="bottom"
+      >
+        <el-button
+          size="small"
+          class="control-btn sidebar-toggle"
+          @click="handleTablesListSidebarToggle"
+        >
+          <span
+            class="codicon row-detail-sidebar-codicon"
+            :class="
+              tablesListSidebarOpen
+                ? 'codicon-layout-sidebar-left'
+                : 'codicon-layout-sidebar-left-off'
+            "
+            aria-hidden="true"
+          />
+        </el-button>
+      </el-tooltip>
+
       <!-- Bottom SQL history panel toggle -->
       <el-tooltip
         v-if="hasActiveConnection"
@@ -159,7 +186,7 @@ import { useRouter } from 'vue-router';
 const connectionStore = useConnectionStore();
 const connectionsStore = useConnectionsStore();
 const { disconnect } = useDatabase();
-const { rowDetailPanelEnabled, sqlHistoryPanelOpen } = storeToRefs(connectionStore);
+const { rowDetailPanelEnabled, sqlHistoryPanelOpen, tablesListSidebarOpen } = storeToRefs(connectionStore);
 const router = useRouter();
 
 
@@ -269,6 +296,10 @@ const handleRowDetailPanelToggle = () => {
 
 const handleSqlHistoryToggle = () => {
   connectionStore.toggleSqlHistoryPanel();
+};
+
+const handleTablesListSidebarToggle = () => {
+  connectionStore.toggleTablesListSidebar();
 };
 
 

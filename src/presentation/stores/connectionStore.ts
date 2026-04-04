@@ -34,6 +34,12 @@ export const useConnectionStore = defineStore('connection', () => {
   const dataSidebarOpen = ref(false);
   /** When true (default), clicking a table row opens the cell/row detail panel. */
   const rowDetailPanelEnabled = ref(true);
+  /** Left tables list column (schema browser) visible. */
+  const tablesListSidebarOpen = ref(true);
+  /** Resizable width (px) for tables list column. */
+  const layoutTablesSidebarWidth = ref(280);
+  /** Resizable width (px) for cell/row detail column. */
+  const layoutDataSidebarWidth = ref(380);
   /** Bottom SQL history panel visibility. */
   const sqlHistoryPanelOpen = ref(true);
   const sqlHistory = ref<SqlHistoryItem[]>([]);
@@ -68,6 +74,9 @@ export const useConnectionStore = defineStore('connection', () => {
       JSON.stringify({
         rowDetailPanelEnabled: rowDetailPanelEnabled.value,
         sqlHistoryPanelOpen: sqlHistoryPanelOpen.value,
+        tablesListSidebarOpen: tablesListSidebarOpen.value,
+        layoutTablesSidebarWidth: layoutTablesSidebarWidth.value,
+        layoutDataSidebarWidth: layoutDataSidebarWidth.value,
         timestamp: Date.now(),
       })
     );
@@ -80,12 +89,24 @@ export const useConnectionStore = defineStore('connection', () => {
       const parsed = JSON.parse(raw) as {
         rowDetailPanelEnabled?: boolean;
         sqlHistoryPanelOpen?: boolean;
+        tablesListSidebarOpen?: boolean;
+        layoutTablesSidebarWidth?: number;
+        layoutDataSidebarWidth?: number;
       };
       if (typeof parsed.rowDetailPanelEnabled === 'boolean') {
         rowDetailPanelEnabled.value = parsed.rowDetailPanelEnabled;
       }
       if (typeof parsed.sqlHistoryPanelOpen === 'boolean') {
         sqlHistoryPanelOpen.value = parsed.sqlHistoryPanelOpen;
+      }
+      if (typeof parsed.tablesListSidebarOpen === 'boolean') {
+        tablesListSidebarOpen.value = parsed.tablesListSidebarOpen;
+      }
+      if (typeof parsed.layoutTablesSidebarWidth === 'number' && parsed.layoutTablesSidebarWidth >= 160) {
+        layoutTablesSidebarWidth.value = Math.min(640, parsed.layoutTablesSidebarWidth);
+      }
+      if (typeof parsed.layoutDataSidebarWidth === 'number' && parsed.layoutDataSidebarWidth >= 200) {
+        layoutDataSidebarWidth.value = Math.min(720, parsed.layoutDataSidebarWidth);
       }
     } catch {
       /* ignore */
@@ -143,7 +164,17 @@ export const useConnectionStore = defineStore('connection', () => {
   };
 
   watch([activeConnections, currentTabId], saveState, { deep: true });
-  watch([rowDetailPanelEnabled, sqlHistoryPanelOpen], saveUiPrefs, { deep: false });
+  watch(
+    [
+      rowDetailPanelEnabled,
+      sqlHistoryPanelOpen,
+      tablesListSidebarOpen,
+      layoutTablesSidebarWidth,
+      layoutDataSidebarWidth,
+    ],
+    saveUiPrefs,
+    { deep: false }
+  );
 
   if (!stateLoaded) {
     loadUiPrefs();
@@ -177,6 +208,10 @@ export const useConnectionStore = defineStore('connection', () => {
 
   const toggleSqlHistoryPanel = () => {
     sqlHistoryPanelOpen.value = !sqlHistoryPanelOpen.value;
+  };
+
+  const toggleTablesListSidebar = () => {
+    tablesListSidebarOpen.value = !tablesListSidebarOpen.value;
   };
 
   const closeSqlHistoryPanel = () => {
@@ -394,6 +429,9 @@ export const useConnectionStore = defineStore('connection', () => {
     currentConnection,
     dataSidebarOpen,
     rowDetailPanelEnabled,
+    tablesListSidebarOpen,
+    layoutTablesSidebarWidth,
+    layoutDataSidebarWidth,
     sqlHistoryPanelOpen,
     sqlHistory,
     sortedConnections,
@@ -413,6 +451,7 @@ export const useConnectionStore = defineStore('connection', () => {
     closeDataSidebar,
     toggleRowDetailPanel,
     toggleSqlHistoryPanel,
+    toggleTablesListSidebar,
     closeSqlHistoryPanel,
     clearSqlHistory,
     attachSqlHistoryListener,

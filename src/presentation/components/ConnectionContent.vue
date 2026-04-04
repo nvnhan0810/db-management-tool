@@ -1,8 +1,13 @@
 <template>
   <div class="connection-content">
     <div v-if="connection" class="content-container">
-      <!-- Left Sidebar: Tables List -->
-      <div class="tables-sidebar">
+      <!-- Left column: tables list (hideable, resizable) -->
+      <div
+        v-show="tablesListSidebarOpen"
+        class="tables-sidebar-column"
+        :style="{ width: `${layoutTablesSidebarWidth}px` }"
+      >
+        <div class="tables-sidebar">
         <div class="sidebar-header">
           <h3>Tables</h3>
           <span v-if="!isLoadingTables && tables.length > 0" class="tables-count">{{ tables.length }}</span>
@@ -69,9 +74,18 @@
         <div v-else class="no-tables" @contextmenu.prevent.stop="onTablesSidebarContextMenu">
           <el-empty description="No tables found" :image-size="80" />
         </div>
+        </div>
       </div>
 
-      <!-- Right Content: Tabs -->
+      <div
+        v-show="tablesListSidebarOpen"
+        class="vertical-splitter"
+        role="separator"
+        aria-orientation="vertical"
+        @mousedown.prevent="startLayoutResizeTables"
+      />
+
+      <!-- Center + optional right column -->
       <div class="content-area">
         <!-- Default: Connection Info -->
         <div v-if="tabs.length === 0" class="connection-info-default">
@@ -116,9 +130,10 @@
           </el-card>
         </div>
 
-        <!-- Tabs View + Data sidebar + bottom SQL panel (resizable) -->
-        <div v-else class="content-split" ref="splitRef">
-          <div ref="contentAreaInnerRef" class="content-area-inner">
+        <!-- Tabs + bottom SQL panel (center) | cell/row sidebar (right), resizable -->
+        <div v-else class="workspace-main-row">
+          <div class="content-split" ref="splitRef">
+            <div ref="contentAreaInnerRef" class="content-area-inner">
             <div class="tabs-container">
               <el-tabs v-model="activeTabId" type="card" closable @tab-remove="handleRemoveTab"
                 @tab-click="handleTabClick">
@@ -179,22 +194,34 @@
                 </el-tab-pane>
               </el-tabs>
             </div>
-            <!-- Data table cell sidebar (inside content-area, full height) -->
-            <div v-if="dataSidebarVisible" class="data-detail-sidebar-wrap">
-              <TableDataCellSidebar ref="dataSidebarRef" :visible="true" :selected-row="dataSidebarSelectedRow"
-                :selected-column="dataSidebarSelectedColumn" :modified-fields="dataSidebarModifiedFields"
-                :is-deleted="dataSidebarIsDeleted" :column-types="dataSidebarColumnTypes"
-                @close="onDataSidebarClose(activeTabId)"
-                @update-field="(field: string, value: unknown) => onDataUpdateField(activeTabId, { field, value })"
-                @mark-deleted="onDataMarkDeleted(activeTabId)" @unmark-deleted="onDataUnmarkDeleted(activeTabId)" />
+            </div>
+
+            <div v-if="sqlHistoryPanelOpen" class="splitter-bar" role="separator" aria-orientation="horizontal"
+              @mousedown.prevent="startSqlPanelResize" />
+
+            <div v-if="sqlHistoryPanelOpen" class="bottom-sql-panel-wrap" :style="{ height: `${sqlPanelHeight}px` }">
+              <BottomSqlHistoryPanel />
             </div>
           </div>
 
-          <div v-if="sqlHistoryPanelOpen" class="splitter-bar" role="separator" aria-orientation="horizontal"
-            @mousedown.prevent="startSqlPanelResize" />
-
-          <div v-if="sqlHistoryPanelOpen" class="bottom-sql-panel-wrap" :style="{ height: `${sqlPanelHeight}px` }">
-            <BottomSqlHistoryPanel />
+          <div
+            v-if="dataSidebarVisible"
+            class="vertical-splitter vertical-splitter--before-data"
+            role="separator"
+            aria-orientation="vertical"
+            @mousedown.prevent="startLayoutResizeDataSidebar"
+          />
+          <div
+            v-if="dataSidebarVisible"
+            class="data-detail-sidebar-wrap"
+            :style="{ width: `${layoutDataSidebarWidth}px` }"
+          >
+            <TableDataCellSidebar ref="dataSidebarRef" :visible="true" :selected-row="dataSidebarSelectedRow"
+              :selected-column="dataSidebarSelectedColumn" :modified-fields="dataSidebarModifiedFields"
+              :is-deleted="dataSidebarIsDeleted" :column-types="dataSidebarColumnTypes"
+              @close="onDataSidebarClose(activeTabId)"
+              @update-field="(field: string, value: unknown) => onDataUpdateField(activeTabId, { field, value })"
+              @mark-deleted="onDataMarkDeleted(activeTabId)" @unmark-deleted="onDataUnmarkDeleted(activeTabId)" />
           </div>
         </div>
       </div>
@@ -430,8 +457,16 @@ type TableStructureResult = {
 };
 
 const connectionStore = useConnectionStore();
-const { dataSidebarOpen, rowDetailPanelEnabled, sqlHistoryPanelOpen, currentConnection, activeConnections, currentTabId } =
-  storeToRefs(connectionStore);
+const {
+  rowDetailPanelEnabled,
+  sqlHistoryPanelOpen,
+  tablesListSidebarOpen,
+  layoutTablesSidebarWidth,
+  layoutDataSidebarWidth,
+  currentConnection,
+  activeConnections,
+  currentTabId,
+} = storeToRefs(connectionStore);
 const { switchToConnection } = connectionStore;
 const {
   getTables,
@@ -656,15 +691,12 @@ function onDataCellSelect(tabId: string, e: { rowIndex: number; columnKey: strin
   const s = getDataSidebarState(tabId);
   s.selectedRowIndex = e.rowIndex;
   s.selectedColumn = e.columnKey;
-  if (!rowDetailPanelEnabled.value) {
-    return;
-  }
-  if (!dataSidebarOpen.value) {
-    connectionStore.toggleDataSidebar();
-  }
 }
+/** Sidebar close (X): clear selection so panel hides; no click-outside auto-close. */
 function onDataSidebarClose(tabId: string) {
-  // Keep selected row/column so keyboard Delete/Backspace still works when the panel is hidden.
+  const s = getDataSidebarState(tabId);
+  s.selectedRowIndex = null;
+  s.selectedColumn = null;
   connectionStore.closeDataSidebar();
 }
 function onDataUpdateField(tabId: string, e: { field: string; value: unknown }) {
@@ -736,6 +768,11 @@ const resizingSqlPanel = ref(false);
 let resizeStartY = 0;
 let resizeStartHeight = 0;
 
+const resizingLayoutTables = ref(false);
+const resizingLayoutData = ref(false);
+let layoutResizeStartX = 0;
+let layoutResizeStartWidth = 0;
+
 function clamp(n: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, n));
 }
@@ -768,6 +805,56 @@ function startSqlPanelResize(e: MouseEvent) {
   document.body.style.userSelect = 'none';
   window.addEventListener('mousemove', onSqlPanelResizeMove);
   window.addEventListener('mouseup', onSqlPanelResizeUp);
+}
+
+function startLayoutResizeTables(e: MouseEvent) {
+  resizingLayoutTables.value = true;
+  layoutResizeStartX = e.clientX;
+  layoutResizeStartWidth = layoutTablesSidebarWidth.value;
+  document.body.style.cursor = 'col-resize';
+  document.body.style.userSelect = 'none';
+  window.addEventListener('mousemove', onLayoutResizeTablesMove);
+  window.addEventListener('mouseup', onLayoutResizeTablesUp);
+}
+
+function onLayoutResizeTablesMove(e: MouseEvent) {
+  if (!resizingLayoutTables.value) return;
+  const dx = e.clientX - layoutResizeStartX;
+  layoutTablesSidebarWidth.value = clamp(layoutResizeStartWidth + dx, 200, 560);
+}
+
+function onLayoutResizeTablesUp() {
+  if (!resizingLayoutTables.value) return;
+  resizingLayoutTables.value = false;
+  document.body.style.cursor = '';
+  document.body.style.userSelect = '';
+  window.removeEventListener('mousemove', onLayoutResizeTablesMove);
+  window.removeEventListener('mouseup', onLayoutResizeTablesUp);
+}
+
+function startLayoutResizeDataSidebar(e: MouseEvent) {
+  resizingLayoutData.value = true;
+  layoutResizeStartX = e.clientX;
+  layoutResizeStartWidth = layoutDataSidebarWidth.value;
+  document.body.style.cursor = 'col-resize';
+  document.body.style.userSelect = 'none';
+  window.addEventListener('mousemove', onLayoutResizeDataMove);
+  window.addEventListener('mouseup', onLayoutResizeDataUp);
+}
+
+function onLayoutResizeDataMove(e: MouseEvent) {
+  if (!resizingLayoutData.value) return;
+  const dx = e.clientX - layoutResizeStartX;
+  layoutDataSidebarWidth.value = clamp(layoutResizeStartWidth - dx, 240, 720);
+}
+
+function onLayoutResizeDataUp() {
+  if (!resizingLayoutData.value) return;
+  resizingLayoutData.value = false;
+  document.body.style.cursor = '';
+  document.body.style.userSelect = '';
+  window.removeEventListener('mousemove', onLayoutResizeDataMove);
+  window.removeEventListener('mouseup', onLayoutResizeDataUp);
 }
 
 function setTableDataViewRef(tabId: string, el: TableDataViewRef | null) {
@@ -961,8 +1048,13 @@ const activeDataTab = computed(() => {
   const tab = tabs.value.find(t => t.id === id);
   return tab && tab.tabType !== 'query' && tab.viewMode === 'data' ? tab : null;
 });
+/** Right panel only when feature is on, data tab active, and a row is selected (no document click-outside close). */
 const dataSidebarVisible = computed(() => {
-  return rowDetailPanelEnabled.value && dataSidebarOpen.value && tabs.value.length > 0;
+  if (!rowDetailPanelEnabled.value || tabs.value.length === 0) return false;
+  const tab = activeDataTab.value;
+  if (!tab) return false;
+  const s = getDataSidebarState(tab.id);
+  return s.selectedRowIndex !== null;
 });
 const dataSidebarSelectedRow = computed(() => {
   const tab = activeDataTab.value;
@@ -1819,23 +1911,17 @@ defineExpose({
   currentTabId,
 });
 
-function handleDataSidebarClickOutside(e: MouseEvent) {
-  if (!dataSidebarVisible.value) return;
-  if (contentAreaInnerRef.value?.contains(e.target as Node)) return;
-  onDataSidebarClose(activeTabId.value);
-}
-
 // Debug on mount
 onMounted(() => {
   // Central SQL history listener (emitted from preload wrapper)
   connectionStore.attachSqlHistoryListener();
-  document.addEventListener('click', handleDataSidebarClickOutside);
   document.addEventListener('keydown', handleSaveKeydown, { capture: true });
 });
 onUnmounted(() => {
-  document.removeEventListener('click', handleDataSidebarClickOutside);
   document.removeEventListener('keydown', handleSaveKeydown, { capture: true });
   onSqlPanelResizeUp();
+  onLayoutResizeTablesUp();
+  onLayoutResizeDataUp();
 });
 
 const formatDate = (date: Date | string) => {
@@ -1866,21 +1952,58 @@ const formatDate = (date: Date | string) => {
 
   .content-container {
     display: flex;
+    flex-direction: row;
     height: 100%;
+    min-height: 0;
     overflow: hidden;
+  }
+
+  .tables-sidebar-column {
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  .vertical-splitter {
+    flex: 0 0 6px;
+    width: 6px;
+    cursor: col-resize;
+    align-self: stretch;
+    position: relative;
+    z-index: 2;
+    background: transparent;
+  }
+
+  .vertical-splitter::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 2px;
+    width: 4px;
+    background-color: var(--el-border-color-light);
+    opacity: 0.9;
+  }
+
+  .vertical-splitter:hover::before {
+    background-color: var(--el-color-primary);
+    opacity: 0.95;
   }
 
   // Left Sidebar: Tables
   .tables-sidebar {
-    width: 280px;
-    min-width: 280px;
+    width: 100%;
+    min-width: 0;
+    flex: 1;
+    min-height: 0;
     height: 100%;
     display: flex;
     flex-direction: column;
     background-color: var(--el-bg-color);
     border-right: 1px solid var(--el-border-color);
     overflow: hidden;
-    flex-shrink: 0;
 
     .sidebar-header {
       padding: 16px;
@@ -2081,19 +2204,26 @@ const formatDate = (date: Date | string) => {
     }
   }
 
-  // Right Content Area
+  // Center (tabs + SQL history) and optional right column live inside when tabs open
   .content-area {
     flex: 1;
+    min-width: 0;
     height: 100%;
     display: flex;
     flex-direction: column;
     overflow: hidden;
     background-color: transparent;
 
+    > .workspace-main-row {
+      flex: 1;
+      min-height: 0;
+    }
+
     .connection-info-default {
       flex: 1;
       padding: 20px;
       overflow-y: auto;
+      min-height: 0;
 
       :deep(.el-card) {
         border: 1px solid var(--el-border-color);
@@ -2174,24 +2304,36 @@ const formatDate = (date: Date | string) => {
       }
     }
 
+    .workspace-main-row {
+      flex: 1;
+      display: flex;
+      flex-direction: row;
+      min-height: 0;
+      min-width: 0;
+      overflow: hidden;
+    }
+
     .content-area-inner {
       flex: 1;
       display: flex;
       min-height: 0;
+      min-width: 0;
       overflow: hidden;
     }
 
     .content-split {
       flex: 1;
+      min-width: 0;
       min-height: 0;
       display: flex;
       flex-direction: column;
       overflow: hidden;
     }
 
-    .content-split>.content-area-inner {
+    .content-split > .content-area-inner {
       flex: 1;
       min-height: 0;
+      min-width: 0;
     }
 
     .splitter-bar {
@@ -2327,8 +2469,9 @@ const formatDate = (date: Date | string) => {
 
     .data-detail-sidebar-wrap {
       flex-shrink: 0;
-      width: 380px;
+      min-width: 0;
       min-height: 0;
+      height: 100%;
       display: flex;
       flex-direction: column;
       border-left: 1px solid var(--el-border-color-lighter);

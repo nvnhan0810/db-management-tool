@@ -85,7 +85,6 @@ const handlePerPageChange = (perPage: number) => {
   justify-content: space-between;
   align-items: center;
   padding: 16px;
-  margin-bottom: 16px;
   border-top: 1px solid var(--el-border-color-light);
   background-color: var(--el-bg-color-page);
   box-shadow: 0 -2px 4px rgba(0, 0, 0, 0.05);

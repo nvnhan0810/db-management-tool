@@ -128,6 +128,7 @@ function formatExecutionTime(executionTime: number): string {
   display: flex;
   flex-direction: column;
   gap: 12px;
+  margin-bottom: 20px;
 }
 
 .item {
