@@ -50,6 +50,7 @@ export function useDatabase() {
     columns: Array<Record<string, unknown>>;
     rows?: number;
     indexes?: Array<Record<string, unknown>>;
+    primaryKeyColumns?: string[];
   }> => {
     return (await window.electron?.invoke('database:getTableStructure', {
       connectionId,
@@ -58,6 +59,7 @@ export function useDatabase() {
       columns: Array<Record<string, unknown>>;
       rows?: number;
       indexes?: Array<Record<string, unknown>>;
+      primaryKeyColumns?: string[];
     };
   };
 

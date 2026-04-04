@@ -145,6 +145,7 @@
                           :column-types="(tab.structure?.columns) ? Object.fromEntries(tab.structure.columns.map((c: { name: string; type: string }) => [c.name, c.type])) : {}"
                           :foreign-keys="(tab.structure?.columns) ? Object.fromEntries(tab.structure.columns.filter((c: any) => !!c.foreign_key).map((c: any) => [c.name, c.foreign_key])) : {}"
                           :columns-from-structure="tab.structure?.columns?.map((c: { name: string }) => c.name) ?? []"
+                          :primary-key-columns="tab.structure?.primaryKeyColumns ?? []"
                           :filter-preset="tab.filterPreset ?? null" :filter-preset-nonce="tab.filterPresetNonce ?? 0"
                           :sidebar-panel-open="dataSidebarVisible"
                           :sidebar-selected-row-index="getDataSidebarState(tab.id).selectedRowIndex"
@@ -401,6 +402,7 @@ interface Tab {
       column_name: string;
     }>;
     rows?: number;
+    primaryKeyColumns?: string[];
   };
   data?: {
     rows: any[];
@@ -423,6 +425,7 @@ type TableStructureResult = {
   columns: NonNullable<Tab['structure']>['columns'];
   indexes?: NonNullable<Tab['structure']>['indexes'];
   rows?: number;
+  primaryKeyColumns?: string[];
 };
 
 const connectionStore = useConnectionStore();
@@ -1497,6 +1500,7 @@ const loadTableStructure = async (tab: Tab) => {
           columns: structure.columns,
           indexes: structure.indexes ?? [],
           rows: structure.rows,
+          primaryKeyColumns: structure.primaryKeyColumns ?? [],
         };
         tabs.value[tabIndex].isLoadingStructure = false;
       } else {
@@ -1505,6 +1509,7 @@ const loadTableStructure = async (tab: Tab) => {
           columns: structure.columns,
           indexes: structure.indexes ?? [],
           rows: structure.rows,
+          primaryKeyColumns: structure.primaryKeyColumns ?? [],
         };
       }
     } else {

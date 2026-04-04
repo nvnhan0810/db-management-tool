@@ -299,6 +299,8 @@ class DatabaseService {
     }>;
     rows?: number;
     indexes?: Array<{ name: string; algorithm?: string; is_unique: boolean; column_name: string }>;
+    /** Ordered PRIMARY KEY column names (empty if no PK). */
+    primaryKeyColumns?: string[];
   }> {
     const connection = this.connections.get(connectionId);
     const info = this.connectionInfo.get(connectionId);
@@ -323,6 +325,7 @@ class DatabaseService {
       is_unique: boolean;
       column_name: string;
     }> = [];
+    let primaryKeyColumns: string[] = [];
 
     if (info.type === 'postgresql') {
       const pgPool = connection as import('pg').Pool;
@@ -385,6 +388,24 @@ class DatabaseService {
       } catch {
         /* ignore */
       }
+
+      try {
+        const pkResult = await pgPool.query(
+          `SELECT kcu.column_name AS name
+           FROM information_schema.table_constraints tc
+           JOIN information_schema.key_column_usage kcu
+             ON tc.constraint_name = kcu.constraint_name
+            AND tc.table_schema = kcu.table_schema
+           WHERE tc.table_schema = 'public'
+             AND tc.table_name = $1
+             AND tc.constraint_type = 'PRIMARY KEY'
+           ORDER BY kcu.ordinal_position`,
+          [tableName]
+        );
+        primaryKeyColumns = (pkResult.rows as Array<{ name: string }>).map((r) => String(r.name));
+      } catch {
+        primaryKeyColumns = [];
+      }
     } else {
       const conn = connection as mysql.Connection;
       const [fkResults] = await conn.query(
@@ -437,9 +458,26 @@ class DatabaseService {
       } catch {
         /* ignore */
       }
+
+      try {
+        const [pkRows] = await conn.query(
+          `SELECT COLUMN_NAME AS col_name
+           FROM information_schema.KEY_COLUMN_USAGE
+           WHERE TABLE_SCHEMA = ?
+             AND TABLE_NAME = ?
+             AND CONSTRAINT_NAME = 'PRIMARY'
+           ORDER BY ORDINAL_POSITION`,
+          [info.database, tableName]
+        );
+        primaryKeyColumns = (pkRows as Array<Record<string, unknown>>).map((r) =>
+          String(r.col_name ?? r.COLUMN_NAME ?? r.name ?? '')
+        ).filter(Boolean);
+      } catch {
+        primaryKeyColumns = [];
+      }
     }
 
-    return { columns, rows, indexes };
+    return { columns, rows, indexes, primaryKeyColumns };
   }
 
   async getDatabases(

@@ -111,6 +111,10 @@ function formatExecutionTime(executionTime: number): string {
     align-items: center;
     gap: 6px;
     flex-shrink: 0;
+
+    button {
+      margin-left: 0;
+    }
   }
 }
 
@@ -174,10 +178,6 @@ function formatExecutionTime(executionTime: number): string {
   margin-top: 4px;
   margin-bottom: 12px;
   color: var(--el-color-danger);
-  // background-color: var(--el-color-danger-light-9);
-  // border-left: 3px solid var(--el-color-danger);
-  // padding: 8px 10px;
-  // border-radius: 4px;
 }
 
 .sql-history-slide-enter-active,

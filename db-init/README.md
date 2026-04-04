@@ -4,13 +4,14 @@ This project ships an optional heavy dataset to test import/export, browsing, an
 
 ### What you get
 
-- **5 tables** with relationships:
+- **6 tables** with relationships:
   - `users`
   - `products`
   - `orders` → `users`
   - `order_items` → `orders`, `products`
   - `payments` → `orders`
-- **1,000,000 rows per table**
+  - `json_samples` — `payload` / `meta` as **JSON** (PostgreSQL **JSONB**) with a few seed rows in `03_json_samples_seed.sql`
+- **1,000,000 rows per table** (except `json_samples`, which only has the small seed)
 
 ### Start
 

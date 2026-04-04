@@ -23,9 +23,10 @@
     <div v-else-if="data" class="data-content-wrapper">
       <div class="data-content" :class="{ 'with-sidebar': sidebarVisible }">
         <el-table
-          v-if="displayRows.length > 0"
+          v-if="displayColumns.length > 0"
           size="small"
           :data="displayRows"
+          :row-key="getTableRowKey"
           border
           style="width: 100%"
           height="100%"
@@ -123,7 +124,10 @@
           </el-table-column>
         </el-table>
         <div v-else class="no-data">
-          <el-empty description="No data found" :image-size="72" />
+          <el-empty
+            description="No columns loaded — open Structure or wait for the table to load"
+            :image-size="72"
+          />
         </div>
       </div>
     </div>
@@ -137,7 +141,7 @@
 import TableDataFilter from '@/presentation/components/TableDataFilter.vue';
 import { showErrorDialog, showSqlErrorDialog } from '@/presentation/utils/errorDialogs';
 import { ElMessage } from 'element-plus';
-import { computed, nextTick, onMounted, onUnmounted, reactive, ref, watch } from 'vue';
+import { computed, nextTick, onMounted, onUnmounted, reactive, ref, toRaw, watch } from 'vue';
 
 interface TableData {
   rows: any[];
@@ -179,6 +183,8 @@ interface Props {
   sortOrder?: 'asc' | 'desc' | null;
   /** Column names when table has no rows (from structure) */
   columnsFromStructure?: string[];
+  /** Ordered PRIMARY KEY column names from information_schema (empty = infer) */
+  primaryKeyColumns?: string[];
   /** When set (e.g. jumping via FK), auto-populate filter UI */
   filterPreset?: { column: string; operator: string; value: string } | null;
   /** Increment to re-apply preset even if same values */
@@ -214,6 +220,7 @@ const props = withDefaults(defineProps<Props>(), {
   sortBy: null,
   sortOrder: null,
   columnsFromStructure: () => [],
+  primaryKeyColumns: () => [],
   filterPreset: null,
   filterPresetNonce: 0,
 });
@@ -235,6 +242,35 @@ const displayColumns = computed(() => {
   }
   return props.columnsFromStructure ?? [];
 });
+
+/** Without stable row-key, el-table reuses inputs and add-row cells can show/bind wrong columns. */
+const TABLE_DRAFT_ROW_KEY = Symbol('tableDraftRowKey');
+const dataRowStableIds = new WeakMap<object, string>();
+
+function getTableRowKey(row: Record<string, unknown>): string {
+  if (!row || typeof row !== 'object') return '';
+  const draftId = (row as unknown as { [k: symbol]: string | undefined })[TABLE_DRAFT_ROW_KEY];
+  if (typeof draftId === 'string' && draftId !== '') return `draft:${draftId}`;
+
+  const pkCols = props.primaryKeyColumns ?? [];
+  if (pkCols.length > 0) {
+    const hasAny = pkCols.some((c) => row[c] != null && row[c] !== '');
+    if (hasAny) {
+      return `pk:${pkCols.map((c) => `${c}:${String(row[c])}`).join('|')}`;
+    }
+  }
+
+  const raw = (toRaw(row) ?? row) as object;
+  let stable = dataRowStableIds.get(raw);
+  if (!stable) {
+    stable =
+      typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+        ? crypto.randomUUID()
+        : `r${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
+    dataRowStableIds.set(raw, stable);
+  }
+  return `row:${stable}`;
+}
 
 const presetFilters = computed(() => {
   const p = props.filterPreset;
@@ -328,6 +364,12 @@ function isNumericColumn(columnName: string): boolean {
   const t = getColumnType(columnName);
   if (!t) return false;
   return /(int|bigint|smallint|tinyint|numeric|decimal|double|float|real|serial)/.test(t);
+}
+
+function isJsonColumn(columnName: string): boolean {
+  const t = getColumnType(columnName);
+  if (!t) return false;
+  return /\bjsonb?\b/i.test(t);
 }
 
 const editingCell = ref<{ rowIndex: number; columnKey: string } | null>(null);
@@ -430,9 +472,17 @@ watch(editDraftValue, () => {
   nextTick(() => updateEditableMultilineFlag());
 });
 
-function parseCellValue(v: string): unknown {
+function parseCellValue(v: string, columnKey: string): unknown {
   const s = v.trim();
   if (s === '' || s.toUpperCase() === 'NULL') return null;
+
+  if (isJsonColumn(columnKey) && (s.startsWith('{') || s.startsWith('['))) {
+    try {
+      return JSON.parse(s) as unknown;
+    } catch {
+      return s;
+    }
+  }
 
   // Try to parse numeric strings so that "22" becomes 22 and equals original number 22
   if (/^-?\d+(\.\d+)?$/.test(s)) {
@@ -467,7 +517,7 @@ function commitCellEdit(rowIndex: number, columnKey: string) {
     }
   }
 
-  const value = parseCellValue(raw);
+  const value = parseCellValue(raw, columnKey);
 
   // Determine original value for comparison
   const original =
@@ -655,6 +705,14 @@ function valueToSqlString(val: unknown): string {
     }
     return "'" + s.replace(/'/g, "''") + "'";
   }
+  if (typeof val === 'object' && val !== null && !(val instanceof Date)) {
+    try {
+      const json = JSON.stringify(val);
+      return "'" + json.replace(/'/g, "''") + "'";
+    } catch {
+      return 'NULL';
+    }
+  }
   const s = String(val).replace(/'/g, "''");
   return "'" + s + "'";
 }
@@ -663,27 +721,114 @@ function escapeValue(val: unknown): string {
   return valueToSqlString(val);
 }
 
+/**
+ * WHERE clause values: numeric columns must not treat digit-like date strings as timestamps
+ * (avoids `id = '2001-01-31...'` when `id` is bigint).
+ */
+function escapeValueForWhere(column: string, val: unknown): string {
+  if (isNumericColumn(column)) {
+    if (typeof val === 'number' && Number.isFinite(val)) return String(val);
+    if (typeof val === 'bigint') return String(val);
+    if (typeof val === 'string') {
+      const s = val.trim();
+      if (/^-?\d+$/.test(s)) return s;
+      if (/^-?\d*\.\d+$/.test(s)) return s;
+      return "'" + s.replace(/'/g, "''") + "'";
+    }
+  }
+  return valueToSqlString(val);
+}
+
+const ISO_DATE_PREFIX = /^\d{4}-\d{2}-\d{2}([T\s]\d|$)/;
+
+function looksLikeDatetimeValue(val: unknown): boolean {
+  if (val instanceof Date) return true;
+  if (typeof val === 'string') {
+    const s = val.trim();
+    if (ISO_DATE_PREFIX.test(s)) return true;
+    if (/^\d{4}-\d{2}-\d{2}/.test(s)) {
+      const d = new Date(s);
+      return !Number.isNaN(d.getTime());
+    }
+  }
+  return false;
+}
+
+function isLikelyScalarRowId(val: unknown): boolean {
+  if (val === null || val === undefined) return false;
+  if (typeof val === 'number' && Number.isFinite(val)) return true;
+  if (typeof val === 'bigint') return true;
+  if (typeof val === 'string') {
+    const s = val.trim();
+    if (s === '') return false;
+    if (looksLikeDatetimeValue(val)) return false;
+    if (/^-?\d+$/.test(s)) return true;
+    if (
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(s)
+    ) {
+      return true;
+    }
+    return false;
+  }
+  return false;
+}
+
+/** Parse JSON text in new-row cells so INSERT sends proper JSON literals for json/jsonb columns. */
+function normalizeJsonInputForSql(columnKey: string, raw: unknown): unknown {
+  if (typeof raw !== 'string') return raw;
+  if (!isJsonColumn(columnKey)) return raw;
+  const t = raw.trim();
+  if (t === '') return raw;
+  if (t.startsWith('{') || t.startsWith('[')) {
+    try {
+      return JSON.parse(t) as unknown;
+    } catch {
+      return raw;
+    }
+  }
+  return raw;
+}
+
 function isLargeTextColumn(col: string): boolean {
   const t = props.columnTypes?.[col]?.toLowerCase() ?? '';
   return t === 'text' || t.includes('text') || t === 'blob' || t.includes('blob') || t === 'longtext' || t === 'mediumtext' || t === 'clob';
 }
 
-function buildWhereFromRow(row: Record<string, unknown>, columns: string[]): string {
-  // Strategy: prefer single `id` column → simplest and most reliable WHERE
-  const idCol = columns.find(c => c.toLowerCase() === 'id');
-  if (idCol !== undefined && row[idCol] !== null && row[idCol] !== undefined) {
-    return `${escapeIdentifier(idCol)} = ${escapeValue(row[idCol])}`;
+function buildWhereFromRow(
+  row: Record<string, unknown>,
+  columns: string[],
+  pkCols: string[]
+): string {
+  const orderedPk = pkCols.filter((c) => columns.includes(c));
+  if (orderedPk.length > 0 && orderedPk.length === pkCols.length) {
+    return orderedPk
+      .map((col) => {
+        const v = row[col];
+        const ident = escapeIdentifier(col);
+        if (v === null || v === undefined) return `${ident} IS NULL`;
+        return `${ident} = ${escapeValueForWhere(col, v)}`;
+      })
+      .join(' AND ');
   }
 
-  // Fallback: exclude large text/blob columns to avoid multiline comparison issues
-  const safeCols = columns.filter(col => !isLargeTextColumn(col));
+  const idCol = columns.find((c) => c.toLowerCase() === 'id');
+  if (
+    idCol !== undefined &&
+    row[idCol] !== null &&
+    row[idCol] !== undefined &&
+    isLikelyScalarRowId(row[idCol])
+  ) {
+    return `${escapeIdentifier(idCol)} = ${escapeValueForWhere(idCol, row[idCol])}`;
+  }
+
+  const safeCols = columns.filter((col) => !isLargeTextColumn(col) && !isJsonColumn(col));
   const useCols = safeCols.length > 0 ? safeCols : columns;
 
-  const parts = useCols.map(col => {
+  const parts = useCols.map((col) => {
     const v = row[col];
     const ident = escapeIdentifier(col);
     if (v === null || v === undefined) return `${ident} IS NULL`;
-    return `${ident} = ${escapeValue(v)}`;
+    return `${ident} = ${escapeValueForWhere(col, v)}`;
   });
   return parts.join(' AND ');
 }
@@ -708,12 +853,16 @@ async function runSave() {
   if (rows) {
     for (let i = 0; i < rows.length; i++) {
       if (deletedRows.value.has(i)) {
-        statements.push(`DELETE FROM ${tableNameEsc} WHERE ${buildWhereFromRow(rows[i], columns)}`);
+        statements.push(
+          `DELETE FROM ${tableNameEsc} WHERE ${buildWhereFromRow(rows[i], columns, props.primaryKeyColumns)}`
+        );
       } else {
         const mods = modifiedRows.value[i];
         if (mods && Object.keys(mods).length > 0) {
           const sets = Object.entries(mods).map(([k, v]) => `${escapeIdentifier(k)} = ${escapeValue(v)}`);
-          statements.push(`UPDATE ${tableNameEsc} SET ${sets.join(', ')} WHERE ${buildWhereFromRow(rows[i], columns)}`);
+          statements.push(
+            `UPDATE ${tableNameEsc} SET ${sets.join(', ')} WHERE ${buildWhereFromRow(rows[i], columns, props.primaryKeyColumns)}`
+          );
         }
       }
     }
@@ -730,7 +879,8 @@ async function runSave() {
         vals.push('NULL');
       } else {
         cols.push(escapeIdentifier(col));
-        vals.push(escapeValue(s));
+        const normalized = normalizeJsonInputForSql(col, s);
+        vals.push(escapeValueForWhere(col, normalized));
       }
     }
     if (cols.length > 0) {
@@ -825,6 +975,13 @@ function formatCellValue(value: unknown): string {
     }
     return String(value);
   }
+  if (typeof value === 'object' && value !== null) {
+    try {
+      return JSON.stringify(value);
+    } catch {
+      return '';
+    }
+  }
   return String(value);
 }
 
@@ -903,6 +1060,14 @@ function addRow() {
   const newRow = reactive(
     Object.fromEntries(columns.map((c) => [c, '']))
   ) as Record<string, unknown>;
+  Object.defineProperty(newRow, TABLE_DRAFT_ROW_KEY, {
+    value:
+      typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+        ? crypto.randomUUID()
+        : `d${Date.now()}-${Math.random().toString(36).slice(2, 11)}`,
+    enumerable: false,
+    configurable: true,
+  });
   pendingNewRows.value.push(newRow);
   nextTick(() => {
     scrollTableToBottom();

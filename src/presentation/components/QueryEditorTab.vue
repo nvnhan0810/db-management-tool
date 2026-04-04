@@ -2,16 +2,38 @@
   <div class="query-editor-tab">
     <div class="query-editor-header">
       <div class="editor-toolbar">
-        <el-button type="primary" size="small" @click="runQuery" :loading="isRunning">
-          <el-icon><VideoPlay /></el-icon>
-          Run all
-        </el-button>
-        <el-button type="success" size="small" @click="runCurrentQuery" :loading="isRunning" :disabled="!hasSelection">
-          <el-icon><CaretRight /></el-icon>
-          Run selection
-        </el-button>
-        <el-button size="small" @click="clearEditor">
-          <el-icon><Delete /></el-icon>
+        <el-button-group class="toolbar-run-group">
+          <el-button
+            type="primary"
+            size="small"
+            :loading="isRunning"
+            title="Run all statements in the editor (⌘ Enter / Ctrl+Enter)"
+            @click="runQuery"
+          >
+            <el-icon class="toolbar-btn-icon"><VideoPlay /></el-icon>
+            Run
+          </el-button>
+          <el-button
+            type="primary"
+            plain
+            size="small"
+            :loading="isRunning"
+            :disabled="!hasSelection"
+            title="Run only the highlighted SQL"
+            @click="runCurrentQuery"
+          >
+            <el-icon class="toolbar-btn-icon"><Aim /></el-icon>
+            Selection
+          </el-button>
+        </el-button-group>
+        <el-button
+          class="toolbar-clear-btn"
+          text
+          size="small"
+          title="Clear editor and results"
+          @click="clearEditor"
+        >
+          <el-icon class="toolbar-btn-icon"><Delete /></el-icon>
           Clear
         </el-button>
       </div>
@@ -32,11 +54,11 @@
         />
       </div>
 
-      <div v-if="isRunning" class="loading-section">
-        <el-skeleton :rows="5" animated />
+      <div v-if="isRunning" class="loading-data">
+        <el-skeleton :rows="10" animated />
       </div>
 
-      <div v-else-if="error" class="error-section">
+      <div v-else-if="error" class="error-message">
         <el-alert
           :title="error"
           type="error"
@@ -45,66 +67,98 @@
         />
       </div>
 
-      <div v-else-if="result" class="result-section">
-        <div class="result-header">
-          <span class="result-info">
-            <strong>{{ result.total !== undefined ? result.total : result.rows?.length || 0 }}</strong> row(s) total
-            <span v-if="result.rows?.length !== undefined && result.total !== undefined && result.total > result.rows.length">
-              (showing {{ result.rows.length }} of {{ result.total }})
-            </span>
-            <span v-else-if="result.rows?.length">
-              (showing {{ result.rows.length }})
-            </span>
-            <span v-if="result.executionTime !== undefined" class="execution-time">
-              ({{ result.executionTime }}ms)
-            </span>
-          </span>
-          <div v-if="result.total !== undefined && result.total > perPage" class="pagination-controls">
-            <el-select v-model="perPage" @change="handlePerPageChange" style="width: 100px; margin-right: 10px;">
-              <el-option label="25" :value="25" />
-              <el-option label="50" :value="50" />
-              <el-option label="100" :value="100" />
-              <el-option label="200" :value="200" />
-            </el-select>
-            <el-pagination
-              v-model:current-page="currentPage"
-              :page-size="perPage"
-              :total="result.total"
-              layout="prev, pager, next"
-              size="small"
-              @current-change="handlePageChange"
-            />
+      <div v-else-if="result" class="query-result-pane data-view">
+        <template v-if="result.successWithoutResultSet">
+          <div class="mutation-success-wrap">
+            <span class="mutation-success-text">Execute SQL successfully</span>
           </div>
-        </div>
-        <div class="result-content">
-          <el-table
-            v-if="result.rows && result.rows.length > 0"
-            :data="result.rows"
-            border
-            style="width: 100%"
-            max-height="400"
-            stripe
-          >
-            <el-table-column
-              v-for="column in getResultColumns(result.rows)"
-              :key="column"
-              :prop="column"
-              :label="column"
-              min-width="120"
-              show-overflow-tooltip
-            />
-          </el-table>
-          <div v-else class="no-result">
-            <el-empty description="Query executed successfully but returned no rows" :image-size="80" />
+          <div class="query-result-footer tab-footer mutation-footer">
+            <div class="footer-left">
+              <span v-if="result.executionTime !== undefined" class="execution-time-chip">
+                {{ result.executionTime }} ms
+              </span>
+            </div>
           </div>
-        </div>
+        </template>
+        <template v-else>
+          <div class="data-content-wrapper">
+            <div class="data-content">
+              <el-table
+                v-if="resultRows.length > 0"
+                size="small"
+                :data="result.rows"
+                border
+                style="width: 100%"
+                height="100%"
+                stripe
+              >
+                <el-table-column
+                  v-for="column in getResultColumns(result.rows)"
+                  :key="column"
+                  :prop="column"
+                  :label="column"
+                  min-width="100"
+                  resizable
+                  show-overflow-tooltip
+                >
+                  <template #default="{ row }">
+                    <span class="cell-text">
+                      <span class="cell-text-value">
+                        {{ formatCellValue(row[column]) || '\u00A0' }}
+                      </span>
+                    </span>
+                  </template>
+                </el-table-column>
+              </el-table>
+              <div v-else class="no-data">
+                <el-empty description="Query executed successfully but returned no rows" :image-size="72" />
+              </div>
+            </div>
+          </div>
+          <div class="query-result-footer tab-footer">
+            <div class="footer-left">
+              <span v-if="result.executionTime !== undefined" class="execution-time-chip">
+                {{ result.executionTime }} ms
+              </span>
+              <span v-if="resultShowingSlice" class="showing-slice">
+                Showing {{ result.rows.length }} of {{ resultTotalDisplay.toLocaleString() }}
+              </span>
+            </div>
+            <div class="footer-right">
+              <span class="total-records">
+                Total: {{ resultTotalDisplay.toLocaleString() }} records
+              </span>
+              <template v-if="showResultPagination">
+                <el-select
+                  v-model="perPage"
+                  size="small"
+                  style="width: 60px; margin: 0 10px;"
+                  @change="handlePerPageChange"
+                >
+                  <el-option label="25" :value="25" />
+                  <el-option label="50" :value="50" />
+                  <el-option label="100" :value="100" />
+                  <el-option label="200" :value="200" />
+                </el-select>
+                <el-pagination
+                  v-model:current-page="currentPage"
+                  :page-size="perPage"
+                  :total="Number(result.total)"
+                  layout="prev, pager, next"
+                  size="small"
+                  @current-change="handlePageChange"
+                />
+              </template>
+            </div>
+          </div>
+        </template>
       </div>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { CaretRight, Delete, VideoPlay } from '@element-plus/icons-vue';
+import { Aim, Delete, VideoPlay } from '@element-plus/icons-vue';
 import { computed, ref } from 'vue';
 
 interface Props {
@@ -116,6 +170,8 @@ interface QueryResult {
   rows: any[];
   total?: number;
   executionTime?: number;
+  /** INSERT/UPDATE/DELETE (no row grid): show success message only. */
+  successWithoutResultSet?: boolean;
 }
 
 /** Shape returned by main process `database:query` IPC. */
@@ -145,10 +201,69 @@ const hasSelection = computed(() => {
   return selectedText.value.trim().length > 0;
 });
 
+const resultRows = computed(() => result.value?.rows ?? []);
+
+const resultTotalDisplay = computed(() => {
+  const r = result.value;
+  if (!r) return 0;
+  return r.total !== undefined ? r.total : (r.rows?.length ?? 0);
+});
+
+const showResultPagination = computed(() => {
+  const r = result.value;
+  if (!r || r.total === undefined) return false;
+  return r.total > perPage.value;
+});
+
+const resultShowingSlice = computed(() => {
+  const r = result.value;
+  if (!r || r.total === undefined || !r.rows) return false;
+  return r.total > r.rows.length;
+});
+
 const getResultColumns = (rows: any[]): string[] => {
   if (!rows || rows.length === 0) return [];
   return Object.keys(rows[0]);
 };
+
+/** Align with TableDataView cell display (dates, null → empty + nbsp in template). */
+function formatCellValue(value: unknown): string {
+  if (value == null) return '';
+  if (typeof value === 'string') {
+    const s = value.trim();
+    if (/^\d{4}-\d{2}-\d{2}\s+\d{1,2}:\d{1,2}(:\d{1,2})?(\.\d+)?$/.test(s)) {
+      return s.replace(/\s+/g, ' ').slice(0, 19);
+    }
+    if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return `${s} 00:00:00`;
+    const iso = s.match(/^(\d{4}-\d{2}-\d{2})[T\s](\d{1,2}):(\d{1,2})(?::(\d{1,2}))?(?:\.\d+)?(?:Z)?$/i);
+    if (iso) {
+      const [, date, h, m, sec] = iso;
+      const pad = (n: string) => n.padStart(2, '0');
+      return `${date} ${pad(h)}:${pad(m)}:${pad(sec ?? '0')}`;
+    }
+    return s;
+  }
+  if (value instanceof Date) {
+    const pad = (n: number) => String(n).padStart(2, '0');
+    return `${value.getUTCFullYear()}-${pad(value.getUTCMonth() + 1)}-${pad(value.getUTCDate())} ${pad(value.getUTCHours())}:${pad(value.getUTCMinutes())}:${pad(value.getUTCSeconds())}`;
+  }
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    const asMs = value > 1e12 ? value : value > 1e9 && value < 1e11 ? value * 1000 : NaN;
+    if (!Number.isNaN(asMs)) {
+      const d = new Date(asMs);
+      if (!Number.isNaN(d.getTime())) return formatCellValue(d);
+    }
+    return String(value);
+  }
+  if (typeof value === 'object' && value !== null) {
+    try {
+      return JSON.stringify(value);
+    } catch {
+      return '';
+    }
+  }
+  return String(value);
+}
 
 const getSelectedQuery = (): string => {
   return selectedText.value;
@@ -219,7 +334,12 @@ function isPaginatedSelectSql(sql: string): boolean {
 }
 
 function queryResultWithExecutionTime(state: QueryResult, executionTime: number): QueryResult {
-  return { rows: state.rows, total: state.total, executionTime };
+  return {
+    rows: state.rows,
+    total: state.total,
+    executionTime,
+    successWithoutResultSet: state.successWithoutResultSet,
+  };
 }
 
 const updateSelection = () => {
@@ -375,6 +495,7 @@ async function runPaginatedSelectStatement(
         rows: Array.isArray(queryResult.data) ? queryResult.data : [],
         total: totalRows.value,
         executionTime,
+        successWithoutResultSet: false,
       };
       return { success: true, executionTime };
     }
@@ -410,6 +531,7 @@ async function runNonSelectStatement(
         rows,
         total: undefined,
         executionTime,
+        successWithoutResultSet: rows.length === 0,
       };
       return { success: true, executionTime };
     }
@@ -528,7 +650,60 @@ const clearEditor = () => {
 
   .editor-toolbar {
     display: flex;
-    gap: 8px;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 10px 14px;
+  }
+
+  .toolbar-run-group {
+    display: inline-flex;
+
+    :deep(.el-button--primary.is-plain) {
+      --el-button-hover-text-color: var(--el-color-primary);
+      --el-button-hover-bg-color: var(--el-color-primary-light-9);
+    }
+
+    /* Separator between Run (solid) and Selection (plain) — group default removes inner borders */
+    :deep(> .el-button + .el-button) {
+      margin-left: 0;
+      border-left: 1px solid var(--el-color-primary-light-3);
+    }
+
+    :deep(> .el-button + .el-button.is-plain) {
+      border-left-color: var(--el-color-primary-light-5);
+    }
+
+    .dark & {
+      :deep(> .el-button + .el-button) {
+        border-left-color: rgba(255, 255, 255, 0.28);
+      }
+
+      :deep(> .el-button + .el-button.is-plain) {
+        border-left-color: var(--el-color-primary-light-3);
+      }
+    }
+  }
+
+  .toolbar-btn-icon {
+    margin-right: 4px;
+    font-size: 15px;
+    vertical-align: middle;
+  }
+
+  .toolbar-clear-btn {
+    color: var(--el-text-color-regular);
+
+    &:hover {
+      color: var(--el-color-danger);
+    }
+
+    .dark & {
+      color: var(--el-text-color-secondary);
+
+      &:hover {
+        color: var(--el-color-danger-light-3);
+      }
+    }
   }
 }
 
@@ -537,12 +712,11 @@ const clearEditor = () => {
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  padding: 16px;
-  gap: 16px;
 }
 
 .editor-section {
   flex-shrink: 0;
+  border-bottom: 1px solid var(--el-border-color-light);
 
   .query-input {
     :deep(.el-textarea__inner) {
@@ -550,202 +724,314 @@ const clearEditor = () => {
       font-size: 14px;
       line-height: 1.5;
       resize: vertical;
+      border: none;
+      box-shadow: none;
+
+      &:focus {
+        border: none;
+        box-shadow: none;
+      }
 
       .dark & {
         background-color: var(--el-bg-color-overlay);
         color: var(--el-text-color-primary);
-        border-color: var(--el-border-color);
+        border: none;
+        box-shadow: none;
+        border-radius: 0;
       }
     }
   }
 }
 
-.loading-section {
+.loading-data {
   flex: 1;
-  padding: 20px;
+  min-height: 0;
+  padding: 12px 16px;
 }
 
-.error-section {
+.error-message {
   flex-shrink: 0;
+  padding: 12px 16px;
+
+  :deep(.el-alert) {
+    padding: 8px 12px;
+  }
+
+  :deep(.el-alert__title) {
+    font-size: 13px;
+    line-height: 1.4;
+  }
 }
 
-.result-section {
+/* Match TableDataView + TableViewFooter layout */
+.query-result-pane.data-view {
   flex: 1;
   display: flex;
   flex-direction: column;
+  min-height: 0;
   overflow: hidden;
+}
+
+.mutation-success-wrap {
+  flex: 1;
+  min-height: 0;
+  padding: 12px 16px;
+}
+
+.mutation-success-text {
+  font-size: 14px;
+  color: var(--el-color-success);
+  line-height: 1.5;
+}
+
+.query-result-footer.mutation-footer {
+  justify-content: flex-start;
+}
+
+.data-content-wrapper {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.query-result-pane .data-content {
+  flex: 1;
+  min-width: 0;
   background-color: var(--el-bg-color-page);
-  border-radius: 8px;
-  border: 1px solid var(--el-border-color-light);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
 
   .dark & {
-    background-color: var(--el-bg-color-overlay);
-    border-color: var(--el-border-color-light);
+    background-color: var(--el-bg-color);
+    border: 1px solid var(--el-border-color);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
   }
 
-  .result-header {
-    padding: 12px 16px;
-    border-bottom: 1px solid var(--el-border-color-light);
-    background-color: var(--el-fill-color-lighter);
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    flex-wrap: wrap;
-    gap: 12px;
+  [data-theme='light'] & {
+    background-color: rgba(255, 255, 255, 0.9);
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+  }
+
+  :deep(.el-table) {
+    background-color: transparent;
+    font-size: 12px;
+
+    .el-table__body-wrapper {
+      scrollbar-width: none;
+      -ms-overflow-style: none;
+
+      &::-webkit-scrollbar {
+        display: none;
+      }
+    }
 
     .dark & {
-      background-color: var(--el-fill-color-light);
-      border-bottom-color: var(--el-border-color-light);
-    }
-
-    .result-info {
-      font-size: 14px;
-      color: var(--el-text-color-regular);
-
-      .dark & {
-        color: var(--el-text-color-regular);
-      }
-
-      strong {
-        color: var(--el-color-primary);
-
-        .dark & {
-          color: var(--el-color-primary-light-3);
-        }
-      }
-
-      .execution-time {
-        margin-left: 8px;
-        font-size: 12px;
-        color: var(--el-text-color-secondary);
-
-        .dark & {
-          color: var(--el-text-color-secondary);
-        }
-      }
-    }
-
-    .pagination-controls {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-
-      :deep(.el-select) {
-        .el-input__wrapper {
-          .dark & {
-            background-color: var(--el-bg-color-overlay) !important;
-            border-color: var(--el-border-color) !important;
-          }
-
-          .el-input__inner {
-            .dark & {
-              color: var(--el-text-color-primary) !important;
-            }
-          }
-        }
-      }
-
-      :deep(.el-pagination) {
-        .el-pager li {
-          .dark & {
-            background-color: var(--el-fill-color);
-            color: var(--el-text-color-primary);
-            border-color: var(--el-border-color);
-
-            &.is-active {
-              background-color: var(--el-color-primary);
-              color: var(--el-color-white);
-            }
-          }
-        }
-
-        .btn-prev,
-        .btn-next {
-          .dark & {
-            background-color: var(--el-fill-color);
-            color: var(--el-text-color-primary);
-            border-color: var(--el-border-color);
-          }
-        }
-      }
-    }
-  }
-
-  .result-content {
-    flex: 1;
-    overflow: auto;
-    padding: 16px;
-
-    :deep(.el-table) {
       background-color: transparent;
+      color: var(--el-text-color-primary);
+    }
+
+    .el-table__header {
+      background-color: var(--el-fill-color-lighter);
+
+      th .cell {
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
 
       .dark & {
-        background-color: transparent;
+        background-color: var(--el-fill-color-light);
         color: var(--el-text-color-primary);
       }
 
-      .el-table__header {
-        background-color: var(--el-fill-color-lighter);
-
+      th {
         .dark & {
-          background-color: var(--el-fill-color);
-          color: var(--el-text-color-primary);
-        }
-
-        th {
-          .dark & {
-            background-color: var(--el-fill-color) !important;
-            color: var(--el-text-color-primary) !important;
-            border-bottom-color: var(--el-border-color) !important;
-          }
+          background-color: var(--el-fill-color-light) !important;
+          color: var(--el-text-color-primary) !important;
+          border-bottom-color: var(--el-border-color-darker) !important;
         }
       }
+    }
 
-      .el-table__body {
+    .el-table__body {
+      .dark & {
+        color: var(--el-text-color-primary);
+      }
+
+      tr {
         .dark & {
+          background-color: var(--el-bg-color);
           color: var(--el-text-color-primary);
         }
 
-        tr {
+        &:hover > td {
+          background-color: rgba(64, 158, 255, 0.1) !important;
+
+          .dark & {
+            background-color: rgba(64, 158, 255, 0.25) !important;
+          }
+        }
+
+        &.el-table__row--striped {
+          background-color: var(--el-fill-color-lighter);
+
+          .dark & {
+            background-color: var(--el-fill-color-lighter) !important;
+          }
+        }
+
+        td {
           .dark & {
             background-color: var(--el-bg-color);
             color: var(--el-text-color-primary);
-          }
-
-          &:hover {
-            background-color: var(--el-fill-color-light);
-
-            .dark & {
-              background-color: var(--el-fill-color-light) !important;
-            }
-          }
-
-          &.el-table__row--striped {
-            background-color: var(--el-fill-color-lighter);
-
-            .dark & {
-              background-color: var(--el-fill-color-lighter) !important;
-            }
-          }
-
-          td {
-            .dark & {
-              background-color: transparent !important;
-              color: var(--el-text-color-primary) !important;
-              border-bottom-color: var(--el-border-color-lighter) !important;
-            }
+            border-bottom-color: var(--el-border-color-darker) !important;
           }
         }
       }
     }
   }
 
-  .no-result {
+  .cell-text {
+    display: block;
+    min-height: 1em;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    position: relative;
+  }
+
+  .cell-text-value {
+    display: block;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 12px;
+  }
+}
+
+.no-data {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 280px;
+  padding: 40px;
+}
+
+.query-result-footer.tab-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-shrink: 0;
+  padding: 16px 16px 16px 16px;
+  margin-top: 0;
+  margin-bottom: 0;
+  border-top: 1px solid var(--el-border-color-light);
+  background-color: var(--el-bg-color-page);
+  box-shadow: 0 -2px 4px rgba(0, 0, 0, 0.05);
+
+  .dark & {
+    background-color: var(--el-bg-color-overlay);
+    border-top-color: var(--el-border-color);
+    box-shadow: 0 -2px 8px rgba(0, 0, 0, 0.3);
+  }
+
+  [data-theme='light'] & {
+    background-color: rgba(255, 255, 255, 0.95);
+    border-top-color: rgba(226, 232, 240, 0.8);
+  }
+
+  .footer-left {
     display: flex;
     align-items: center;
-    justify-content: center;
-    min-height: 200px;
-    padding: 40px;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+
+  .execution-time-chip {
+    font-size: 12px;
+    color: var(--el-text-color-secondary);
+    padding: 4px 10px;
+    border-radius: 6px;
+    background-color: var(--el-fill-color-lighter);
+
+    .dark & {
+      background-color: var(--el-fill-color);
+      color: var(--el-text-color-regular);
+    }
+  }
+
+  .showing-slice {
+    font-size: 13px;
+    color: var(--el-text-color-regular);
+  }
+
+  .footer-right {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+  }
+
+  .total-records {
+    font-size: 14px;
+    color: var(--el-text-color-regular);
+    font-weight: 500;
+    padding: 6px 12px;
+    background-color: var(--el-fill-color-lighter);
+    border-radius: 6px;
+
+    .dark & {
+      background-color: var(--el-fill-color);
+      color: var(--el-text-color-regular);
+      border: 1px solid var(--el-border-color-light);
+    }
+  }
+
+  :deep(.el-select) {
+    .el-input__inner {
+      border-radius: 6px;
+    }
+
+    .dark & {
+      .el-input__wrapper {
+        background-color: var(--el-bg-color-overlay) !important;
+        border-color: var(--el-border-color) !important;
+      }
+
+      .el-input__inner {
+        color: var(--el-text-color-primary) !important;
+      }
+    }
+  }
+
+  :deep(.el-pagination) {
+    .el-pager li {
+      border-radius: 4px;
+      margin: 0 2px;
+
+      .dark & {
+        background-color: var(--el-fill-color);
+        color: var(--el-text-color-primary);
+        border-color: var(--el-border-color);
+
+        &.is-active {
+          background-color: var(--el-color-primary);
+          color: var(--el-color-white);
+        }
+      }
+    }
+
+    .btn-prev,
+    .btn-next {
+      border-radius: 4px;
+
+      .dark & {
+        background-color: var(--el-fill-color);
+        color: var(--el-text-color-primary);
+        border-color: var(--el-border-color);
+      }
+    }
   }
 }
 </style>

@@ -50,3 +50,14 @@ CREATE INDEX idx_order_items_order_id ON order_items(order_id);
 CREATE INDEX idx_order_items_product_id ON order_items(product_id);
 CREATE INDEX idx_payments_order_id ON payments(order_id);
 
+-- JSON samples for UI testing (grid display, edit, insert)
+CREATE TABLE IF NOT EXISTS json_samples (
+  id BIGINT AUTO_INCREMENT PRIMARY KEY,
+  name VARCHAR(255) NOT NULL UNIQUE,
+  payload JSON NOT NULL,
+  meta JSON NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB;
+
+CREATE INDEX idx_json_samples_name ON json_samples(name);
+

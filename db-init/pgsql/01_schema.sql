@@ -48,3 +48,14 @@ CREATE INDEX IF NOT EXISTS idx_order_items_order_id ON order_items(order_id);
 CREATE INDEX IF NOT EXISTS idx_order_items_product_id ON order_items(product_id);
 CREATE INDEX IF NOT EXISTS idx_payments_order_id ON payments(order_id);
 
+-- JSON/JSONB samples for UI testing (grid display, edit, insert)
+CREATE TABLE IF NOT EXISTS json_samples (
+  id BIGSERIAL PRIMARY KEY,
+  name TEXT NOT NULL UNIQUE,
+  payload JSONB NOT NULL,
+  meta JSONB,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_json_samples_name ON json_samples(name);
+
