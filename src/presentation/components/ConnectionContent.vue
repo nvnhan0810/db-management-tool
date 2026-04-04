@@ -359,6 +359,7 @@ import TableStructureView from '@/presentation/components/TableStructureView.vue
 import TableViewFooter from '@/presentation/components/TableViewFooter.vue';
 import { useDatabase } from '@/presentation/composables/useDatabase';
 import { useConnectionStore } from '@/presentation/stores/connectionStore';
+import { formatDbCellDisplayValue, isTemporalSqlType } from '@/presentation/utils/dbCellDisplayFormat';
 import { showErrorDialog } from '@/presentation/utils/errorDialogs';
 import { Connection, Document, Folder, Search } from '@element-plus/icons-vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
@@ -682,11 +683,13 @@ function onDataUpdateField(tabId: string, e: { field: string; value: unknown }) 
 
   const original = baseRow ? baseRow[e.field] : undefined;
   const newValue = e.value;
+  const sqlType =
+    tab?.structure?.columns?.find((c) => c.name === e.field)?.type;
 
   if (!s.modifiedRows[idx]) s.modifiedRows[idx] = {};
   const rowMods = s.modifiedRows[idx];
 
-  if (areDbValuesEqual(newValue, original)) {
+  if (areDbValuesEqual(newValue, original, typeof sqlType === 'string' ? sqlType : undefined)) {
     // revert: remove modification for this field
     if (Object.prototype.hasOwnProperty.call(rowMods, e.field)) {
       delete rowMods[e.field];
@@ -1723,11 +1726,20 @@ const handleSortChange = async (
   await loadTableData(targetTab, 1, perPage);
 };
 
-// Helper: loose equality for DB values so that 22 and "22" are treated as same
-function areDbValuesEqual(a: unknown, b: unknown): boolean {
+// Helper: loose equality for DB values (numbers, datetimes as formatted in grid, etc.)
+function areDbValuesEqual(a: unknown, b: unknown, sqlType?: string): boolean {
   if (a === b) return true;
   if (a == null && b == null) return true;
-  // If both can be parsed as finite numbers, compare numerically
+  if (a == null || b == null) return false;
+
+  const t = (sqlType ?? '').trim();
+  if (t && isTemporalSqlType(t)) {
+    return formatDbCellDisplayValue(a).trim() === formatDbCellDisplayValue(b).trim();
+  }
+  if (!t && (a instanceof Date || b instanceof Date)) {
+    return formatDbCellDisplayValue(a).trim() === formatDbCellDisplayValue(b).trim();
+  }
+
   const na = typeof a === 'number' ? a : Number(a);
   const nb = typeof b === 'number' ? b : Number(b);
   if (!Number.isNaN(na) && !Number.isNaN(nb)) {

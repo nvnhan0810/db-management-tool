@@ -139,6 +139,10 @@
 
 <script setup lang="ts">
 import TableDataFilter from '@/presentation/components/TableDataFilter.vue';
+import {
+  formatDbCellDisplayValue as formatCellValue,
+  isTemporalSqlType,
+} from '@/presentation/utils/dbCellDisplayFormat';
 import { showErrorDialog, showSqlErrorDialog } from '@/presentation/utils/errorDialogs';
 import { ElMessage } from 'element-plus';
 import { computed, nextTick, onMounted, onUnmounted, reactive, ref, toRaw, watch } from 'vue';
@@ -372,6 +376,31 @@ function isJsonColumn(columnName: string): boolean {
   return /\bjsonb?\b/i.test(t);
 }
 
+function isDateTimeColumn(columnName: string): boolean {
+  const t = getColumnType(columnName);
+  if (!t) return false;
+  return isTemporalSqlType(t);
+}
+
+/** Compare committed edit to DB row: Date vs formatted string must not count as modified. */
+function valuesEqualAfterEdit(columnKey: string, value: unknown, original: unknown): boolean {
+  if (value === original) return true;
+  if (value == null && original == null) return true;
+  if (value == null || original == null) return false;
+
+  if (isNumericColumn(columnKey)) {
+    const nv = typeof value === 'number' ? value : Number(String(value).trim());
+    const no = typeof original === 'number' ? original : Number(String(original).trim());
+    if (!Number.isNaN(nv) && !Number.isNaN(no) && nv === no) return true;
+  }
+
+  if (isDateTimeColumn(columnKey) || original instanceof Date || value instanceof Date) {
+    return formatCellValue(value).trim() === formatCellValue(original).trim();
+  }
+
+  return String(value) === String(original);
+}
+
 const editingCell = ref<{ rowIndex: number; columnKey: string } | null>(null);
 const editDraftValue = ref('');
 const editInputRef = ref<{ focus?: () => void; $el?: HTMLElement } | HTMLElement | null>(null);
@@ -526,13 +555,14 @@ function commitCellEdit(rowIndex: number, columnKey: string) {
       : undefined;
 
   if (useControlledSidebar.value) {
-    // In controlled mode, always emit update-field; parent can decide how to treat "no-op" edits
-    emit('update-field', { field: columnKey, value });
+    if (!valuesEqualAfterEdit(columnKey, value, original)) {
+      emit('update-field', { field: columnKey, value });
+    }
   } else {
     // Internal mode: only keep modified state if value is actually different from original
     const rowMods = internalModifiedRows.value[rowIndex] || {};
 
-    if (value === original) {
+    if (valuesEqualAfterEdit(columnKey, value, original)) {
       // Revert: remove modification for this field
       if (Object.prototype.hasOwnProperty.call(rowMods, columnKey)) {
         delete rowMods[columnKey];
@@ -942,48 +972,6 @@ const getDataColumns = (rows: any[]): string[] => {
   }
   return [];
 };
-
-/** Format cell for display: datetime as Y-m-d H:i:s, raw from DB (no locale/timezone conversion). */
-function formatCellValue(value: unknown): string {
-  if (value == null) return '';
-  if (typeof value === 'string') {
-    const s = value.trim();
-    // Already Y-m-d H:i:s or Y-m-d (MySQL, PGSQL raw)
-    if (/^\d{4}-\d{2}-\d{2}\s+\d{1,2}:\d{1,2}(:\d{1,2})?(\.\d+)?$/.test(s)) {
-      return s.replace(/\s+/g, ' ').slice(0, 19);
-    }
-    if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s + ' 00:00:00';
-    // ISO: 2025-01-29T10:30:00.000Z -> Y-m-d H:i:s (giữ nguyên, không đổi timezone)
-    const iso = s.match(/^(\d{4}-\d{2}-\d{2})[T\s](\d{1,2}):(\d{1,2})(?::(\d{1,2}))?(?:\.\d+)?(?:Z)?$/i);
-    if (iso) {
-      const [, date, h, m, sec] = iso;
-      const pad = (n: string) => n.padStart(2, '0');
-      return `${date} ${pad(h)}:${pad(m)}:${pad(sec ?? '0')}`;
-    }
-    return s;
-  }
-  if (value instanceof Date) {
-    const pad = (n: number) => String(n).padStart(2, '0');
-    return `${value.getUTCFullYear()}-${pad(value.getUTCMonth() + 1)}-${pad(value.getUTCDate())} ${pad(value.getUTCHours())}:${pad(value.getUTCMinutes())}:${pad(value.getUTCSeconds())}`;
-  }
-  if (typeof value === 'number' && Number.isFinite(value)) {
-    // Only treat as timestamp: seconds (10 digits) or milliseconds (13 digits), not IDs/counts/years
-    const asMs = value > 1e12 ? value : value > 1e9 && value < 1e11 ? value * 1000 : NaN;
-    if (!Number.isNaN(asMs)) {
-      const d = new Date(asMs);
-      if (!Number.isNaN(d.getTime())) return formatCellValue(d);
-    }
-    return String(value);
-  }
-  if (typeof value === 'object' && value !== null) {
-    try {
-      return JSON.stringify(value);
-    } catch {
-      return '';
-    }
-  }
-  return String(value);
-}
 
 const buildWhereClause = (filters: Filter[] | null, rawSql: string | null): string | null => {
   const dbType = props.dbType || 'postgresql';
