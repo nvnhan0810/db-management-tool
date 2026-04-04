@@ -183,6 +183,10 @@ export const useConnectionStore = defineStore('connection', () => {
     sqlHistoryPanelOpen.value = false;
   };
 
+  const clearSqlHistory = () => {
+    sqlHistory.value = [];
+  };
+
   const addSqlHistory = (item: Omit<SqlHistoryItem, 'timestamp'> & { timestamp: Date | string }) => {
     const normalized: SqlHistoryItem = {
       ...item,
@@ -410,6 +414,7 @@ export const useConnectionStore = defineStore('connection', () => {
     toggleRowDetailPanel,
     toggleSqlHistoryPanel,
     closeSqlHistoryPanel,
+    clearSqlHistory,
     attachSqlHistoryListener,
     addSqlHistory,
     markAppQuit,

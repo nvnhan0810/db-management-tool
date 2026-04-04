@@ -4,6 +4,16 @@
       <div class="panel-header">
         <span class="title">SQL History</span>
         <div class="actions">
+          <el-button
+            size="small"
+            :disabled="queries.length === 0"
+            title="Clear history"
+            @click="clearHistory"
+          >
+            <el-icon>
+              <Delete />
+            </el-icon>
+          </el-button>
           <el-button size="small" @click="close">
             <el-icon>
               <Close />
@@ -41,6 +51,7 @@
 
 <script setup lang="ts">
 import { useConnectionStore } from '@/presentation/stores/connectionStore';
+import { Close, Delete } from '@element-plus/icons-vue';
 import { computed } from 'vue';
 
 const connectionStore = useConnectionStore();
@@ -50,6 +61,8 @@ const open = computed(() => connectionStore.sqlHistoryPanelOpen);
 const queries = computed(() => connectionStore.sqlHistory);
 
 const close = () => connectionStore.closeSqlHistoryPanel();
+
+const clearHistory = () => connectionStore.clearSqlHistory();
 
 function formatTime(ts: Date): string {
   const d = new Date(ts);
@@ -91,6 +104,13 @@ function formatExecutionTime(executionTime: number): string {
   .title {
     font-weight: 600;
     color: var(--el-text-color-primary);
+  }
+
+  .actions {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-shrink: 0;
   }
 }
 

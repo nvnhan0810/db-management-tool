@@ -2216,6 +2216,39 @@ const formatDate = (date: Date | string) => {
         display: flex;
         flex-direction: column;
 
+        &.el-tabs--card {
+          --el-tabs-header-height: 30px;
+
+          > .el-tabs__header {
+            .el-tabs__item {
+              padding: 0 8px;
+              font-size: 12px;
+            }
+
+            .el-tabs__item:nth-child(2) {
+              padding-left: 8px;
+            }
+
+            .el-tabs__item:last-child {
+              padding-right: 8px;
+            }
+
+            .el-tabs__item.is-closable:hover {
+              padding-left: 6px;
+              padding-right: 6px;
+            }
+
+            .el-tabs__nav {
+              border-radius: 0px !important;
+            }
+
+            .el-tabs__nav-next,
+            .el-tabs__nav-prev {
+              line-height: var(--el-tabs-header-height);
+            }
+          }
+        }
+
         .el-tabs__header {
           margin: 0;
           // padding: 0;
