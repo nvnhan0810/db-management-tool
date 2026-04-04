@@ -21,10 +21,24 @@
             <template #default="{ row, $index }">
               <!-- New row: always show input -->
               <div v-if="isNewRow($index)" class="cell-add-wrap" @click.stop>
-                <el-input v-if="!isMultilineTextColumn(column)" v-model="(row as Record<string, unknown>)[column]"
-                  class="cell-add-input" size="small" placeholder="" @click.stop />
-                <el-input v-else v-model="(row as Record<string, unknown>)[column]" class="cell-add-input" size="small"
-                  placeholder="" @click.stop />
+                <el-input
+                  v-if="!isMultilineTextColumn(column)"
+                  class="cell-add-input"
+                  size="small"
+                  placeholder=""
+                  :model-value="newRowCellDisplay(row as Record<string, unknown>, column)"
+                  @update:model-value="(v: string) => onNewRowCellUpdate(row as Record<string, unknown>, column, v)"
+                  @click.stop
+                />
+                <el-input
+                  v-else
+                  class="cell-add-input"
+                  size="small"
+                  placeholder=""
+                  :model-value="newRowCellDisplay(row as Record<string, unknown>, column)"
+                  @update:model-value="(v: string) => onNewRowCellUpdate(row as Record<string, unknown>, column, v)"
+                  @click.stop
+                />
               </div>
               <!-- Existing row: edit or display -->
               <template v-else>
@@ -98,6 +112,8 @@ interface Props {
   connectionId?: string;
   /** Column name -> DB type (for contenteditable vs single-line input) */
   columnTypes?: Record<string, string>;
+  /** Column name -> nullable (from structure); drives NULL vs empty string when editing / new rows */
+  columnNullable?: Record<string, boolean>;
   /**
    * Foreign keys mapping: columnName -> "refTable.refColumn"
    * Example: { user_id: "users.id" }
@@ -144,6 +160,7 @@ const props = withDefaults(defineProps<Props>(), {
   tableName: '',
   connectionId: undefined,
   columnTypes: () => ({}),
+  columnNullable: () => ({}),
   foreignKeys: () => ({}),
   sidebarPanelOpen: false,
   sidebarSelectedRowIndex: undefined,
@@ -305,6 +322,34 @@ function isJsonColumn(columnName: string): boolean {
   return /\bjsonb?\b/i.test(t);
 }
 
+/** From structure; missing key treated as nullable so empty/NULL still maps to SQL NULL. */
+function isColumnNullable(columnKey: string): boolean {
+  return props.columnNullable?.[columnKey] !== false;
+}
+
+/** New row: nullable → null; NOT NULL → empty string (no prefilled test values). */
+function initialValueForNewColumn(column: string): unknown {
+  return isColumnNullable(column) ? null : '';
+}
+
+function newRowCellDisplay(row: Record<string, unknown>, column: string): string {
+  const v = row[column];
+  if (v === null || v === undefined) return '';
+  if (typeof v === 'object' && !(v instanceof Date)) {
+    try {
+      return JSON.stringify(v);
+    } catch {
+      return '';
+    }
+  }
+  if (v instanceof Date) return formatCellValue(v);
+  return String(v);
+}
+
+function onNewRowCellUpdate(row: Record<string, unknown>, column: string, raw: string) {
+  row[column] = parseCellValue(raw, column);
+}
+
 function isDateTimeColumn(columnName: string): boolean {
   const t = getColumnType(columnName);
   if (!t) return false;
@@ -432,7 +477,9 @@ watch(editDraftValue, () => {
 
 function parseCellValue(v: string, columnKey: string): unknown {
   const s = v.trim();
-  if (s === '' || s.toUpperCase() === 'NULL') return null;
+  if (s === '' || s.toUpperCase() === 'NULL') {
+    return isColumnNullable(columnKey) ? null : '';
+  }
 
   if (isJsonColumn(columnKey) && (s.startsWith('{') || s.startsWith('['))) {
     try {
@@ -833,7 +880,12 @@ async function runSave() {
     for (const col of columns) {
       const v = newRow[col];
       const s = typeof v === 'string' ? v.trim() : v;
-      if (s === '' || s === null || s === undefined) {
+      const nullLike =
+        s === null ||
+        s === undefined ||
+        s === '' ||
+        (typeof s === 'string' && s.trim().toUpperCase() === 'NULL');
+      if (nullLike) {
         cols.push(escapeIdentifier(col));
         vals.push('NULL');
       } else {
@@ -975,7 +1027,7 @@ function addRow() {
     return;
   }
   const newRow = reactive(
-    Object.fromEntries(columns.map((c) => [c, '']))
+    Object.fromEntries(columns.map((c) => [c, initialValueForNewColumn(c)]))
   ) as Record<string, unknown>;
   Object.defineProperty(newRow, TABLE_DRAFT_ROW_KEY, {
     value:
@@ -1199,8 +1251,18 @@ defineExpose({ runSave, addRow, hasUnsavedChanges, clearUnsavedChanges });
   .cell-add-input :deep(.el-input__wrapper) {
     border: none !important;
     box-shadow: none !important;
-    background-color: var(--el-fill-color-light) !important;
     padding: 0 8px !important;
+    background-color: transparent !important;
+  }
+
+  :deep(.row-selected) {
+    &>td {
+      background-color: rgba(0, 128, 255, 0.4) !important;
+
+      &.cell-modified {
+        background-color: rgba(230, 162, 60, 0.25) !important;
+      }
+    }
   }
 
   :deep(.row-deleted) {
@@ -1209,12 +1271,6 @@ defineExpose({ runSave, addRow, hasUnsavedChanges, clearUnsavedChanges });
     td {
       background-color: rgba(245, 108, 108, 0.15) !important;
       border-color: var(--el-border-color-darker);
-    }
-  }
-
-  :deep(.row-selected) {
-    &>td {
-      background-color: rgba(0, 128, 255, 0.4) !important;
     }
   }
 
@@ -1321,7 +1377,7 @@ defineExpose({ runSave, addRow, hasUnsavedChanges, clearUnsavedChanges });
   :deep(.cell-editing .cell-edit-input .el-input__wrapper) {
     border: none !important;
     box-shadow: none !important;
-    background-color: var(--el-bg-color-overlay) !important;
+    // background-color: var(--el-bg-color-overlay) !important;
     color: var(--el-text-color-primary) !important;
     padding: 0 8px !important;
     height: 100% !important;

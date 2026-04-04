@@ -158,6 +158,7 @@
                           :db-type="connection?.type || 'postgresql'" :table-name="tab.tableName"
                           :connection-id="connection?.id"
                           :column-types="(tab.structure?.columns) ? Object.fromEntries(tab.structure.columns.map((c: { name: string; type: string }) => [c.name, c.type])) : {}"
+                          :column-nullable="(tab.structure?.columns) ? Object.fromEntries(tab.structure.columns.map((c: { name: string; nullable: boolean }) => [c.name, c.nullable])) : {}"
                           :foreign-keys="(tab.structure?.columns) ? Object.fromEntries(tab.structure.columns.filter((c: any) => !!c.foreign_key).map((c: any) => [c.name, c.foreign_key])) : {}"
                           :columns-from-structure="tab.structure?.columns?.map((c: { name: string }) => c.name) ?? []"
                           :primary-key-columns="tab.structure?.primaryKeyColumns ?? []"

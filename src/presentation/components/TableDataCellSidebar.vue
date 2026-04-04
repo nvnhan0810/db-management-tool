@@ -34,7 +34,7 @@
               clearable
               placeholder="NULL or value..."
               class="editable-select"
-              @update:model-value="(v: string | null) => updateField(key, v ?? '')"
+              @update:model-value="(v: string | null | undefined) => updateFieldFromSelect(key, v)"
             >
               <el-option
                 v-for="opt in getEnumValues(key)"
@@ -220,9 +220,26 @@ function formatValue(value: unknown): string {
   return String(value);
 }
 
-function updateField(field: string, newValue: string) {
-  const v = newValue.trim() === '' || newValue.toUpperCase() === 'NULL' ? null : newValue;
+function updateFieldFromSelect(field: string, v: string | null | undefined) {
+  if (v === null || v === undefined || String(v).trim() === '') {
+    emit('update-field', field, null);
+    return;
+  }
+  const s = String(v).trim();
+  if (s.toUpperCase() === 'NULL') {
+    emit('update-field', field, null);
+    return;
+  }
   emit('update-field', field, v);
+}
+
+function updateField(field: string, newValue: string) {
+  const t = newValue.trim();
+  if (t === '' || t.toUpperCase() === 'NULL') {
+    emit('update-field', field, null);
+    return;
+  }
+  emit('update-field', field, newValue);
 }
 
 /** Đọc toàn bộ giá trị hiện tại từ DOM và emit update-field cho từng field (để Cmd+S luôn dùng data mới nhất). */
@@ -232,7 +249,8 @@ function flushEditsFromDom() {
     const div = cellRefs.value[key];
     if (!div) continue;
     const text = div.textContent ?? '';
-    const v = text.trim() === '' || text.toUpperCase() === 'NULL' ? null : text;
+    const tt = text.trim();
+    const v = tt === '' || tt.toUpperCase() === 'NULL' ? null : text;
     emit('update-field', key, v);
   }
 }

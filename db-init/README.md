@@ -10,7 +10,8 @@ This project ships an optional heavy dataset to test import/export, browsing, an
   - `orders` → `users`
   - `order_items` → `orders`, `products`
   - `payments` → `orders`
-  - `json_samples` — `payload` / `meta` as **JSON** (PostgreSQL **JSONB**) with a few seed rows in `03_json_samples_seed.sql`
+  - `json_samples` — `payload` / `meta` as **JSON** (PostgreSQL **JSONB**); `meta` is **nullable**, with a few seed rows in `03_json_samples_seed.sql`
+- **Nullable columns** (for UI / grid tests): e.g. `users.phone`, `users.notes`, `products.description`, `products.discontinued_at`, `orders.notes`, `orders.shipped_at`, `order_items.discount_cents`, `payments.external_ref`, `payments.captured_at` — bulk seed leaves them `NULL`
 - **1,000,000 rows per table** (except `json_samples`, which only has the small seed)
 
 ### Start

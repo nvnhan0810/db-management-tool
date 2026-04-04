@@ -4,6 +4,8 @@ CREATE TABLE IF NOT EXISTS users (
   id BIGINT PRIMARY KEY,
   email VARCHAR(255) NOT NULL UNIQUE,
   full_name VARCHAR(255) NOT NULL,
+  phone VARCHAR(64) NULL,
+  notes TEXT NULL,
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB;
 
@@ -11,7 +13,9 @@ CREATE TABLE IF NOT EXISTS products (
   id BIGINT PRIMARY KEY,
   sku VARCHAR(64) NOT NULL UNIQUE,
   name VARCHAR(255) NOT NULL,
+  description TEXT NULL,
   price_cents INT NOT NULL,
+  discontinued_at TIMESTAMP NULL,
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB;
 
@@ -20,6 +24,8 @@ CREATE TABLE IF NOT EXISTS orders (
   user_id BIGINT NOT NULL,
   status VARCHAR(32) NOT NULL,
   total_cents BIGINT NOT NULL,
+  notes TEXT NULL,
+  shipped_at TIMESTAMP NULL,
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   CONSTRAINT fk_orders_user FOREIGN KEY (user_id) REFERENCES users(id)
 ) ENGINE=InnoDB;
@@ -30,6 +36,7 @@ CREATE TABLE IF NOT EXISTS order_items (
   product_id BIGINT NOT NULL,
   quantity INT NOT NULL,
   unit_price_cents INT NOT NULL,
+  discount_cents INT NULL,
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   CONSTRAINT fk_items_order FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE CASCADE,
   CONSTRAINT fk_items_product FOREIGN KEY (product_id) REFERENCES products(id)
@@ -41,6 +48,8 @@ CREATE TABLE IF NOT EXISTS payments (
   provider VARCHAR(32) NOT NULL,
   amount_cents BIGINT NOT NULL,
   status VARCHAR(32) NOT NULL,
+  external_ref VARCHAR(128) NULL,
+  captured_at TIMESTAMP NULL,
   created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   CONSTRAINT fk_payments_order FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE CASCADE
 ) ENGINE=InnoDB;
