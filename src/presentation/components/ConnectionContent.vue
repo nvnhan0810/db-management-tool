@@ -87,114 +87,115 @@
 
       <!-- Center + optional right column -->
       <div class="content-area">
-        <!-- Default: Connection Info -->
-        <div v-if="tabs.length === 0" class="connection-info-default">
-          <el-card>
-            <template #header>
-              <div class="card-header">
-                <div class="header-left">
-                  <el-icon class="header-icon">
-                    <Connection />
-                  </el-icon>
-                  <span>{{ connection.name || `${connection.type} - ${connection.host}` }}</span>
-                </div>
-                <div class="header-right">
-                  <el-tag :type="connection.isConnected ? 'success' : 'danger'" size="default">
-                    {{ connection.isConnected ? 'Connected' : 'Disconnected' }}
-                  </el-tag>
-                </div>
-              </div>
-            </template>
-            <div class="connection-details">
-              <div class="detail-item">
-                <span class="detail-label">Type:</span>
-                <span class="detail-value">{{ connection.type.toUpperCase() }}</span>
-              </div>
-              <div class="detail-item">
-                <span class="detail-label">Host:</span>
-                <span class="detail-value">{{ connection.host }}:{{ connection.port }}</span>
-              </div>
-              <div v-if="connection.database" class="detail-item">
-                <span class="detail-label">Database:</span>
-                <span class="detail-value">{{ connection.database }}</span>
-              </div>
-              <div class="detail-item">
-                <span class="detail-label">Username:</span>
-                <span class="detail-value">{{ connection.username }}</span>
-              </div>
-              <div v-if="connection.lastActivity" class="detail-item">
-                <span class="detail-label">Last Activity:</span>
-                <span class="detail-value">{{ formatDate(connection.lastActivity) }}</span>
-              </div>
-            </div>
-          </el-card>
-        </div>
-
-        <!-- Tabs + bottom SQL panel (center) | cell/row sidebar (right), resizable -->
-        <div v-else class="workspace-main-row">
+        <!-- Main area (center) + SQL history (bottom) + optional row/cell sidebar (right) -->
+        <div class="workspace-main-row">
           <div class="content-split" ref="splitRef">
             <div ref="contentAreaInnerRef" class="content-area-inner">
-            <div class="tabs-container">
-              <el-tabs v-model="activeTabId" type="card" closable @tab-remove="handleRemoveTab"
-                @tab-click="handleTabClick">
-                <el-tab-pane v-for="tab in tabs" :key="tab.id" :label="tab.tableName" :name="tab.id">
-                  <div class="tab-content-wrapper">
-                    <!-- Main Content Area -->
-                    <div class="tab-main-content">
-                      <!-- Query Editor Tab -->
-                      <QueryEditorTab v-if="tab.tabType === 'query'" :connection-id="connection?.id"
-                        :db-type="connection?.type || 'postgresql'" />
-
-                      <!-- Table Tabs -->
-                      <template v-else>
-                        <!-- Structure View -->
-                        <TableStructureView v-if="tab.viewMode === 'structure'" :structure="tab.structure"
-                          :is-loading="tab.isLoadingStructure === true" :error="tab.structureError || null" />
-
-                        <!-- Data View -->
-                        <TableDataView v-else-if="tab.viewMode === 'data'"
-                          :ref="(el: any) => setTableDataViewRef(tab.id, el)" :data="tab.data"
-                          :is-loading="tab.isLoadingData === true" :error="tab.dataError || null"
-                          :db-type="connection?.type || 'postgresql'" :table-name="tab.tableName"
-                          :connection-id="connection?.id"
-                          :column-types="(tab.structure?.columns) ? Object.fromEntries(tab.structure.columns.map((c: { name: string; type: string }) => [c.name, c.type])) : {}"
-                          :column-nullable="(tab.structure?.columns) ? Object.fromEntries(tab.structure.columns.map((c: { name: string; nullable: boolean }) => [c.name, c.nullable])) : {}"
-                          :foreign-keys="(tab.structure?.columns) ? Object.fromEntries(tab.structure.columns.filter((c: any) => !!c.foreign_key).map((c: any) => [c.name, c.foreign_key])) : {}"
-                          :columns-from-structure="tab.structure?.columns?.map((c: { name: string }) => c.name) ?? []"
-                          :primary-key-columns="tab.structure?.primaryKeyColumns ?? []"
-                          :filter-preset="tab.filterPreset ?? null" :filter-preset-nonce="tab.filterPresetNonce ?? 0"
-                          :sidebar-panel-open="dataSidebarVisible"
-                          :sidebar-selected-row-index="getDataSidebarState(tab.id).selectedRowIndex"
-                          :sidebar-selected-column="getDataSidebarState(tab.id).selectedColumn"
-                          :sidebar-modified-rows="getDataSidebarState(tab.id).modifiedRows"
-                          :sidebar-deleted-rows="getDataSidebarState(tab.id).deletedRows" :sort-by="tab.sortBy || null"
-                          :sort-order="tab.sortOrder || null"
-                          @filter-apply="(whereClause: string | null) => handleFilterApply(tab, whereClause)"
-                          @refresh="() => { loadTableData(tab); clearDataSidebarState(tab.id); }"
-                          @cell-select="(e: { rowIndex: number; columnKey: string | null }) => onDataCellSelect(tab.id, e)"
-                          @open-related="(e: { refTable: string; refColumn: string; value: unknown }) => openRelatedTabFromCell(tab, e)"
-                          @sidebar-close="onDataSidebarClose(tab.id)"
-                          @update-field="(e: { field: string; value: unknown }) => onDataUpdateField(tab.id, e)"
-                          @mark-deleted="onDataMarkDeleted(tab.id)" @unmark-deleted="onDataUnmarkDeleted(tab.id)"
-                          @sort-change="(payload: { prop: string | null; order: 'ascending' | 'descending' | null }) => handleSortChange(tab, payload)" />
-
-                        <!-- Fallback if no view mode -->
-                        <div v-else class="no-view-mode">
-                          <el-empty description="No view mode selected" />
-                        </div>
-                      </template>
+              <!-- Default: Connection Info (no tabs) -->
+              <div v-if="tabs.length === 0" class="connection-info-default">
+                <el-card>
+                  <template #header>
+                    <div class="card-header">
+                      <div class="header-left">
+                        <el-icon class="header-icon">
+                          <Connection />
+                        </el-icon>
+                        <span>{{ connection.name || `${connection.type} - ${connection.host}` }}</span>
+                      </div>
+                      <div class="header-right">
+                        <el-tag :type="connection.isConnected ? 'success' : 'danger'" size="default">
+                          {{ connection.isConnected ? 'Connected' : 'Disconnected' }}
+                        </el-tag>
+                      </div>
                     </div>
-
-                    <!-- Footer (only for table tabs) -->
-                    <TableViewFooter v-if="tab.tabType !== 'query'" :view-mode="tab.viewMode || 'data'" :data="tab.data"
-                      @update:view-mode="(val: 'structure' | 'data') => switchViewMode(tab, val)"
-                      @page-change="(page: number) => handlePageChange(tab, page)"
-                      @per-page-change="(perPage: number) => handlePerPageChange(tab, perPage)"
-                      @add-row="handleAddRow(tab)" />
+                  </template>
+                  <div class="connection-details">
+                    <div class="detail-item">
+                      <span class="detail-label">Type:</span>
+                      <span class="detail-value">{{ connection.type.toUpperCase() }}</span>
+                    </div>
+                    <div class="detail-item">
+                      <span class="detail-label">Host:</span>
+                      <span class="detail-value">{{ connection.host }}:{{ connection.port }}</span>
+                    </div>
+                    <div v-if="connection.database" class="detail-item">
+                      <span class="detail-label">Database:</span>
+                      <span class="detail-value">{{ connection.database }}</span>
+                    </div>
+                    <div class="detail-item">
+                      <span class="detail-label">Username:</span>
+                      <span class="detail-value">{{ connection.username }}</span>
+                    </div>
+                    <div v-if="connection.lastActivity" class="detail-item">
+                      <span class="detail-label">Last Activity:</span>
+                      <span class="detail-value">{{ formatDate(connection.lastActivity) }}</span>
+                    </div>
                   </div>
-                </el-tab-pane>
-              </el-tabs>
-            </div>
+                </el-card>
+              </div>
+
+              <!-- Tabs (when present) -->
+              <div v-else class="tabs-container">
+                <el-tabs v-model="activeTabId" type="card" closable @tab-remove="handleRemoveTab"
+                  @tab-click="handleTabClick">
+                  <el-tab-pane v-for="tab in tabs" :key="tab.id" :label="tab.tableName" :name="tab.id">
+                    <div class="tab-content-wrapper">
+                      <!-- Main Content Area -->
+                      <div class="tab-main-content">
+                        <!-- Query Editor Tab -->
+                        <QueryEditorTab v-if="tab.tabType === 'query'" :connection-id="connection?.id"
+                          :db-type="connection?.type || 'postgresql'" />
+
+                        <!-- Table Tabs -->
+                        <template v-else>
+                          <!-- Structure View -->
+                          <TableStructureView v-if="tab.viewMode === 'structure'" :structure="tab.structure"
+                            :is-loading="tab.isLoadingStructure === true" :error="tab.structureError || null" />
+
+                          <!-- Data View -->
+                          <TableDataView v-else-if="tab.viewMode === 'data'"
+                            :ref="(el: any) => setTableDataViewRef(tab.id, el)" :data="tab.data"
+                            :is-loading="tab.isLoadingData === true" :error="tab.dataError || null"
+                            :db-type="connection?.type || 'postgresql'" :table-name="tab.tableName"
+                            :connection-id="connection?.id"
+                            :column-types="(tab.structure?.columns) ? Object.fromEntries(tab.structure.columns.map((c: { name: string; type: string }) => [c.name, c.type])) : {}"
+                            :column-nullable="(tab.structure?.columns) ? Object.fromEntries(tab.structure.columns.map((c: { name: string; nullable: boolean }) => [c.name, c.nullable])) : {}"
+                            :foreign-keys="(tab.structure?.columns) ? Object.fromEntries(tab.structure.columns.filter((c: any) => !!c.foreign_key).map((c: any) => [c.name, c.foreign_key])) : {}"
+                            :columns-from-structure="tab.structure?.columns?.map((c: { name: string }) => c.name) ?? []"
+                            :primary-key-columns="tab.structure?.primaryKeyColumns ?? []"
+                            :filter-preset="tab.filterPreset ?? null" :filter-preset-nonce="tab.filterPresetNonce ?? 0"
+                            :sidebar-panel-open="dataSidebarVisible"
+                            :sidebar-selected-row-index="getDataSidebarState(tab.id).selectedRowIndex"
+                            :sidebar-selected-column="getDataSidebarState(tab.id).selectedColumn"
+                            :sidebar-modified-rows="getDataSidebarState(tab.id).modifiedRows"
+                            :sidebar-deleted-rows="getDataSidebarState(tab.id).deletedRows" :sort-by="tab.sortBy || null"
+                            :sort-order="tab.sortOrder || null"
+                            @filter-apply="(whereClause: string | null) => handleFilterApply(tab, whereClause)"
+                            @refresh="() => { loadTableData(tab); clearDataSidebarState(tab.id); }"
+                            @cell-select="(e: { rowIndex: number; columnKey: string | null }) => onDataCellSelect(tab.id, e)"
+                            @open-related="(e: { refTable: string; refColumn: string; value: unknown }) => openRelatedTabFromCell(tab, e)"
+                            @sidebar-close="onDataSidebarClose(tab.id)"
+                            @update-field="(e: { field: string; value: unknown }) => onDataUpdateField(tab.id, e)"
+                            @mark-deleted="onDataMarkDeleted(tab.id)" @unmark-deleted="onDataUnmarkDeleted(tab.id)"
+                            @sort-change="(payload: { prop: string | null; order: 'ascending' | 'descending' | null }) => handleSortChange(tab, payload)" />
+
+                          <!-- Fallback if no view mode -->
+                          <div v-else class="no-view-mode">
+                            <el-empty description="No view mode selected" />
+                          </div>
+                        </template>
+                      </div>
+
+                      <!-- Footer (only for table tabs) -->
+                      <TableViewFooter v-if="tab.tabType !== 'query'" :view-mode="tab.viewMode || 'data'" :data="tab.data"
+                        @update:view-mode="(val: 'structure' | 'data') => switchViewMode(tab, val)"
+                        @page-change="(page: number) => handlePageChange(tab, page)"
+                        @per-page-change="(perPage: number) => handlePerPageChange(tab, perPage)"
+                        @add-row="handleAddRow(tab)" />
+                    </div>
+                  </el-tab-pane>
+                </el-tabs>
+              </div>
             </div>
 
             <div v-if="sqlHistoryPanelOpen" class="splitter-bar" role="separator" aria-orientation="horizontal"
@@ -1251,15 +1252,43 @@ async function onTableMenuCommand(cmd: string, table: Table) {
   } else if (cmd === 'import') {
     await runImportSql(id);
   } else if (cmd === 'drop') {
-    await runDropTable(id, table);
+    const selected = selectedTableNames.value;
+    const shouldDropSelected = selected.length > 0 && selected.includes(table.name);
+    const names = shouldDropSelected ? [...selected] : [table.name];
+    const targets = names
+      .map((n) => tables.value.find((t) => t.name === n) ?? ({ name: n } as Table))
+      // preserve order; filter duplicates defensively
+      .filter((t, idx, arr) => arr.findIndex((x) => x.name === t.name) === idx);
+
+    await runDropTables(id, targets);
   }
 }
 
-async function runDropTable(connectionId: string, table: Table) {
+function dropSqlForTable(table: Table): string {
+  const dbType = connection.value?.type ?? 'mysql';
+  const ident = quoteIdentForDb(table.name, dbType);
+  const isView = table.type === 'view';
+  if (dbType === 'postgresql') {
+    return isView
+      ? `DROP VIEW IF EXISTS ${ident} CASCADE;`
+      : `DROP TABLE IF EXISTS ${ident} CASCADE;`;
+  }
+  return isView ? `DROP VIEW IF EXISTS ${ident};` : `DROP TABLE IF EXISTS ${ident};`;
+}
+
+async function runDropTables(connectionId: string, tablesToDrop: Table[]) {
+  if (!tablesToDrop || tablesToDrop.length === 0) return;
+
+  const count = tablesToDrop.length;
+  const isPlural = count > 1;
+  const title = isPlural ? `Drop ${count} items` : `Drop ${tablesToDrop[0].type === 'view' ? 'View' : 'Table'}`;
+
   try {
     await ElMessageBox.confirm(
-      `This will permanently remove ${table.type === 'view' ? 'view' : 'table'} "${table.name}". Continue?`,
-      `Drop ${table.type === 'view' ? 'View' : 'Table'}`,
+      isPlural
+        ? `This will permanently remove ${count} selected items. Continue?`
+        : `This will permanently remove ${tablesToDrop[0].type === 'view' ? 'view' : 'table'} "${tablesToDrop[0].name}". Continue?`,
+      title,
       {
         confirmButtonText: 'Drop',
         cancelButtonText: 'Cancel',
@@ -1271,21 +1300,92 @@ async function runDropTable(connectionId: string, table: Table) {
     return;
   }
 
-  const loading = ElMessage({ message: 'Dropping…', type: 'info', duration: 0 });
+  const loading = ElMessage({ message: isPlural ? `Dropping ${count}…` : 'Dropping…', type: 'info', duration: 0 });
+  const start = performance.now();
   try {
-    const r = await dropTable(connectionId, table.name, table.type);
-    loading.close();
-    if (!r.success) {
-      await showErrorDialog({ title: 'Drop failed', message: r.error || 'Drop failed' });
-      return;
+    const failed: Array<{ name: string; error: string }> = [];
+    const droppedNames: string[] = [];
+
+    for (const t of tablesToDrop) {
+      // Add to global history (preload does not track dropTable IPC)
+      connectionStore.addSqlHistory({
+        channel: 'database:dropTable',
+        connectionId,
+        sql: dropSqlForTable(t),
+        success: true,
+        error: null,
+        executionTime: 0,
+        timestamp: new Date(),
+      });
+
+      const r = await dropTable(connectionId, t.name, t.type);
+      if (!r.success) {
+        failed.push({ name: t.name, error: r.error || 'Drop failed' });
+        // Mark last history item as failed (best effort)
+        connectionStore.addSqlHistory({
+          channel: 'database:dropTable',
+          connectionId,
+          sql: `-- DROP FAILED: ${t.name}`,
+          success: false,
+          error: r.error || 'Drop failed',
+          executionTime: 0,
+          timestamp: new Date(),
+        });
+        continue;
+      }
+
+      droppedNames.push(t.name);
+
+      // Close tabs for this table if open
+      const toRemove = tabs.value.filter((tab) => tab.tableName === t.name).map((tab) => tab.id);
+      toRemove.forEach((id) => handleRemoveTab(id));
     }
-    // Close tabs for this table if open
-    const toRemove = tabs.value.filter((t) => t.tableName === table.name).map((t) => t.id);
-    toRemove.forEach((id) => handleRemoveTab(id));
-    activeTableName.value = '';
+
+    // Remove dropped tables from multi-selection
+    if (droppedNames.length > 0) {
+      selectedTableNames.value = selectedTableNames.value.filter((n) => !droppedNames.includes(n));
+    }
+
+    // If active table was dropped, clear active
+    if (droppedNames.includes(activeTableName.value)) {
+      activeTableName.value = '';
+    }
+
     await loadTables();
+    loading.close();
+
+    const execMs = Math.max(0, Math.round(performance.now() - start));
+    if (failed.length > 0) {
+      await showErrorDialog({
+        title: 'Some drops failed',
+        message: `${failed.length}/${count} failed`,
+        details: failed.map((f) => `${f.name}: ${f.error}`).join('\n'),
+      });
+    } else {
+      // Add a compact summary line (helps user see batch drop)
+      if (isPlural) {
+        connectionStore.addSqlHistory({
+          channel: 'database:dropTable',
+          connectionId,
+          sql: `-- Dropped ${count} items (${execMs}ms)`,
+          success: true,
+          error: null,
+          executionTime: execMs,
+          timestamp: new Date(),
+        });
+      }
+    }
   } catch (err) {
     loading.close();
+    connectionStore.addSqlHistory({
+      channel: 'database:dropTable',
+      connectionId,
+      sql: `-- DROP ERROR`,
+      success: false,
+      error: err instanceof Error ? err.message : 'Drop failed',
+      executionTime: 0,
+      timestamp: new Date(),
+    });
     await showErrorDialog({
       title: 'Drop failed',
       message: err instanceof Error ? err.message : 'Drop failed',
@@ -1317,6 +1417,17 @@ async function runExportSql(connectionId: string, mode: 'structure-data' | 'stru
   if (!picked || !picked.success || picked.canceled || !picked.path) return;
 
   try {
+    // Add to global history (preload does not track exportTablesSqlToPath IPC)
+    connectionStore.addSqlHistory({
+      channel: 'database:exportTablesSqlToPath',
+      connectionId,
+      sql: `-- EXPORT ${names.length} table(s) MODE ${mode} TO '${picked.path}'`,
+      success: true,
+      error: null,
+      executionTime: 0,
+      timestamp: new Date(),
+    });
+
     // Init dialog
     exportDialogVisible.value = true;
     exportStatus.value = 'running';
@@ -1365,12 +1476,39 @@ async function runExportSql(connectionId: string, mode: 'structure-data' | 'stru
     if (!r.success) {
       exportStatus.value = 'error';
       exportError.value = r.error || 'Export failed';
+      connectionStore.addSqlHistory({
+        channel: 'database:exportTablesSqlToPath',
+        connectionId,
+        sql: `-- EXPORT FAILED TO '${picked.path}'`,
+        success: false,
+        error: exportError.value,
+        executionTime: 0,
+        timestamp: new Date(),
+      });
       return;
     }
     exportStatus.value = 'success';
+    connectionStore.addSqlHistory({
+      channel: 'database:exportTablesSqlToPath',
+      connectionId,
+      sql: `-- EXPORT DONE TO '${picked.path}'`,
+      success: true,
+      error: null,
+      executionTime: 0,
+      timestamp: new Date(),
+    });
   } catch (err) {
     exportStatus.value = 'error';
     exportError.value = err instanceof Error ? err.message : 'Export failed';
+    connectionStore.addSqlHistory({
+      channel: 'database:exportTablesSqlToPath',
+      connectionId,
+      sql: `-- EXPORT ERROR TO '${picked.path}'`,
+      success: false,
+      error: exportError.value,
+      executionTime: 0,
+      timestamp: new Date(),
+    });
   }
 }
 
@@ -1441,32 +1579,88 @@ async function runImportSql(connectionId: string) {
 
   window.electron?.on?.('import:progress', handler);
   try {
+    // Add to global history (preload does not track importSqlFromPath IPC)
+    connectionStore.addSqlHistory({
+      channel: 'database:importSqlFromPath',
+      connectionId,
+      sql: `-- IMPORT SQL FROM '${picked.path}'`,
+      success: true,
+      error: null,
+      executionTime: 0,
+      timestamp: new Date(),
+    });
+
     const r = await importSqlFromPathWithJob({ connectionId, path: picked.path, jobId });
     if ((r as any)?.canceled) {
       importDialogVisible.value = false;
       importStatus.value = 'idle';
       await loadTables();
+      connectionStore.addSqlHistory({
+        channel: 'database:importSqlFromPath',
+        connectionId,
+        sql: `-- IMPORT CANCELED FROM '${picked.path}'`,
+        success: false,
+        error: 'Import canceled',
+        executionTime: 0,
+        timestamp: new Date(),
+      });
       return;
     }
     if (!r?.success) {
       importStatus.value = 'error';
       importError.value = r?.error ?? 'Import failed';
+      connectionStore.addSqlHistory({
+        channel: 'database:importSqlFromPath',
+        connectionId,
+        sql: `-- IMPORT FAILED FROM '${picked.path}'`,
+        success: false,
+        error: importError.value,
+        executionTime: 0,
+        timestamp: new Date(),
+      });
       return;
     }
     importStatus.value = 'success';
     importExecuted.value = r.executed ?? importExecuted.value;
     importTotalBytes.value = r.totalBytes ?? importTotalBytes.value;
     await loadTables();
+    connectionStore.addSqlHistory({
+      channel: 'database:importSqlFromPath',
+      connectionId,
+      sql: `-- IMPORT DONE (${importExecuted.value} statements) FROM '${picked.path}'`,
+      success: true,
+      error: null,
+      executionTime: 0,
+      timestamp: new Date(),
+    });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     if (msg.toLowerCase().includes('canceled')) {
       importDialogVisible.value = false;
       importStatus.value = 'idle';
       await loadTables();
+      connectionStore.addSqlHistory({
+        channel: 'database:importSqlFromPath',
+        connectionId,
+        sql: `-- IMPORT CANCELED FROM '${picked.path}'`,
+        success: false,
+        error: 'Import canceled',
+        executionTime: 0,
+        timestamp: new Date(),
+      });
       return;
     }
     importStatus.value = 'error';
     importError.value = err instanceof Error ? err.stack ?? err.message : String(err);
+    connectionStore.addSqlHistory({
+      channel: 'database:importSqlFromPath',
+      connectionId,
+      sql: `-- IMPORT ERROR FROM '${picked.path}'`,
+      success: false,
+      error: importError.value,
+      executionTime: 0,
+      timestamp: new Date(),
+    });
   } finally {
     window.electron?.off?.('import:progress', handler);
   }

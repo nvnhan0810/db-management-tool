@@ -13,7 +13,12 @@ export interface ActiveConnection extends Omit<DatabaseConnection, 'id'> {
 }
 
 export interface SqlHistoryItem {
-  channel: 'database:query' | 'database:executeQuery';
+  channel:
+    | 'database:query'
+    | 'database:executeQuery'
+    | 'database:dropTable'
+    | 'database:exportTablesSqlToPath'
+    | 'database:importSqlFromPath';
   connectionId?: string;
   sql: string;
   timestamp: Date;
