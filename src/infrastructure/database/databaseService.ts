@@ -2,6 +2,7 @@ import type { DatabaseConnection } from '@/domain/connection/types';
 import type { QueryResult } from '@/domain/query/types';
 import {
   hasExecutableSql,
+  SqlStatementSplitter,
   splitSqlStatements,
 } from '@/infrastructure/database/sqlScriptSplit';
 import { MysqlDatabaseDriver } from '@/infrastructure/database/drivers/MysqlDatabaseDriver';
@@ -384,7 +385,6 @@ class DatabaseService {
 
   /**
    * Import SQL by streaming a file on disk (avoids crashing on huge IPC payloads).
-   * Supports the same subset as our exporter: split on `;` outside single quotes.
    */
   async importSqlFromPath(
     connectionId: string,
@@ -416,8 +416,7 @@ class DatabaseService {
     const countStatements = async (): Promise<number> => {
       const scanStream = fs.createReadStream(filePath, { encoding: 'utf8' });
       let scanBytesRead = 0;
-      let buf = '';
-      let inSingle = false;
+      const splitter = new SqlStatementSplitter();
       let totalStatements = 0;
 
       const countMaybe = (stmt: string) => {
@@ -430,25 +429,8 @@ class DatabaseService {
         if (signal?.aborted) throw new Error('Import canceled');
         scanBytesRead += Buffer.byteLength(chunk, 'utf8');
 
-        for (let i = 0; i < chunk.length; i++) {
-          const c = chunk[i];
-          if (c === "'" && chunk[i + 1] === "'") {
-            buf += "''";
-            i++;
-            continue;
-          }
-          if (c === "'") {
-            inSingle = !inSingle;
-            buf += c;
-            continue;
-          }
-          if (!inSingle && c === ';') {
-            const stmt = buf;
-            buf = '';
-            countMaybe(stmt);
-            continue;
-          }
-          buf += c;
+        for (const stmt of splitter.push(chunk)) {
+          countMaybe(stmt);
         }
 
         onProgress?.({
@@ -460,7 +442,9 @@ class DatabaseService {
         });
       }
 
-      countMaybe(buf);
+      for (const stmt of splitter.flush()) {
+        countMaybe(stmt);
+      }
       return totalStatements;
     };
 
@@ -469,39 +453,23 @@ class DatabaseService {
     const stream = fs.createReadStream(filePath, { encoding: 'utf8' });
     bytesRead = 0;
     executed = 0;
-    let buf = '';
-    let inSingle = false;
+    const splitter = new SqlStatementSplitter();
 
     for await (const chunk of stream as AsyncIterable<string>) {
       if (signal?.aborted) throw new Error('Import canceled');
       bytesRead += Buffer.byteLength(chunk, 'utf8');
 
-      for (let i = 0; i < chunk.length; i++) {
-        const c = chunk[i];
-        if (c === "'" && chunk[i + 1] === "'") {
-          buf += "''";
-          i++;
-          continue;
-        }
-        if (c === "'") {
-          inSingle = !inSingle;
-          buf += c;
-          continue;
-        }
-        if (!inSingle && c === ';') {
-          const stmt = buf;
-          buf = '';
-          await flushStatement(stmt, totalStatements);
-          continue;
-        }
-        buf += c;
+      for (const stmt of splitter.push(chunk)) {
+        await flushStatement(stmt, totalStatements);
       }
 
       onProgress?.({ stage: 'read', bytesRead, totalBytes, executed, totalStatements });
     }
 
     // last statement without trailing semicolon
-    await flushStatement(buf, totalStatements);
+    for (const stmt of splitter.flush()) {
+      await flushStatement(stmt, totalStatements);
+    }
     return { executed, totalBytes };
   }
 
