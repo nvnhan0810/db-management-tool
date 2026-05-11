@@ -88,6 +88,10 @@ class DatabaseService {
   }
 
   async connect(connection: DatabaseConnection): Promise<boolean> {
+    if (this.connections.has(connection.id) || this.sshTunnels.has(connection.id)) {
+      await this.disconnect(connection.id);
+    }
+
     let dbHost = connection.host;
     let dbPort = connection.port;
 

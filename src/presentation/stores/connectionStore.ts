@@ -31,6 +31,8 @@ const STORAGE_KEY = 'connectionsState';
 const QUIT_TIME_KEY = 'lastQuitTime';
 const UI_PREFS_KEY = 'uiPrefs';
 
+type ConnectResponse = { success?: boolean; error?: string | null } | boolean | null | undefined;
+
 /** Workspace sessions: open tabs, current tab, sidebar — not the saved-connection list. */
 export const useConnectionStore = defineStore('connection', () => {
   const activeConnections = ref<ActiveConnection[]>([]);
@@ -359,6 +361,12 @@ export const useConnectionStore = defineStore('connection', () => {
   const getConnectionByTabId = (tabId: string) =>
     activeConnections.value.find((c) => c.tabId === tabId) ?? null;
 
+  const connectDatabase = async (connection: DatabaseConnection): Promise<boolean> => {
+    const response = (await window.electron?.invoke('database:connect', connection)) as ConnectResponse;
+    if (typeof response === 'boolean') return response;
+    return response?.success === true;
+  };
+
   const clearAllConnections = async () => {
     try {
       await window.electron?.invoke('database:disconnectAll');
@@ -385,9 +393,6 @@ export const useConnectionStore = defineStore('connection', () => {
     if (hadDb && currentDb === targetDb) return true;
 
     if (!hadDb) {
-      conn.database = databaseName;
-      conn.selectedDatabase = databaseName;
-
       try {
         await window.electron?.invoke('database:disconnect', conn.id);
       } catch {
@@ -405,7 +410,9 @@ export const useConnectionStore = defineStore('connection', () => {
         ssh: conn.ssh ? { ...conn.ssh } : undefined,
       };
 
-      const ok = (await window.electron?.invoke('database:connect', plain)) as boolean;
+      const ok = await connectDatabase(plain as DatabaseConnection);
+      conn.database = ok ? databaseName : '';
+      conn.selectedDatabase = ok ? databaseName : undefined;
       conn.isConnected = ok;
       return ok;
     }
@@ -422,7 +429,7 @@ export const useConnectionStore = defineStore('connection', () => {
       ssh: conn.ssh ? { ...conn.ssh } : undefined,
     };
 
-    const ok = (await window.electron?.invoke('database:connect', plain)) as boolean;
+    const ok = await connectDatabase(plain as DatabaseConnection);
     if (!ok) return false;
 
     const newConn: DatabaseConnection & { rootConnectionId?: string } = {
