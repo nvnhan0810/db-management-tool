@@ -218,21 +218,27 @@ export class MysqlDatabaseDriver implements DatabaseDriver {
     }
 
     if (!includeData) return;
-    const [dataRows] = await conn.query(`SELECT * FROM \`${name}\``);
-    const rows = dataRows as Record<string, unknown>[];
-    if (rows.length === 0) return;
-
-    const cols = Object.keys(rows[0]);
-    const colList = cols.map((c) => `\`${c}\``).join(',');
     const batch = 200;
-    const total = rows.length;
-    for (let i = 0; i < rows.length; i += batch) {
-      const chunk = rows.slice(i, i + batch);
-      const values = chunk
-        .map((r) => `(${cols.map((c) => mysqlLiteral(r[c])).join(',')})`)
+    const [countRows] = await conn.query(`SELECT COUNT(*) as count FROM \`${name}\``);
+    const total = Number((countRows as Array<Record<string, unknown>>)[0]?.count ?? 0);
+    if (total === 0) return;
+
+    let cols: string[] | undefined;
+    for (let offset = 0; offset < total; offset += batch) {
+      const [dataRows] = await conn.query(
+        `SELECT * FROM \`${name}\` LIMIT ? OFFSET ?`,
+        [batch, offset]
+      );
+      const rows = dataRows as Record<string, unknown>[];
+      if (rows.length === 0) break;
+      cols ??= Object.keys(rows[0]);
+      const currentCols = cols;
+      const colList = currentCols.map((c) => `\`${c}\``).join(',');
+      const values = rows
+        .map((r) => `(${currentCols.map((c) => mysqlLiteral(r[c])).join(',')})`)
         .join(',\n');
       await write(`INSERT INTO \`${name}\` (${colList}) VALUES\n${values};\n\n`);
-      onProgress?.({ stage: 'table:batch', rowsDone: Math.min(i + chunk.length, total), rowsTotal: total });
+      onProgress?.({ stage: 'table:batch', rowsDone: Math.min(offset + rows.length, total), rowsTotal: total });
     }
   }
 

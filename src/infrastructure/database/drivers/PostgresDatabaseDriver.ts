@@ -277,21 +277,61 @@ export class PostgresDatabaseDriver implements DatabaseDriver {
     }
 
     if (!includeData) return;
-    const dataResult = await pool.query(`SELECT * FROM ${qTable}`);
-    const rows = dataResult.rows as Record<string, unknown>[];
-    if (rows.length === 0) return;
-
-    const cols = Object.keys(rows[0]);
-    const colList = cols.map(pgQuoteIdent).join(',');
     const batch = 200;
-    const total = rows.length;
-    for (let i = 0; i < rows.length; i += batch) {
-      const chunk = rows.slice(i, i + batch);
-      const values = chunk
-        .map((r) => `(${cols.map((c) => pgLiteral(r[c])).join(',')})`)
-        .join(',\n');
-      await write(`INSERT INTO ${qTable} (${colList}) VALUES\n${values};\n\n`);
-      onProgress?.({ stage: 'table:batch', rowsDone: Math.min(i + chunk.length, total), rowsTotal: total });
+    const countResult = await pool.query(`SELECT COUNT(*) as count FROM ${qTable}`);
+    const total = Number(countResult.rows[0]?.count ?? 0);
+    if (total === 0) return;
+
+    const client = await pool.connect();
+    let cursorOpen = false;
+    let inTransaction = false;
+    try {
+      await client.query('BEGIN');
+      inTransaction = true;
+      await client.query(`DECLARE export_cursor NO SCROLL CURSOR FOR SELECT * FROM ${qTable}`);
+      cursorOpen = true;
+
+      let rowsDone = 0;
+      let cols: string[] | undefined;
+      while (rowsDone < total) {
+        const result = await client.query(`FETCH FORWARD ${batch} FROM export_cursor`);
+        const rows = result.rows as Record<string, unknown>[];
+        if (rows.length === 0) break;
+
+        cols ??= Object.keys(rows[0]);
+        const currentCols = cols;
+        const colList = currentCols.map(pgQuoteIdent).join(',');
+        const values = rows
+          .map((r) => `(${currentCols.map((c) => pgLiteral(r[c])).join(',')})`)
+          .join(',\n');
+        await write(`INSERT INTO ${qTable} (${colList}) VALUES\n${values};\n\n`);
+
+        rowsDone += rows.length;
+        onProgress?.({ stage: 'table:batch', rowsDone, rowsTotal: total });
+      }
+
+      await client.query('CLOSE export_cursor');
+      cursorOpen = false;
+      await client.query('COMMIT');
+      inTransaction = false;
+    } catch (error) {
+      if (cursorOpen) {
+        try {
+          await client.query('CLOSE export_cursor');
+        } catch {
+          /* ignore */
+        }
+      }
+      if (inTransaction) {
+        try {
+          await client.query('ROLLBACK');
+        } catch {
+          /* ignore */
+        }
+      }
+      throw error;
+    } finally {
+      client.release();
     }
   }
 
