@@ -2,7 +2,7 @@ services:
   mysql:
     image: mysql:8.0
     ports:
-      - 3306:3306
+      - 127.0.0.1:3306:3306
     environment:
       MYSQL_ROOT_PASSWORD: root
       MYSQL_DATABASE: gl_db
@@ -17,7 +17,7 @@ services:
   pgsql:
     image: postgres:16
     ports:
-      - 5432:5432
+      - 127.0.0.1:5432:5432
     environment:
       POSTGRES_USER: gl_user
       POSTGRES_PASSWORD: gl_password
