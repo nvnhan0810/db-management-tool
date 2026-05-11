@@ -1,9 +1,8 @@
-import { app, BrowserWindow, dialog, ipcMain } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, shell } from 'electron';
 import started from 'electron-squirrel-startup';
 import fs from 'node:fs';
 import path from 'node:path';
 import util from 'node:util';
-import { shell } from 'electron';
 import { databaseService } from './infrastructure/database/databaseService';
 import { deleteSecret, getSecret, saveSecret } from './main-secrets';
 

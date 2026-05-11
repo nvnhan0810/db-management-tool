@@ -216,7 +216,7 @@ class StorageService {
       const type = String(raw.type || '').trim();
       const host = String(raw.host || '').trim();
       const port = Number(raw.port || 0);
-      const database = raw.database != null ? String(raw.database) : undefined;
+      const database = raw.database != null ? String(raw.database) : '';
       const username = raw.username != null ? String(raw.username) : '';
       if (!id || !name || !type || !host || !port) continue;
 

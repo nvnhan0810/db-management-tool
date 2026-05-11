@@ -10,7 +10,7 @@ export type SshConfig = {
 };
 
 export type DatabaseConnection = {
-  id: `${string}-${string}-${string}-${string}-${string}`;
+  id: string;
   name?: string;
   type: 'mysql' | 'postgresql' | 'sqlite';
   host: string;
