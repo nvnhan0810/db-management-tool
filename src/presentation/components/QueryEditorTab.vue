@@ -42,6 +42,7 @@
     <div class="query-editor-content">
       <div class="editor-section">
         <el-input
+          ref="queryInputRef"
           v-model="query"
           type="textarea"
           :rows="12"
@@ -186,6 +187,7 @@ const props = withDefaults(defineProps<Props>(), {
 });
 
 const query = ref('');
+const queryInputRef = ref<{ textarea?: HTMLTextAreaElement } | null>(null);
 const isRunning = ref(false);
 const error = ref<string | null>(null);
 const result = ref<QueryResult | null>(null);
@@ -344,7 +346,7 @@ function queryResultWithExecutionTime(state: QueryResult, executionTime: number)
 const updateSelection = () => {
   // Use nextTick to ensure DOM is updated
   setTimeout(() => {
-    const textarea = document.querySelector('.query-input textarea') as HTMLTextAreaElement;
+    const textarea = queryInputRef.value?.textarea;
     if (textarea) {
       const start = textarea.selectionStart;
       const end = textarea.selectionEnd;
