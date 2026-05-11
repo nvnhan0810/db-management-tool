@@ -1,6 +1,9 @@
 import type { DatabaseConnection } from '@/domain/connection/types';
 import type { QueryResult } from '@/domain/query/types';
-import { splitSqlStatements } from '@/infrastructure/database/sqlScriptSplit';
+import {
+  hasExecutableSql,
+  splitSqlStatements,
+} from '@/infrastructure/database/sqlScriptSplit';
 import { getPg, getSsh2Client } from '@/utils/native-modules';
 import mysql from 'mysql2/promise';
 import { once } from 'node:events';
@@ -922,8 +925,7 @@ class DatabaseService {
 
     const flushStatement = async (stmt: string, totalStatements?: number) => {
       const trimmed = stmt.trim();
-      if (!trimmed) return;
-      if (trimmed.startsWith('--')) return;
+      if (!hasExecutableSql(trimmed)) return;
       if (signal?.aborted) throw new Error('Import canceled');
       onProgress?.({ stage: 'execute', bytesRead, totalBytes, executed, totalStatements });
       await this.executeQuery(connectionId, trimmed);
@@ -939,8 +941,7 @@ class DatabaseService {
 
       const countMaybe = (stmt: string) => {
         const trimmed = stmt.trim();
-        if (!trimmed) return;
-        if (trimmed.startsWith('--')) return;
+        if (!hasExecutableSql(trimmed)) return;
         totalStatements++;
       };
 
