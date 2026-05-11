@@ -45,6 +45,17 @@ type SqlHistoryEventDetail = {
   timestamp: string;
 };
 
+const listenerChannels = new Set([
+  'reload-prevented',
+  'export:progress',
+  'import:progress',
+]);
+
+const listenerWrappers = new Map<
+  string,
+  Map<(...args: unknown[]) => void, (...args: unknown[]) => void>
+>();
+
 contextBridge.exposeInMainWorld('electron', {
   invoke: async (channel: string, data?: unknown) => {
     if (invokeChannels.includes(channel)) {
@@ -92,13 +103,21 @@ contextBridge.exposeInMainWorld('electron', {
     throw new Error(`IPC channel not allowed: ${channel}`);
   },
   on: (channel: string, callback: (...args: unknown[]) => void) => {
-    if (channel === 'reload-prevented' || channel === 'export:progress' || channel === 'import:progress') {
-      ipcRenderer.on(channel, (_event, ...args) => callback(...args));
+    if (listenerChannels.has(channel)) {
+      const wrapper = (_event: Electron.IpcRendererEvent, ...args: unknown[]) =>
+        callback(...args);
+      const channelWrappers = listenerWrappers.get(channel) ?? new Map();
+      channelWrappers.set(callback, wrapper);
+      listenerWrappers.set(channel, channelWrappers);
+      ipcRenderer.on(channel, wrapper);
     }
   },
   off: (channel: string, callback: (...args: unknown[]) => void) => {
-    if (channel === 'reload-prevented' || channel === 'export:progress' || channel === 'import:progress') {
-      ipcRenderer.removeListener(channel, callback as () => void);
+    if (listenerChannels.has(channel)) {
+      const wrapper = listenerWrappers.get(channel)?.get(callback);
+      if (!wrapper) return;
+      ipcRenderer.removeListener(channel, wrapper);
+      listenerWrappers.get(channel)?.delete(callback);
     }
   },
 });
