@@ -61,11 +61,29 @@ export const useConnectionStore = defineStore('connection', () => {
     localStorage.setItem(QUIT_TIME_KEY, Date.now().toString());
   };
 
+  const redactConnectionForStorage = (connection: ActiveConnection): ActiveConnection => {
+    const ssh = connection.ssh
+      ? {
+          ...connection.ssh,
+          password: undefined,
+          privateKey: undefined,
+          passphrase: undefined,
+        }
+      : undefined;
+
+    return {
+      ...connection,
+      password: '',
+      ssh,
+      isConnected: false,
+    };
+  };
+
   const saveState = () => {
     localStorage.setItem(
       STORAGE_KEY,
       JSON.stringify({
-        activeConnections: activeConnections.value,
+        activeConnections: activeConnections.value.map(redactConnectionForStorage),
         currentTabId: currentTabId.value,
         nextTabId: nextTabId.value,
         timestamp: Date.now(),

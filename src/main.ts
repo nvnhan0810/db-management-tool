@@ -10,6 +10,20 @@ import { deleteSecret, getSecret, saveSecret } from './main-secrets';
 const exportJobs = new Map<string, { abort: AbortController; outPath: string }>();
 const importJobs = new Map<string, { abort: AbortController; filePath: string }>();
 
+function redactConnectionForLog(connection: unknown): unknown {
+  if (!connection || typeof connection !== 'object') return connection;
+  const copy = { ...(connection as Record<string, unknown>) };
+  if ('password' in copy) copy.password = '<redacted>';
+  if (copy.ssh && typeof copy.ssh === 'object') {
+    const ssh = { ...(copy.ssh as Record<string, unknown>) };
+    if ('password' in ssh) ssh.password = '<redacted>';
+    if ('privateKey' in ssh) ssh.privateKey = '<redacted>';
+    if ('passphrase' in ssh) ssh.passphrase = '<redacted>';
+    copy.ssh = ssh;
+  }
+  return copy;
+}
+
 if (started) {
   app.quit();
 }
@@ -113,7 +127,11 @@ ipcMain.handle('database:connect', async (_event, connection) => {
   } catch (error) {
     const msg = error instanceof Error ? error.message : 'Failed to connect';
     const inspected = util.inspect(error, { depth: 8, colors: false });
-    console.error('[database:connect] failed', { msg, inspected, connection });
+    console.error('[database:connect] failed', {
+      msg,
+      inspected,
+      connection: redactConnectionForLog(connection),
+    });
     return { success: false, error: msg };
   }
 });
@@ -127,7 +145,6 @@ ipcMain.handle('database:hasActiveConnections', () =>
 );
 
 ipcMain.handle('database:query', async (_event, { connectionId, query }) => {
-  console.log('[database:query]', { connectionId, query });
   return await databaseService.query(connectionId, query);
 });
 ipcMain.handle('database:getTables', async (_event, { connectionId }) =>
@@ -143,7 +160,6 @@ ipcMain.handle('database:getDatabases', async (_event, { connectionId }) => {
 });
 ipcMain.handle('database:executeQuery', async (_event, { connectionId, query }) => {
   if (!connectionId || !query) throw new Error('Missing connectionId or query');
-  console.log('[database:executeQuery]', { connectionId, query });
   return databaseService.executeQuery(connectionId, query);
 });
 
